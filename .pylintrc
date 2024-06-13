@@ -1,0 +1,4 @@
+[FORMAT]
+max-line-length=130
+[BASIC]
+good-names=i,j,k,ws,sm,cg,mg
