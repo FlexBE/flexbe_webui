@@ -631,7 +631,6 @@ def parse_args(args: List[str] = None):
                         help="FlexBE WebUI Server configuration file (default='' use default settings)")
     parser.add_argument('--clear_cache', type=bool, default=False, help='Clear existing package data cache and reprocess')
 
-
     VALID_LOGGING_LEVELS = ['critical', 'error', 'warning', 'info', 'debug', 'trace']
 
     def validate_logging_level(level: str) -> str:
@@ -640,7 +639,7 @@ def parse_args(args: List[str] = None):
         return level.lower()
 
     parser.add_argument('--logging_level', type=validate_logging_level, default='warning',
-                    help=f"Set uvicorn logging level ({', '.join(VALID_LOGGING_LEVELS)})")
+                        help=f"Set uvicorn logging level ({', '.join(VALID_LOGGING_LEVELS)})")
 
     return parser.parse_known_args()
 

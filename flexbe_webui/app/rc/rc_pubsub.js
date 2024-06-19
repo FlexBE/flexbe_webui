@@ -9,8 +9,6 @@ RC.PubSub = new (function() {
 	var onboard_heartbeat_listener;
 	var mirror_heartbeat_listener;
 	var launcher_heartbeat_listener;
-	var last_mirror_status;
-	var last_launcher_status;
 
 	var ros_command_listener;
 
@@ -29,9 +27,24 @@ RC.PubSub = new (function() {
 
 	var synthesis_action_client;
 
-	var last_heartbeat_time = undefined;
+	var last_onboard_heartbeat_time = undefined;
 	var last_mirror_heartbeat_time = undefined;
 	var last_launcher_heartbeat_time = undefined;
+	var last_mirror_state_path = undefined;
+	var last_onboard_status= undefined;
+	var last_mirror_status= undefined;
+	var last_launcher_status= undefined;
+	var last_ocs_status = undefined;
+
+	// BEStatus codes from BEStatus.msg
+	const STARTED = 0;
+	const FINISHED = 1;
+	const FAILED = 2;
+	const WARNING = 10;
+	const ERROR = 11;
+	const READY = 20;
+	// -----------------
+	const RUNNING = 30; // Custom use here
 
 	var current_state_callback = function (msg) {
 		if (RC.Sync.hasProcess("Transition")) RC.Sync.remove("Transition");
@@ -40,10 +53,18 @@ RC.PubSub = new (function() {
 
 		if (msg.data == "") {
 			RC.Controller.signalFinished();
+			last_onboard_status = FINISHED;
 		} else if (!RC.Controller.isExternal()) {
 			RC.Controller.signalRunning();
+			last_onboard_status = RUNNING;
+		}
+
+		if (last_mirror_state_path != msg.data) {
+			last_mirror_state_path = msg.data;
+			updateOCSStatusDisplay(Date.now());
 		}
 	}
+
 	var outcome_request_callback = function(msg) {
 		var target_state = Behavior.getStatemachine().getStateByPath(msg.target);
 		if (msg.outcome == 255) {
@@ -58,14 +79,11 @@ RC.PubSub = new (function() {
 	}
 
 	var behavior_status_callback = function (msg){
-		// constants of BEStatus.msg (not directly accessible via roslib.js)
-		var STARTED = 0;
-		var FINISHED = 1;
-		var FAILED = 2;
-		var WARNING = 10;
-		var ERROR = 11;
-		var READY = 20;
-
+		if (msg.code != last_onboard_status) {
+			console.log(`\x1b[92mBEStatus change to ${msg.code} from ${last_onboard_status}\x1b[0m`);
+			last_onboard_status = msg.code;
+			updateOCSStatusDisplay(Date.now());
+		}
 		if (msg.code == STARTED && !RC.Controller.haveBehavior() && UI.Settings.isStopBehaviors()) {
 			T.logError("Onboard behavior is still running! Stopping it...");
 			RC.Sync.register("EmergencyStop", 30);
@@ -85,6 +103,7 @@ RC.PubSub = new (function() {
 			RC.Sync.remove("Switch");
 			that.sendBehaviorUnlock(msg.args[0]);
 		} else if (msg.code == FINISHED || msg.code == FAILED) {
+			last_mirror_state_path = undefined; // clear prior SM status
 			RC.Controller.signalFinished();
 			UI.RuntimeControl.displayBehaviorFeedback(4, "No behavior active.");
 		} else if (msg.code == STARTED) {
@@ -103,6 +122,7 @@ RC.PubSub = new (function() {
 				UI.RuntimeControl.displayBehaviorFeedback(4, "No behavior active.");
 			}
 		} else if (msg.code == READY) {
+			last_mirror_state_path = undefined; // clear prior SM status
 			RC.Controller.signalFinished();
 			UI.RuntimeControl.displayBehaviorFeedback(4, "Onboard engine is ready.");
 		}
@@ -113,73 +133,40 @@ RC.PubSub = new (function() {
 		if (onboard_heartbeat_timer != undefined) clearTimeout(onboard_heartbeat_timer);
 		RC.Controller.signalConnected();
 
-		var now = Date.now();
-		if (last_heartbeat_time != undefined) {
-			delay = (now - last_heartbeat_time) / 1000;
-			last_heartbeat_time = now;
-			relative_delay = (delay - 1) / (RC.Controller.onboardTimeout - 1);
-			RC.Sync.setProgress("Delay", Math.min(Math.max(1 - relative_delay, 0), 1), false);
-				 if (relative_delay > 0.95) RC.Sync.setStatus("Delay", RC.Sync.STATUS_ERROR);
-			else if (relative_delay > 0.60) RC.Sync.setStatus("Delay", RC.Sync.STATUS_WARN);
-			else RC.Sync.setStatus("Delay", RC.Sync.STATUS_OK);
-			//console.log("Heartbeat delay: " + delay + " (= " + Math.round(relative_delay * 100) + "%)");
-		} else {
-			last_heartbeat_time = now;
+		let now = Date.now(); // time in milliseconds
+		if (last_onboard_heartbeat_time == undefined) {
 			RC.Sync.setProgress("Delay", 1, false);
 			console.log(`\x1b[32mOnboard heartbeat received ${JSON.stringify(msg)}!\x1b[0m`);
 		}
+		last_onboard_heartbeat_time = now;
 
 		onboard_heartbeat_timer = setTimeout(function() {
 			console.log("\x1b[31mOnboard connection timed out.\x1b[0m");
+			last_onboard_status = undefined;
 			RC.Controller.signalDisconnected();
+			let now = Date.now();
 		}, RC.Controller.onboardTimeout * 1000);
 	}
-
 
 	var mirror_heartbeat_timer;
 	var mirror_heartbeat_callback = function (msg){
 		if (mirror_heartbeat_timer != undefined) clearTimeout(mirror_heartbeat_timer);
 
-		var now = Date.now();
-		if (last_mirror_heartbeat_time != undefined) {
-			delay = (now - last_mirror_heartbeat_time) / 1000;
-			relative_delay = (delay - 1) / (RC.Controller.onboardTimeout - 1);
-			if (relative_delay > 0.95) {
-				UI.Menu.displayOCSStatus("error");
-				last_mirror_status = undefined; // force update on the next pass
-			} else if (relative_delay > 0.60) {
-				UI.Menu.displayOCSStatus("warning");
-				last_mirror_status = undefined; // force update on the next pass
-			} else {
-				// console.log(`\x1b[96mMirror heartbeat received ${JSON.stringify(msg)} ${last_mirror_status} ${last_launcher_status}!\x1b[0m`);
-				if (last_launcher_status != undefined) {
-					// Only update when both mirror and launcher are valid
-					const status = msg.data > 0 ? 1 : -1
-					if (status != last_mirror_status){
-						if (status > 0) {
-							UI.Menu.displayOCSStatus("running");
-						} else {
-							UI.Menu.displayOCSStatus("online"); // waiting for behavior start
-						}
-					}
-					last_mirror_status = status;
-				} else {
-					// force update once launcher is online
-					last_mirror_status = 0;
-				}
+		last_mirror_status = msg.data;
+		let now = Date.now();
+		if (last_mirror_heartbeat_time == undefined) {
+			console.log(`\x1b[96mMirror heartbeat received `
+						+ ` ${now} (${JSON.stringify(last_mirror_status)},`
+						+ ` ${JSON.stringify(last_launcher_status)})!\x1b[0m`);
 			}
-			last_mirror_heartbeat_time = now;
-		} else {
-			last_mirror_heartbeat_time = now;
-			if (last_launcher_status && last_launcher_status != -1) UI.Menu.displayOCSStatus("online");
-			last_mirror_status = undefined; // force update on the next pass
-			console.log(`\x1b[96mMirror heartbeat received ${JSON.stringify(msg)} ${last_mirror_status} ${last_launcher_status}!\x1b[0m`);
-		}
+		last_mirror_heartbeat_time = now;
+		updateOCSStatusDisplay(now);
 
 		mirror_heartbeat_timer = setTimeout(function() {
 			console.log("\x1b[91mMirror connection timed out.\x1b[0m");
-			UI.Menu.displayOCSStatus("disconnected");
 			last_mirror_status = undefined;
+			last_mirror_state_path = undefined;
+			updateOCSStatusDisplay(Date.now());
 		}, RC.Controller.onboardTimeout * 1000);
 	}
 
@@ -188,45 +175,119 @@ RC.PubSub = new (function() {
 	var launcher_heartbeat_callback = function (msg){
 		if (launcher_heartbeat_timer != undefined) clearTimeout(launcher_heartbeat_timer);
 
-		var now = Date.now();
-		if (last_launcher_heartbeat_time != undefined) {
-			delay = (now - last_launcher_heartbeat_time) / 1000;
-			relative_delay = (delay - 1) / (RC.Controller.onboardTimeout - 1);
-			if (relative_delay > 0.95) {
-				UI.Menu.displayOCSStatus("error");
-				last_launcher_status = undefined; // force update on the next pass
-			} else if (relative_delay > 0.60) {
-				UI.Menu.displayOCSStatus("warning");
-				last_launcher_status = undefined; // force update on the next pass
-			} else {
-				// console.log(`\x1b[96mBehavior Launcher heartbeat received ${JSON.stringify(msg)} ${last_launcher_status} ${last_mirror_status}!\x1b[0m`);
-				if (last_mirror_status != undefined){
-					if (last_launcher_status != 1) {
-						if (last_mirror_status > 0) {
-							UI.Menu.displayOCSStatus("running");
-						} else {
-							UI.Menu.displayOCSStatus("online"); // waiting for behavior start
-						}
-					}
-					last_launcher_status = 1;
-				} else {
-					last_launcher_status = -1;
-				}
-			}
-			last_launcher_heartbeat_time = now;
-		} else {
-			last_launcher_heartbeat_time = now;
-			UI.Menu.displayOCSStatus("online");
-			last_launcher_status = undefined; // force update on the next pass
-			console.log(`\x1b[96mBehavior launcher heartbeat received ${JSON.stringify(msg)} ${last_launcher_status} ${last_mirror_status} !\x1b[0m`);
+		last_launcher_status = msg.data;
+		let now = Date.now();
+		if (last_launcher_heartbeat_time == undefined) {
+			console.log(`\x1b[96mBehavior launcher heartbeat received at`
+						+ ` ${now} (${JSON.stringify(last_mirror_status)},`
+						+ ` ${JSON.stringify(last_launcher_status)}) !\x1b[0m`);
 		}
+		last_launcher_heartbeat_time = now;
+		updateOCSStatusDisplay(now);
 
 		launcher_heartbeat_timer = setTimeout(function() {
 			console.log("\x1b[91mBehavior launcher connection timed out.\x1b[0m");
-			UI.Menu.displayOCSStatus("disconnected");
 			last_launcher_status = undefined;
+			updateOCSStatusDisplay(Date.now());
 		}, RC.Controller.onboardTimeout * 1000);
 	}
+
+	var updateOCSStatusDisplay = function (time) {
+		try {
+			let delta_onboard_time = time;
+			if (last_onboard_heartbeat_time != undefined) {
+				delta_onboard_time -= last_onboard_heartbeat_time;
+			}
+			let delta_mirror_time = time;
+			if (last_mirror_heartbeat_time != undefined) {
+				delta_mirror_time -= last_mirror_heartbeat_time;
+			}
+
+			// Launcher delay does not impact sync, but does the OCS status just calc to report here.
+			let delta_launcher_time = time;
+			if (last_launcher_heartbeat_time != undefined) {
+				delta_launcher_time -= last_launcher_heartbeat_time;
+			}
+
+			// console.log(`\x1b[94mHeartbeat delays: `
+			//             + `  ${delta_onboard_time}, ${delta_mirror_time}, ${delta_launcher_time} ms \x1b[0m`);
+
+			// Update the Runtime controller sync progress bar
+			let max_delay = delta_onboard_time > delta_mirror_time ? delta_onboard_time : delta_mirror_time;
+			max_delay /= 1000;
+			let relative_delay = (max_delay - 1)/ (RC.Controller.onboardTimeout - 1 );
+			RC.Sync.setProgress("Delay", Math.min(Math.max(1 - relative_delay, 0), 1), false);
+			if (relative_delay > 0.95) RC.Sync.setStatus("Delay", RC.Sync.STATUS_ERROR);
+			else if (relative_delay > 0.60) RC.Sync.setStatus("Delay", RC.Sync.STATUS_WARN);
+			else RC.Sync.setStatus("Delay", RC.Sync.STATUS_OK);
+
+			// OCS status indicator status may depend on OBE status, as well as mirror and launcher
+			let status = "offline";
+			if (last_onboard_status == undefined) {
+				// No onboard available, so we just have OCS
+				if (last_launcher_status != undefined && last_mirror_status != undefined) {
+					status = "online";;
+				} else {
+					if (last_launcher_status != undefined || last_mirror_status != undefined) {
+						status = "disconnected";
+					}
+				}
+			} else if ([STARTED, RUNNING].includes(last_onboard_status)) {
+				// All we need for OCS status is a valid mirror if onboard is running
+				// as it is OK to shutdown the launcher
+				if (last_mirror_status == undefined) {
+					status = "disconnected"; // no mirror heartbeat
+				} else {
+					if (last_mirror_state_path == undefined) {
+						status = "error"; // not getting update from mirror SM
+					} else if (last_mirror_status > 0 ) {
+						status = "running";
+					} else {
+						status = "online";
+					}
+				}
+			} else {
+				// Need both mirror and launcher active to restart behavior
+				if (last_launcher_status == undefined && last_mirror_status == undefined) {
+					status = "offline";
+				}
+				else if (last_launcher_status == undefined || last_mirror_status == undefined) {
+					status = "disconnected";
+				}
+				else if (last_mirror_status > 0) {
+					// mirror is active and following OBE
+					switch (last_onboard_status) {
+						case RUNNING:
+						case STARTED:
+							status = "running";
+							break;
+						case READY:
+						case FINISHED:
+							status = "online";
+							break;
+						case WARNING:
+							status = "error";
+							break;
+						case ERROR:
+						case FAILED:
+						default:
+							status = "error";
+					}
+				} else {
+					status = "online";
+				}
+			}
+
+			if (status != last_ocs_status) {
+				last_ocs_status = status;
+				UI.Menu.displayOCSStatus(status);
+			}
+
+		} catch (exc) {
+			console.log(`\x1b[91mError updating the OCS display!\n    ${exc}\x1b[0m`);
+		}
+	}
+
 
 	var ros_command_callback = function (msg) {
 		if (!UI.Settings.isCommandsEnabled()) {

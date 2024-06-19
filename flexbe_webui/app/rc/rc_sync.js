@@ -47,9 +47,7 @@ RC.Sync = new (function() {
 		var process = processes.findElement(function (element) {
 			return element.key == key;
 		});
-		if (process == undefined) {
-			T.debugWarn("Process " + key + " not found for RC.Sync update, skipping remove operation.");
-		} else {
+		if (process != undefined) {
 			processes.remove(process);
 		}
 		updateSync();
