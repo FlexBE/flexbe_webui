@@ -338,9 +338,10 @@ def main(args: List[str] = None):
         print(f'  Invalid port = {args.port} - {exc}', flush=True)
         return
 
-    print(f'\nStarting FlexBE WebUI ROS node with server at port={port} ...', flush=True)
+    print('\nStarting FlexBE WebUI ROS node with server at '
+          f'port={port} logging={args.logging_level}...', flush=True)
     webui_node = WebuiNode(args)
-    server = threading.Thread(target=webui_node._server.run, args=(port,), daemon=True)
+    server = threading.Thread(target=webui_node._server.run, args=(port, args.logging_level), daemon=True)
     server.start()
     try:
         rclpy.spin(webui_node)

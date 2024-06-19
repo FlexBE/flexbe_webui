@@ -609,10 +609,10 @@ class WebuiServer:
                 print(traceback.format_exc().replace('%', '%%'))
                 return False
 
-    def run(self, port: int = 8000):
+    def run(self, port: int = 8000, logging: str = 'warning'):
         """Run main web server loop."""
-        print(f'  Configure uvicorn port={port} ...', flush=True)
-        config = uvicorn.Config(self._app, port=port, log_level='info')  # warning')
+        print(f'  Configure uvicorn port={port} logging={logging} ...', flush=True)
+        config = uvicorn.Config(self._app, port=port, log_level=logging)
         print('  Construct uvicorn server ...', flush=True)
         server = uvicorn.Server(config)
         print('  Run uvicorn server...', flush=True)
@@ -631,6 +631,17 @@ def parse_args(args: List[str] = None):
                         help="FlexBE WebUI Server configuration file (default='' use default settings)")
     parser.add_argument('--clear_cache', type=bool, default=False, help='Clear existing package data cache and reprocess')
 
+
+    VALID_LOGGING_LEVELS = ['critical', 'error', 'warning', 'info', 'debug', 'trace']
+
+    def validate_logging_level(level: str) -> str:
+        if level.lower() not in VALID_LOGGING_LEVELS:
+            raise argparse.ArgumentTypeError(f"Invalid logging level: {level}. Choose from {', '.join(VALID_LOGGING_LEVELS)}")
+        return level.lower()
+
+    parser.add_argument('--logging_level', type=validate_logging_level, default='warning',
+                    help=f"Set uvicorn logging level ({', '.join(VALID_LOGGING_LEVELS)})")
+
     return parser.parse_known_args()
 
 
@@ -646,9 +657,9 @@ def main(args: List[str] = None):
         print(f'\n  Invalid port = {args.port} - {exc}', flush=True)
         return
 
-    print(f'at port={port} ...', flush=True)
+    print(f'at port={port} logging={args.logging_level} ...', flush=True)
     webui_server = WebuiServer(args)
-    webui_server.run(port)
+    webui_server.run(port, args.logging_level)
     print('shutdown FlexBE WebUI server!', flush=True)
 
 
