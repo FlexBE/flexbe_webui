@@ -35,7 +35,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='False'),
         DeclareLaunchArgument('enable_clear_imports', default_value='False',
                               description='Delete behavior-specific module imports after execution.'),
-        DeclareLaunchArgument('client_delay', default_value='2.0',
+        DeclareLaunchArgument('client_delay', default_value='6.0',
                               description='Delay launch of client until the server is fully started.'),
 
         IncludeLaunchDescription(
