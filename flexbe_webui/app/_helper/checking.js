@@ -430,88 +430,14 @@ const Checking = new (function() {
 		// Remove spaces from the equation string
 		const equation = expr.trim().replace(/\s+/g, '');
 
-		// Regular expression to match valid characters in an equation
-		const validCharactersPattern = /^[a-zA-Z0-9_+\-*/().\[\]]+$/;
-		// Regular expression to match a valid variable or array index
-		const validVariablePattern = /^[a-zA-Z_]\w*(\[\d+\])?$/;
-
-		// Check if the equation contains only valid characters
-		if (!validCharactersPattern.test(equation)) {
+		// Use the Function constructor to check for validity
+		try {
+			new Function(`return (${equation});`);
+			return true;
+		} catch (e) {
 			return false;
 		}
-
-		// Helper function to validate and process the equation recursively
-		function validateAndProcess(eq) {
-			// Base case: if the equation is empty, it's invalid
-			if (eq === '') {
-				return false;
-			}
-
-			// Split the equation into tokens using a regex, do not include empty tokens at this point
-			const tokens = eq.split(/([\+\-\*\/\(\)])/).filter(token => token !== '');
-
-			// Stack to manage parentheses
-			const stack = [];
-			let subEquation = '';
-
-			for (const token of tokens) {
-				if (token === '(') {
-					// Push current subEquation to stack and reset subEquation
-					stack.push(subEquation);
-					subEquation = '';
-					stack.push(token);
-				} else if (token === ')') {
-					// Pop from stack until '(' is found
-					let last = stack.pop();
-					let innerEquation = 'temp'; // avoid empty term
-
-					while (last !== '(' && stack.length > 0) {
-						innerEquation = last + innerEquation;
-						last = stack.pop();
-					}
-
-					// Validate the inner equation
-					if (!validateAndProcess(subEquation)) {
-						return false;
-					}
-
-					// Append the result to the current subEquation
-					subEquation = stack.pop() + innerEquation;
-				} else {
-					subEquation += token;
-				}
-			}
-
-			// Split the subEquation into individual terms including empty tokens
-			const terms = subEquation.split(/([\+\-\*\/])/);
-			// console.log(`\x1b[96m --- validate equation ${subEquation} - ${JSON.stringify(terms)}\x1b[0m`);
-			// Check if each term is valid
-			let expectingOperand = true;
-			for (const term of terms) {
-				if (term === '' && expectingOperand) {
-					return false; // Invalid if expecting an operand but got an empty string
-				}
-				if (/[+\-*/]/.test(term)) {
-					if (expectingOperand) {
-						return false; // Invalid if expecting an operand but got an operator
-					}
-					expectingOperand = true; // After an operator, expect an operand next
-				} else {
-					if (!validVariablePattern.test(term) && isNaN(term)) {
-						return false; // Invalid term
-					}
-					expectingOperand = false; // After a valid term, expect an operator next
-				}
-			}
-
-			// Check if the last term was expecting an operand
-			return !expectingOperand;
-		}
-
-		return validateAndProcess(equation);
 	}
-
-
 
 	this.determineType = function determineType(item) {
 		// Determine type of parameter or value entered in FlexBE UI
@@ -567,7 +493,7 @@ const Checking = new (function() {
 								return "unknown" // if lambda plus args, then assume equation is invalid attempt
 							}
 						} else {
-							console.log(`\x1b[95m Invalid equation expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=<${lambdaEqn}> (${isValidEqn})\x1b[0m`);
+							console.log(`\x1b[95m Invalid equation expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn expression=<${lambdaEqn}> (${isValidEqn})\x1b[0m`);
 							return "unknown" // if lambda plus args, then assume equation is invalid attempt
 						}
 					} // else is not a lambda, so keep processing as string
