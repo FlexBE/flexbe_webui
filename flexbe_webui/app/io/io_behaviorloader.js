@@ -10,6 +10,7 @@ IO.BehaviorLoader = new (function() {
 		} catch (err) {
 			var error_string = "Code parsing failed: " + err;
 			T.logError(error_string);
+			console.log(`\x1b[91m${err.stack}\x1b[0m`);
 			callback(error_string);
 			return;
 		}
@@ -17,8 +18,9 @@ IO.BehaviorLoader = new (function() {
 			applyParsingResult(parsingResult, manifest_data);
 			T.logInfo("Behavior " + parsingResult.behavior_name + " loaded.");
 		} catch (err) {
-			var error_string = "Code parsing failed: " + err;
+			var error_string = "Failed to apply parsing result: " + err;
 			T.logError(error_string);
+			console.log(`\x1b[91m${err.stack}\x1b[0m`);
 			callback(error_string);
 			return;
 		}
