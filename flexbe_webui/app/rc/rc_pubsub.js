@@ -401,7 +401,7 @@ RC.PubSub = new (function() {
 	}
 
 	var synthesis_action_result_callback = function(result, root, result_cb) {
-		console.log("RC.PubSub: synthesis_action_result_callback ...");
+		console.log(`\x1b[92mRC.PubSub: synthesis_action_result_callback ...\x1b[0m`);
 		console.log(result);
 		if (result == undefined) {
 			T.logError("Synthesis cancelled.");
@@ -414,6 +414,7 @@ RC.PubSub = new (function() {
 		var root_split = root.split("/");
 		var root_name = root_split[root_split.length - 1];
 		var root_container_path = root.replace("/" + root_name, "");
+		console.log(`        root container path=${root_container_path} ...`);
 		var root_container = (root_container_path == "")? Behavior.getStatemachine() :
 								Behavior.getStatemachine().getStateByPath(root_container_path);
 		var root_varname = "";
@@ -423,16 +424,26 @@ RC.PubSub = new (function() {
 			return;
 		}
 
-		console.log("RC.PubSub: ready to build state machine ...");
 		var state_machine = IO.ModelGenerator.buildStateMachine(root_name, root_varname, defs.sm_defs, defs.sm_states, true);
+		console.log(`        built state machine name = '${state_machine.getStateName()}' ...`);
 
 		var sm_instance = root_container.getStateByName(state_machine.getStateName());
+		state_machine.setContainer(root_container);
 		if (sm_instance != undefined) {
+			console.log(`        add state machine instance inside existing container ...`);
+
 			var transitions = root_container.getTransitions().filter(function(t) {
 				return t.getFrom().getStateName() == sm_instance.getStateName() && state_machine.getOutcomes().contains(t.getOutcome())
 					|| t.getTo() != undefined && t.getTo().getStateName() == sm_instance.getStateName();
 			});
+
+			// Retrieve input/output data from container definition
+			var o_keys = sm_instance.getOutputKeys();
+			var i_keys = sm_instance.getInputKeys();
+			var o_maps = sm_instance.getOutputMapping();
+			var i_maps = sm_instance.getInputMapping();
 			var is_initial = root_container.getInitialState() != undefined && sm_instance.getStateName() == root_container.getInitialState().getStateName();
+
 			root_container.removeState(sm_instance);
 			root_container.addState(state_machine);
 			if (is_initial) root_container.setInitialState(sm_instance);
@@ -440,12 +451,21 @@ RC.PubSub = new (function() {
 				if (t.getTo() != undefined && t.getTo().getStateName() == state_machine.getStateName()) t.setTo(state_machine);
 				if (t.getFrom().getStateName() == state_machine.getStateName()) t.setFrom(state_machine);
 			});
+
+			state_machine.setInputKeys(i_keys);
+			state_machine.setOutputKeys(o_keys);
+			state_machine.setInputMapping(i_maps);
+			state_machine.setOutputMapping(o_maps);
+
 			transitions.forEach(root_container.addTransition);
+			console.log(`   finished updating container with synthesized state machine!`);
 		} else {
+			console.log(`\x1b[92mRC.PubSub: adding synthesized SM directly to root container ...\x1b[0m`);
 			root_container.addState(state_machine);
 		}
 
 		if(UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
+		UI.Panels.StateProperties.displayStateProperties(state_machine);
 
 		ActivityTracer.addActivity(ActivityTracer.ACT_STATE_ADD,
 			"Added synthesized statemachine " + root_name,
