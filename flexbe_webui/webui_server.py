@@ -416,6 +416,14 @@ class WebuiServer:
                 except SyntaxError as exc:
                     print('Python code does NOT compile!')
                     print(exc, flush=True)
+                    print(30 * '=')
+                    print('\n'.join([f'{i:4d} {line}' for i, line in
+                                     enumerate(code.split('\n'))]))
+                    print(code)
+                    print(30 * '-')
+                    print(exc, flush=True)
+                    print(30 * '=')
+
                     result_dict.update({'error_msg': 'Python code does NOT compile!'})
                     return result_dict
 

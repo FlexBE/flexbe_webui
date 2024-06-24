@@ -430,13 +430,27 @@ const Checking = new (function() {
 		// Remove spaces from the equation string
 		const equation = expr.trim().replace(/\s+/g, '');
 
-		// Use the Function constructor to check for validity
+		// Use the Function constructor to check for validity of simple equations
+		// which allows us to avoid importing third party libraries.
 		try {
+			// Basic check for simple numerical or logical expressions (==, !=, <, >, <=, >=)
+			// where JavaScript and Python code are the same
 			new Function(`return (${equation});`);
 			return true;
 		} catch (e) {
-			return false;
+			// May be valid Python that fails Javascript, try a simple conversion of some keywords
+			let convert = equation.replace('and', '&&').replace('or', '||').replace('not','!').replace("math", "Math");
+			try {
+				new Function(`return (${convert});`);
+				return true;
+			} catch (e) {
+				// Cannot evaluate as a JavaScript equivalent expression
+				console.log(`    Error:  ${e}`);
+				console.log(`    We cannot confirm  | ${expr} | is valid python expression,`);
+				console.log(`    nor can we confirm | ${convert} | - unknown type for now!`);
+			}
 		}
+		return false;
 	}
 
 	this.determineType = function determineType(item) {
@@ -482,6 +496,12 @@ const Checking = new (function() {
 					const lambdaEqn = match[2].trim();
 					const isValidArgs = Checking.isValidExpressionSyntax('[' + lambdaArgs + ']', false); // collection of args
 					if (isValidArgs) {
+						if (lambdaEqn.includes('&&') || lambdaEqn.includes('||') || lambdaEqn.includes('!') ) {
+							// Must use Python and, or, not keywords not C/Java form
+							console.log(`\x1b[95m Invalid Python syntax for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=\{${lambdaEqn}\} (${isValidEqn})\x1b[0m`);
+							T.logError('Must use Python syntax!');
+							return "unknown" // if lambda plus args, then assume equation is invalid attempt
+						}
 						let isValidEqn = Checking.isValidExpressionSyntax(lambdaEqn, false);
 						if (isValidEqn) {
 							isValidEqn = Checking.isValidEquation(lambdaEqn);
@@ -489,11 +509,11 @@ const Checking = new (function() {
 								// console.log(`\x1b[95m Detected lambda expression '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=<${lambdaEqn}> (${isValidEqn})\x1b[0m`);
 								return "lambda";
 							} else {
-								console.log(`\x1b[95m Invalid equation for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=<${lambdaEqn}> (${isValidEqn})\x1b[0m`);
+								console.log(`\x1b[95m Invalid Python equation for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=\{${lambdaEqn}\} (${isValidEqn})\x1b[0m`);
 								return "unknown" // if lambda plus args, then assume equation is invalid attempt
 							}
 						} else {
-							console.log(`\x1b[95m Invalid equation expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn expression=<${lambdaEqn}> (${isValidEqn})\x1b[0m`);
+							console.log(`\x1b[95m Invalid Python expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn expression=\{${lambdaEqn}\} (${isValidEqn})\x1b[0m`);
 							return "unknown" // if lambda plus args, then assume equation is invalid attempt
 						}
 					} // else is not a lambda, so keep processing as string

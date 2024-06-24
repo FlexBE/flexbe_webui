@@ -1126,7 +1126,7 @@ UI.Panels.StateProperties = new (function() {
 			if (valid_var_type == "unknown"){
 				console.log(`treat unknown parameter  <${val}> as text string`);
 				if (val.includes("'") || val.includes(`"`)) {
-					val = `""${val}""`;  // use double quote in case of embedded quote
+					val = `"""${val}"""`;  // use triple quote in case of embedded quote
 				} else {
 					val = `"${val}"`;
 				}

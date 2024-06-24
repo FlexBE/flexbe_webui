@@ -7,7 +7,7 @@ ROS = new (function() {
 			try {
 				ros_namespace = result;
 				callback(ros_namespace);
-				T.logInfo(`\x1b[92mFlexBE WebUI ROS node is ready at namespace = '${ros_namespace}'.`);
+				T.logInfo(`\x1b[92mFlexBE WebUI ROS node is ready at namespace = '${ros_namespace}'.\x1b[0m`);
 			} catch (err) {
 				T.logWarn(`\x1b[91mFlexBE WebUI ROS node is not available.\x1b[0m`);
 			}

@@ -113,11 +113,11 @@ IO.BehaviorLoader = new (function() {
 	}
 
 	this.parseBehaviorSM = function(manifest, callback) {
-		console.log("Preparing sourcecode of behavior '" + manifest.name + "'");
+		console.log(`\x1b[92mPreparing sourcecode of behavior '${manifest.name}'\x1b[0m`);
 		try {
 			parsingResult = IO.CodeParser.parseCode(manifest.codefile_content);
 		} catch (err) {
-			console.log("Code parsing failed: " + err);
+			console.log(`\x1b[91mCode parsing failed: ${err}\x1b[0m`);
 			return;
 		}
 		callback({

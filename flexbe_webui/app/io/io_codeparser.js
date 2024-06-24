@@ -525,13 +525,17 @@ IO.CodeParser = new (function() {
 				state_class = state_type_imports[state_class] + "__" + state_class;
 			var params_split = helper_splitOnTopCommas(params[1].replace(class_result[1], ""));
 			params_split.forEach(function(element, i) {
+				if (element == '') {
+					console.log(`\x1b[94m    Skipping empty parameter element for state '${state_name}'\x1b[0m`);
+					return;
+				}
 				var keyvalue = helper_splitKeyValue(element, "=");
 				if (keyvalue != undefined && !element.startsWith("lambda")) {
 					parameter_values.push(keyvalue);
 				} else {
-					console.log("Could not allocate parameter of state '" + state_name + "' : " + element);
+					console.log(`\x1b[94m    Could not allocate parameter of state '${state_name}' ${keyvalue}: ${element}\x1b[0m`);
 					parameter_values.push({
-						key: '*',
+						key:  keyvalue == undefined ? '*' : keyvalue,
 						value: element
 					});
 				}
