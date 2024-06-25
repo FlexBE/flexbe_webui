@@ -787,28 +787,51 @@ IO.CodeParser = new (function() {
 		// code has to start with anyone of ([{ and will be cut off at matching }])
 		// result contains all top-level comma separated fields
 		let depth = 0;
-		let inside_single_quotes = false;
-		let inside_double_quotes = false;
 		let inside_lambda = false;
 		let inside_lambda_eqn = false;
 		let inside_lambda_depth = -1;
 		let last_split = 1;
 		let result = [];
+		let stringDelimiter = null;
 
 		// extract and split params
 		for (var i=0; i<code.length; i++) {
 			var c = code[i];
-			if (!inside_double_quotes && c == "'") inside_single_quotes = !inside_single_quotes;
-			if (!inside_single_quotes && c == '"') inside_double_quotes = !inside_double_quotes;
-			// ignore string content
-			if (inside_single_quotes || inside_double_quotes) continue;
-			// track depth
 
-			if (c == "(" || c == "[" || c == "{") depth += 1;
-			if (c == ")" || c == "]" || c == "}") depth -= 1;
+			// Handling string delimiters
+			if (stringDelimiter !== null) {
+				if (code.substring(i, i + stringDelimiter.length) === stringDelimiter && code[i - 1] !== '\\') {
+					i += stringDelimiter.length-1;  // Advance to end of delimiter
+					stringDelimiter = null;  // End of string
+					continue;
+				}
+			} else {
+				// Initialize string delimiter
+				if (`'"`.includes(c)) {
+					if (i > 0 && code[i-1] === '\\') {
+						// prior escape character, so ignore this quote mark
+					} else {
+						if (code.substring(i, i + 3) === '"""' || code.substring(i, i + 3) === "'''") {
+							stringDelimiter = code.substring(i, i + 3);
+							i += 2; // Skip to end of delimiter
+						} else {
+							stringDelimiter = c;
+						}
+					}
+				}
+			}
+
+			if (stringDelimiter != null) continue;  // continue searching for end of the string
+
+			// Track depth when not in a string
+			if ("([{".includes(c)) {
+				depth++;
+			}
+			if (")]}".includes(c)) {
+				depth--;
+			}
 
 			if (c == 'l' && code.substring(i).startsWith("lambda")) {
-				// console.log(`\x1b[96mEntering potential lambda expression at character ${i} depth=${depth} - ${ code.substring(i, i+20) }`);
 				if (inside_lambda_eqn) {
 					// error
 					console.log(`\x1b[91mError: Entering potential lambda  with lambda equation already active!\x1b[0m`);
@@ -819,20 +842,21 @@ IO.CodeParser = new (function() {
 				inside_lambda_eqn = false;
 			}
 			if (inside_lambda && c == ':') {
-				// console.log(`Entering potential lambda equation at character ${i} - ${ code.substring(i, i+20) }`);
 				inside_lambda_eqn = true;
 			}
 			if (inside_lambda_eqn) {
 				if (depth == inside_lambda_depth && c == ',') {
-					depth -= 1;  // comma terminates a lambda unless in a deeper [( pair )]
-				}
-
-				if (depth != inside_lambda_depth) {
-					// console.log(`Exiting potential lambda expression at character ${i} depth=${depth} - ${ code.substring(i, i+20) } \x1b[0m`);
+					// comma terminates a lambda unless in a deeper [( pair )], but stays in section
 					inside_lambda_eqn = false;
 					inside_lambda = false;
 					inside_lambda_depth = -1;
 					depth -= 1;
+				} else if (depth < inside_lambda_depth) {
+					// we exited lambda due to )]} on main level
+					inside_lambda_eqn = false;
+					inside_lambda = false;
+					inside_lambda_depth = -1;
+					depth -= 1; //  which should also terminates section
 				}
 			}
 

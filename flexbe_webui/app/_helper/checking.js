@@ -32,6 +32,7 @@ const Checking = new (function() {
 
 			error = that.checkStatemachine();
 			if (error != undefined) {
+				console.log(`\x1b[91m Failed checkStateMachine for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
 				UI.Menu.toStatemachineClicked();
 				return error;
 			}
