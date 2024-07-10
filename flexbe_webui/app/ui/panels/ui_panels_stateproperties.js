@@ -37,10 +37,14 @@ UI.Panels.StateProperties = new (function() {
 			tt.innerHTML += doc.desc;
 			document.getElementsByTagName("body")[0].appendChild(tt);
 		});
-		el.addEventListener('mouseout', function() {
-			tt = document.getElementById("properties_tooltip");
+		el.addEventListener('mouseout', removeHover);
+	}
+
+	var removeHover = function() {
+		var tt = document.getElementById("properties_tooltip");
+		if (tt != undefined) {
 			tt.parentNode.removeChild(tt);
-		});
+		}
 	}
 
 	var addAutocomplete = function(el, state_type, mode, state, additional_keywords) {
@@ -915,6 +919,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.hide = function() {
+		removeHover();
 		UI.Panels.hidePanelIfActive(UI.Panels.STATE_PROPERTIES_PANEL);
 		current_prop_state = undefined;
 		document.activeElement.blur();
@@ -928,6 +933,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.deleteStateClicked = function() {
+		removeHover();
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
 			|| Behavior.isReadonly()
@@ -942,6 +948,12 @@ UI.Panels.StateProperties = new (function() {
 			document.getElementById(id).style.transition = "none";
 			document.getElementById(id).style.background = "#f63";
 			window.setTimeout(function() { fadeOutBackground(id); }, 100);
+			return;
+		}
+
+		var userChoice = confirm(`Confirm deletion of '${current_prop_state.getStateName()}'`);
+		if (!userChoice) {
+			console.log(`\x1b[93mIgnore request to delete '${current_prop_state.getStateName()}'`);
 			return;
 		}
 
@@ -998,6 +1010,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.viewStateSourceCode = function() {
+		removeHover();
 		var state_type = current_prop_state.getStateType();
 		var state_definition = WS.Statelib.getFromLib(state_type);
 		try {
@@ -1024,6 +1037,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.viewBehaviorSourceCode = function() {
+		removeHover();
 
 		console.log(`\x1b[94mRequest to view behavior source code for '${current_prop_state.getStatePath()}' \x1b[0m`);
 		console.log(JSON.stringify(current_prop_state));
@@ -1069,6 +1083,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.applyPropertiesClicked = function() {
+		removeHover();
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
 			|| Behavior.isReadonly()
@@ -1196,6 +1211,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.displayStateProperties = function(state) {
+		removeHover();
 		current_prop_state = state;
 
 		if (state instanceof Statemachine) {
@@ -1210,6 +1226,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.statePropNameChanged = function() {
+		removeHover();
 		var id = "";
 		var type = "";
 
@@ -1263,6 +1280,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.addSMOutcome = function() {
+		removeHover();
 		if (document.getElementById("input_prop_outcome_add").value == "") return;
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
@@ -1299,6 +1317,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.addSMInputKey = function() {
+		removeHover();
 		if (document.getElementById("input_prop_input_key_add").value == "") return;
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
@@ -1342,6 +1361,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.addSMOutputKey = function() {
+		removeHover();
 		if (document.getElementById("input_prop_output_key_add").value == "") return;
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
@@ -1385,6 +1405,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.containerTypeChanged = function(evt) {
+		removeHover();
 		if(RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
 			|| Behavior.isReadonly()
@@ -1470,6 +1491,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.displaySynthesisClicked = function(evt) {
+		removeHover();
 		if (evt.target.checked) {
 			document.getElementById('panel_prop_sm_synthesis').style.display = "block";
 			if (RC.ROS.isConnected()) {
@@ -1487,6 +1509,7 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.synthesizeClicked = function() {
+		removeHover();
 		if(RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
 			|| Behavior.isReadonly()
