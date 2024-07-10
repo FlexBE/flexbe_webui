@@ -15,6 +15,7 @@ const Checking = new (function() {
 	this.checkBehavior = function() {
 		try {
 			console.log(`Checking '${Behavior.getBehaviorName()}' behavior ...`);
+			// Store variables that class definitions we are likely to encounter in setup
 			that.variables = new Set();
 			that.variables.add('self'); // self is always a valid variable
 			that.variables.add('_state_machine'); // state machine is always valid variable
@@ -30,6 +31,17 @@ const Checking = new (function() {
 				return error;
 			}
 
+			// Add any imported classes to list of variables
+			let imports = Behavior.getManualCodeImport();
+			imports.forEach(statement => {
+				extractImportNames(statement).forEach(name => {
+					console.log(`   Adding ${name} ...`);
+					that.variables.add(name);
+				});
+			});
+			console.log(`\x1b[93mInternal variables list for checking:${JSON.stringify(Array.from(that.variables))}\x1b[0m`);
+
+			console.log(`\x1b[94mCheck statemachine ...\x1b[0m`);
 			error = that.checkStatemachine();
 			if (error != undefined) {
 				console.log(`\x1b[91m Failed checkStateMachine for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
@@ -138,6 +150,14 @@ const Checking = new (function() {
 			if (Behavior.getDefaultUserdata().findElement(function(el) {
 				return el.key == k;
 			}) == undefined) return "interface output key " + k + " is not contained in default userdata";
+		}
+
+		// Validate import statements
+		let imports = Behavior.getManualCodeImport();
+		for (let i=0; i<imports.length; i++) {
+			if (!that.isValidImportStatement(imports[i])) {
+				return `invalid import statement '${imports[i]}' `;
+			}
 		}
 
 		return undefined;
@@ -257,21 +277,29 @@ const Checking = new (function() {
 					if (param_vars.length > 0){
 						let illegal_element = param_vars.findElement(function(el) {
 							let has_el = that.variables.has(el);
+							if (!has_el) {
+								let split_var = el.split(".");
+								// Iteratively check substrings formed by removing the last segment
+								// We will assume if base is valid, the use is valid for now
+								for (let i = split_var.length - 1; i > 0; i--) {
+									let sub_el = split_var.slice(0, i).join(".");
+									if (that.variables.has(sub_el)) {
+										console.log(`\x1b[92m        Found base variable ${sub_el} of ${el} - presuming valid! \x1b[0m`);
+										has_el = true;
+										break;
+									}
+								}
+							}
 							return !has_el;
 						});
 						if (illegal_element != undefined) {
+							// No direct match, let's look for partial match based on class name
 							let err_text = `Unknown variable for parameter <${sparams[i]}> of ${state.getStateName()} `;
 							console.log('\x1b[91m' + err_text + '\x1b[0m');
-							T.logError(err_text); // log it, but don't return just yet
+							T.logError(err_text); // log it, but don't invalidate SM for now
 							valid = false;
 							//return err_text;  // @todo - invalidate SM
 						}
-					}
-				  	if (!valid){
-						// Log the error, but don't invalidate the state machine for now
-						T.logError(` Invalid parameter '${sparams[i]}' (${param_type}) of ${state.getStateName()} `);
-					//} else {
-					//	console.log(`\x1b[94m${i} - valid expression type for '${sparams[i]}' is '${param_type}'\x1b[0m`);
 					}
 				}
 			}
@@ -440,7 +468,7 @@ const Checking = new (function() {
 			return true;
 		} catch (e) {
 			// May be valid Python that fails Javascript, try a simple conversion of some keywords
-			let convert = equation.replace('and', '&&').replace('or', '||').replace('not','!').replace("math", "Math");
+			let convert = equation.replace(' and ', ' && ').replace(' or ', ' || ').replace(' not ',' !').replace(" math", " Math");
 			try {
 				new Function(`return (${convert});`);
 				return true;
@@ -655,4 +683,51 @@ const Checking = new (function() {
 		}
 
 	}
+
+	this.isValidImportStatement = function(statement) {
+		// Remove leading and trailing whitespace and comments
+		statement = statement.trim().split('#')[0].trim();
+
+		// Regular expressions for different types of import statements
+		const importBasic = /^import\s+([a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*)(\s*,\s*[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*)*$/;
+		const importAs = /^import\s+([a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*)(\s+as\s+[a-zA-Z_]\w*)(\s*,\s*[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*\s+as\s+[a-zA-Z_]\w*)*$/;
+		const fromImport = /^from\s+([a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*)\s+import\s+([a-zA-Z_]\w*|\*)(\s*,\s*[a-zA-Z_]\w*|\*)*$/;
+		const fromImportAs = /^from\s+([a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*)\s+import\s+([a-zA-Z_]\w*\s+as\s+[a-zA-Z_]\w*)(\s*,\s*[a-zA-Z_]\w*\s+as\s+[a-zA-Z_]\w*)*$/;
+
+		return importBasic.test(statement) ||
+			importAs.test(statement) ||
+			fromImport.test(statement) ||
+			fromImportAs.test(statement);
+	}
+
+	function extractImportNames(statement) {
+		// Remove leading and trailing whitespace and comments
+		statement = statement.trim().split('#')[0].trim();
+
+		// Arrays to hold the extracted names
+		let names = [];
+
+		// Regular expressions for different types of import statements
+		const importBasic = /^import\s+(.+)$/;
+		const fromImport = /^from\s+([a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*)\s+import\s+(.+)$/;
+
+		let match;
+
+		if ((match = importBasic.exec(statement)) !== null) {
+			// Handle "import A, B" and "import A as C"
+			match[1].split(',').forEach(part => {
+				const name = part.trim().split(/\s+as\s+/);
+				names.push(name[1] || name[0]);
+			});
+		} else if ((match = fromImport.exec(statement)) !== null) {
+			// Handle "from A import B" and "from A import B as C"
+			match[3].split(',').forEach(part => {
+				const name = part.trim().split(/\s+as\s+/);
+				names.push(name[1] || name[0]);
+			});
+		}
+
+		return names;
+	}
+
 }) ();

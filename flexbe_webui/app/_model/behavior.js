@@ -18,7 +18,7 @@ const Behavior = new (function() {
 	var interface_input_keys = [];
 	var interface_output_keys = [];
 
-	var manual_code_import = "";
+	var manual_code_import = [];
 	var manual_code_init = "";
 	var manual_code_create = "";
 	var manual_code_func = "";
@@ -325,7 +325,7 @@ const Behavior = new (function() {
 		interface_input_keys = [];
 		interface_output_keys = [];
 
-		manual_code_import = "";
+		manual_code_import = [];
 		manual_code_init = "";
 		manual_code_create = "";
 		manual_code_func = "";
@@ -446,7 +446,12 @@ const Behavior = new (function() {
 			root_sm: root_sm,
 			file_name: file_name,
 			manifest_path: manifest_path,
-			readonly: readonly
+			readonly: readonly,
+			manual_code_import: manual_code_import,
+			manual_code_init: manual_code_init,
+			manual_code_create: manual_code_create,
+			manual_code_func: manual_code_func
+
 		}
 	}
 

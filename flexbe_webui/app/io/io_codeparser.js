@@ -4,16 +4,16 @@ IO.CodeParser = new (function() {
 	// Patterns
 
 		// [1] - manual import code
-	var manual_import_pattern_begin = "# \[MANUAL_IMPORT\]";
+	var manual_import_pattern_begin = "# \[MANUAL_IMPORT\]\n";
 	var manual_import_pattern_end = "# \[\/MANUAL_IMPORT\]";
 		// [1] - manual init code
-	var manual_init_pattern_begin = "# \[MANUAL_INIT\]";
+	var manual_init_pattern_begin = "# \[MANUAL_INIT\]\n";
 	var manual_init_pattern_end = "# \[\/MANUAL_INIT\]";
 		// [1] - manual create code
-	var manual_create_pattern_begin = "# \[MANUAL_CREATE\]";
+	var manual_create_pattern_begin = "# \[MANUAL_CREATE\]\n";
 	var manual_create_pattern_end = "# \[\/MANUAL_CREATE\]";
 		// [1] - manual func code
-	var manual_func_pattern_begin = "# \[MANUAL_FUNC\]";
+	var manual_func_pattern_begin = "# \[MANUAL_FUNC\]\n";
 	var manual_func_pattern_end = "# \[\/MANUAL_FUNC\]";
 		// to remove comment
 	var comment_manual_pattern = /\s*# (Additional imports|Additional initialization code|Additional creation code|Private functions) can be added inside the following tags\n\r?/ig;
@@ -101,6 +101,21 @@ IO.CodeParser = new (function() {
 	var need_manual_func = false;
 
 
+	this.leftJustifyTextBlock = function(textBlock) {
+		const lines = textBlock.split('\n');
+		// Filter out empty lines and calculate the minimum indent level
+		const minIndentLevel = Math.min(
+			...lines
+				.filter(line => line.trim() !== '')
+				.map(line => line.match(/^\s*/)[0].length)
+		);
+
+		// Create the left-justified text block an trim any trailing whitespace
+		const justifiedLines = lines.map(line => line.slice(minIndentLevel).trimEnd());
+
+		return justifiedLines.join('\n');
+	}
+
 	this.extractManual = function(code) {
 		var manual = ["", "", "", ""];
 
@@ -110,7 +125,7 @@ IO.CodeParser = new (function() {
 			if (import_split_end.length != 2) throw "inconsistent tag [MANUAL_IMPORT]"
 			var import_result = import_split_end[0];
 			if (import_result != "") {
-				manual[0] = import_result;
+				manual[0] = that.leftJustifyTextBlock(import_result);
 			} else {
 				need_manual_imports = true;
 			}
@@ -125,7 +140,7 @@ IO.CodeParser = new (function() {
 			if (init_split_end.length != 2) throw "inconsistent tag [MANUAL_INIT]";
 			var init_result = init_split_end[0];
 			if (init_result != "") {
-				manual[1] = init_result;
+				manual[1] = that.leftJustifyTextBlock(init_result);
 			} else {
 				need_manual_inits = true;
 			}
@@ -140,7 +155,7 @@ IO.CodeParser = new (function() {
 			if (create_split_end.length != 2) throw "inconsistent tag [MANUAL_CREATE]";
 			var create_result = create_split_end[0];
 			if (create_result != "") {
-				manual[2] = create_result;
+				manual[2] = that.leftJustifyTextBlock(create_result);
 			} else {
 				need_manual_creates = true;
 			}
@@ -156,12 +171,12 @@ IO.CodeParser = new (function() {
 			if (func_split_end.length != 2) throw "inconsistent tag [MANUAL_FUNC]";
 			var func_result = func_split_end[0];
 			if (func_result != "") {
-				manual[3] = func_result;
+				manual[3] = that.leftJustifyTextBlock(func_result);
 				func_result.replace(function_def_pattern, function(all, name, params) {
 					func_defs.push({key: name, value: params});
 				});
 			} else {
-				need_manual_funcs = true;
+				need_manual_func = true;
 			}
 			code = code.replace(manual_func_pattern_begin + func_split_end[0] + manual_func_pattern_end, "");
 		} else {
@@ -179,7 +194,6 @@ IO.CodeParser = new (function() {
 			func_defs: func_defs		// [key, value]
 		};
 	}
-
 
 	var parseTopSection = function(code) {
 		// parse documentation
@@ -726,31 +740,31 @@ IO.CodeParser = new (function() {
 			extract_result.manual_init;
 
 		return {
-			behavior_name: 			init_result.behavior_name,
-			behavior_description: 	behavior_description,
-			author: 				top_result.behavior_author,
-			creation_date: 			top_result.behavior_date,
-			behavior_comments: 		init_result.comments,
+			behavior_name:			init_result.behavior_name,
+			behavior_description:	behavior_description,
+			author:					top_result.behavior_author,
+			creation_date:			top_result.behavior_date,
+			behavior_comments:		init_result.comments,
 			state_types:			top_result.state_type_imports,
 
-			manual_code: 			{
-									manual_import: 	manual_import,
-									manual_init: 	manual_init,
-									manual_create: 	extract_result.manual_create,
-									manual_func: 	extract_result.manual_func
+			manual_code:			{
+									manual_import:	manual_import,
+									manual_init:	manual_init,
+									manual_create:	extract_result.manual_create,
+									manual_func:	extract_result.manual_func
 									},
 
-			private_variables: 		create_result.var_defs,			// [key, value]
-			default_userdata: 		create_result.ud_defs,			// [key, value]
-			private_functions: 		extract_result.func_defs,		// [key, value]
+			private_variables:		create_result.var_defs,			// [key, value]
+			default_userdata:		create_result.ud_defs,			// [key, value]
+			private_functions:		extract_result.func_defs,		// [key, value]
 
-			smi_outcomes: 			create_result.smi_outcomes,		// string
-			smi_input: 				create_result.smi_input,		// string
-			smi_output: 			create_result.smi_output,		// string
+			smi_outcomes:			create_result.smi_outcomes,		// string
+			smi_input:				create_result.smi_input,		// string
+			smi_output:				create_result.smi_output,		// string
 
-			root_sm_name: 			create_result.root_sm_name,
-			sm_defs: 				create_result.sm_defs,
-			sm_states: 				create_result.sm_states
+			root_sm_name:			create_result.root_sm_name,
+			sm_defs:				create_result.sm_defs,
+			sm_states:				create_result.sm_states
 		}
 
 	}
@@ -776,10 +790,10 @@ IO.CodeParser = new (function() {
 		var create_result = parseCreateSection(code_create, true);
 
 		return {
-			class_name: 	class_name,
-			smi_outcomes: 	create_result.smi_outcomes,		// string
-			smi_input: 		create_result.smi_input,		// string
-			smi_output: 	create_result.smi_output,		// string
+			class_name:		class_name,
+			smi_outcomes:	create_result.smi_outcomes,		// string
+			smi_input:		create_result.smi_input,		// string
+			smi_output:	create_result.smi_output,		// string
 		}
 	}
 

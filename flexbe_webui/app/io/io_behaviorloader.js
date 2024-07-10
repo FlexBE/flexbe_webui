@@ -97,7 +97,12 @@ IO.BehaviorLoader = new (function() {
 				if (exists) {
 					IO.Filesystem.readFile(file_path, (content) => {
 						var extract_result = IO.CodeParser.extractManual(content);
-						Behavior.setManualCodeImport(extract_result.manual_import);
+						let manual_code_import = [];
+						if (extract_result.manual_import.trim() !== '') {
+							manual_code_import = extract_result.manual_import.trim().split('\n').filter(line => line.trim() !== '');
+						}
+						console.log(`\x1b[93m Behavior loader manual import ${JSON.stringify(manual_code_import)}\n'${extract_result.manual_import}'\x1b[0m`);
+						Behavior.setManualCodeImport(manual_code_import);
 						Behavior.setManualCodeInit(extract_result.manual_init);
 						Behavior.setManualCodeCreate(extract_result.manual_create);
 						Behavior.setManualCodeFunc(extract_result.manual_func);

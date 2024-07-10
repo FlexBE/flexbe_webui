@@ -118,3 +118,7 @@ class Behavior(BaseModel):
     file_name: Optional[str] = None
     manifest_path: Optional[str] = None
     readonly: bool
+    manual_code_import: List[str] = []
+    manual_code_init: str
+    manual_code_create: str
+    manual_code_func: str

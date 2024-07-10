@@ -1,8 +1,7 @@
 """Setup for flexbe_webui module."""
 
-from collections import defaultdict
 import os
-
+from collections import defaultdict
 from glob import glob
 
 from setuptools import setup

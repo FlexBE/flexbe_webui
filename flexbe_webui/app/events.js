@@ -54,6 +54,13 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('button_db_output_key_add').addEventListener('click', UI.Dashboard.addBehaviorOutputKeyClicked);
 	document.getElementById('input_db_output_key_add').addEventListener('keyup', onEnter(UI.Dashboard.addBehaviorOutputKeyClicked));
 
+	document.getElementById('button_db_manual_import_add').addEventListener('click', UI.Dashboard.addManualImportClicked);
+	document.getElementById('input_db_manual_import_value_add').addEventListener('keyup', onEnterFocusChange(UI.Dashboard.addManualImportClicked, 'input_db_manual_import_value_add'));
+
+	document.getElementById("db_function_box").addEventListener("click", UI.Dashboard.editPrivateFunctionClicked);
+	document.getElementById("db_manual_init_box").addEventListener("click", UI.Dashboard.editManualInitClicked);
+	document.getElementById("db_manual_create_box").addEventListener("click", UI.Dashboard.editManualCreateClicked);
+
 // State Machine Editor
 	document.getElementById('button_add_state_confirm').addEventListener('click', UI.Panels.AddState.addStateConfirmClicked);
 	document.getElementById('add_state_name').addEventListener('keyup', onEnter(UI.Panels.AddState.addStateConfirmClicked));

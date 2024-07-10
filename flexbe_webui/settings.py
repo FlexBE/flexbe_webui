@@ -45,6 +45,7 @@ def load_settings(json_dict=None):
         'synthesis_system': 'system_wide',
         'text_encoding': 'UTF-8',
         'transition_mode': 1,
+        'visualize_whitespace': True,
     }
 
     if json_dict is not None:

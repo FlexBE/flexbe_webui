@@ -301,10 +301,27 @@
 			</div>
 		</div>
 
-		<div class="box">
+		<div id="db_function_box" class="box">
 			<h1>Private Functions</h1>
-			<font style="color: gray">Defines which functions can be referenced by states that accept functions as parameters. Make sure that the interface of each function matches the requirements of the respective state. These functions can be implemented later in the generated code. Functions can be accessed as self.<i>function_name</i>.</font>
+			<font style="color: gray">Defines which functions can be referenced by states that accept functions as parameters. Make sure that the interface of each function matches the requirements of the respective state. These functions can be edited later in the generated code between the <code>[MANUAL_FUNC]</code> tags, or by clicking here.<br> Functions can be accessed in states as <code>self.<i>function_name</i></code>.</font>
 			<table class="box_table" id="db_function_table"></table>
+			<!-- textarea id="db_function_text" style="height: 45px; width: 98%; resize: none; font-family: monospace;"></textarea -->
+		</div>
+
+		<!-- pop up function box-->
+		<div id="db_function_edit_modal" class="modal">
+			<div class="modal-content">
+				<!--font style="color: black; font-size: 18px;">Private Functions</font -->
+				<h1>Private Functions</h1>
+				<div class="textarea-container">
+					<textarea id="db_function_edit_modal_text" class="textarea-modal"></textarea>
+					<div id="db_function_edit_modal_text_overlay" class="textarea-overlay"></div>
+				</div>
+				<div class="edit-button-container" style="display: flex; top: 10px; padding: 10px; justify-content: center; gap: 10px;">
+					<button id="db_function_accept_button">Accept</button>
+					<button id="db_function_discard_button">Discard</button>
+				</div>
+			</div>
 		</div>
 
 		<div class="box">
@@ -350,6 +367,62 @@
 		<div id="db_readonly_overlay" style="display: none; width: 100%; height: 100%; background-color: rgba(100, 150, 255, 0.1); position: absolute; top:0; left:0; z-index:2;">
 			<div style="width: 100%; position: absolute; bottom:25px; left:0; z-index:1; text-align: center; font-size: 14pt; color: #57a;">
 				Behavior is running! --- Read-Only Mode
+			</div>
+		</div>
+
+		<div class="box">
+			<h1>Manual Imports</h1>
+			<font style="color: gray">Manual imports of class definitions used during creation of states.<br>   (e.g. <code>from flexbe_msgs.msg import BEStatus</code>)
+			</font>
+			<table class="box_table" id="db_manual_import_table"></table>
+			<table class="box_table"><tr><td>
+				<input id="input_db_manual_import_value_add" type="text" class="input_field" />
+			</td><td>
+				<input id="button_db_manual_import_add" type="button" value="Add" />
+			</td></tr></table>
+		</div>
+
+		<div id="db_manual_init_box" class="box">
+			<h1>Manual Initialization Block</h1>
+			<font style="color: gray">This code called during behavior construction in the <code>__init__</code>.<br>This code is stored between the <code>[MANUAL_INIT] ... [/MANUAL_INIT]</code> block.<br>Use this block to define attributes that can be used as inputs to defined states. Click <emph>here</emph> to open a basic text editor, or manually edit in the behavior source code.</font>
+			<table class="box_table" id="db_manual_init_table"></table>
+		</div>
+
+		<!-- pop up manual_init box-->
+		<div id="db_manual_init_edit_modal" class="modal">
+			<div class="modal-content">
+				<!--font style="color: black; font-size: 18px;">Private Functions</font -->
+				<h1>Manual Initialization Code</h1>
+				<div class="textarea-container">
+					<textarea id="db_manual_init_edit_modal_text" class="textarea-modal"></textarea>
+					<div id="db_manual_init_edit_modal_text_overlay" class="textarea-overlay"></div>
+				</div>
+				<div class="edit-button-container" style="display: flex; top: 10px; padding: 10px; justify-content: center; gap: 10px;">
+					<button id="db_manual_init_accept_button">Accept</button>
+					<button id="db_manual_init_discard_button">Discard</button>
+				</div>
+			</div>
+		</div>
+
+		<div id="db_manual_create_box" class="box">
+			<h1>Manual Creation Block</h1>
+			<font style="color: gray">This code is called during behavior creation in the <code>create</code> method.<br>This code is stored between the <code>[MANUAL_CREATE] ... [/MANUAL_CREATE]</code> block.<br>Use this block to update data during behavior startup. Click <emph>here</emph> to open a basic text editor, or manually edit in the behavior source code.</font>
+			<table class="box_table" id="db_manual_create_table"></table>
+		</div>
+
+		<!-- pop up manual_create box-->
+		<div id="db_manual_create_edit_modal" class="modal">
+			<div class="modal-content">
+				<!--font style="color: black; font-size: 18px;">Private Functions</font -->
+				<h1>Manual Creation Code</h1>
+				<div class="textarea-container">
+					<textarea id="db_manual_create_edit_modal_text" class="textarea-modal"></textarea>
+					<div id="db_manual_create_edit_modal_text_overlay" class="textarea-overlay"></div>
+				</div>
+				<div class="edit-button-container" style="display: flex; top: 10px; padding: 10px; justify-content: center; gap: 10px;">
+					<button id="db_manual_create_accept_button">Accept</button>
+					<button id="db_manual_create_discard_button">Discard</button>
+				</div>
 			</div>
 		</div>
 

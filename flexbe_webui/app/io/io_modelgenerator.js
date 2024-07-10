@@ -9,7 +9,6 @@ IO.ModelGenerator = new (function() {
 		UI.Dashboard.setBehaviorAuthor(manifest.author);
 		UI.Dashboard.setBehaviorDate(manifest.date != undefined? manifest.date : data.creation_date);
 
-		Behavior.setManualCodeImport(data.manual_code.manual_import);
 		Behavior.setManualCodeInit(data.manual_code.manual_init);
 		Behavior.setManualCodeCreate(data.manual_code.manual_create);
 		Behavior.setManualCodeFunc(data.manual_code.manual_func);
@@ -43,6 +42,18 @@ IO.ModelGenerator = new (function() {
 			UI.Dashboard.addBehaviorOutputKey(element);
 		});
 
+
+		// code given as a block of text, separate into individual import lines
+		console.log(`\x1b[92m Generating manual import\n'''${data.manual_code.manual_import}'''\x1b[0m`);
+		let manual_code_import = [];
+		if (data.manual_code.manual_import.trim() !== '') {
+			manual_code_import = data.manual_code.manual_import.trim().split('\n').filter(line => line.trim() !== '');
+		}
+		manual_code_import.forEach(function(element, i) {
+			console.log(`\x1b[92m   --> '${element}'\x1b[0m`);
+			UI.Dashboard.addManualImport(element);
+		});
+
 		manifest.params.forEach(function(element) {
 			UI.Dashboard.addParameter(element.type, element.name);
 			Behavior.updateBehaviorParameter(element.name, element.default, "default");
@@ -50,6 +61,7 @@ IO.ModelGenerator = new (function() {
 			Behavior.updateBehaviorParameter(element.name, element.hint, "hint");
 			Behavior.updateBehaviorParameter(element.name, element.additional, "additional");
 		});
+
 	}
 
 	this.buildStateMachine = function(container_name, container_sm_var_name, sm_defs, sm_states, silent) {
@@ -98,7 +110,7 @@ IO.ModelGenerator = new (function() {
 					if (state_def == undefined) {
 						s_def.state_class = type_split[1];
 					}
-				} 
+				}
 				if (state_def == undefined) {
 					var state_key = s_def.state_class;
 					var state_def = WS.Statelib.getClassFromLib(state_key, WS.Statelib.isClassUnique(state_key)? undefined : lib_def => {
@@ -139,7 +151,7 @@ IO.ModelGenerator = new (function() {
 				container_sm.setInitialState(s);
 			}
 		}
-		
+
 
 		// add transitions (requires to have all states)
 		if (container_sm.isConcurrent()) {
@@ -226,7 +238,7 @@ IO.ModelGenerator = new (function() {
 			T.logInfo('Make sure you use the correct version of the StateInstantiation message.');
 			return undefined;
 		}
-		
+
 
 		states.forEach(function(s) {
 			var path_split = s.state_path.split("/");
@@ -318,7 +330,7 @@ IO.ModelGenerator = new (function() {
 					sm_type: (s.state_class == ":CONCURRENCY")? "concurrency":
 							 (s.state_class == ":PRIORITY")? "priority" :
 							 "statemachine",
-					initial: s.initial_state_name 
+					initial: s.initial_state_name
 				});
 			}
 		});

@@ -15,8 +15,9 @@
 """Behavior code generator."""
 
 import datetime
-import os
 import re
+
+from flexbe_webui.tools import left_align_block
 
 
 class CodeGenerator:
@@ -42,16 +43,6 @@ class CodeGenerator:
         """Specify whether to use explicit package names."""
         self.explicit_package = exp
 
-    def update_manual_sections(self, folder_path, file_name, encoding):
-        """Update the manual sections."""
-        if not os.path.exists(folder_path):
-            return
-        file_path = os.path.join(folder_path, file_name)
-        if os.path.isfile(file_path):
-            with open(file_path, 'r', encoding=encoding) as fin:
-                content = fin.read()
-                self.manual = extract_manual(content)
-
     def generate_behavior_code(self, behavior):
         """Generate the behavior python code."""
         class_name = re.sub('[^0-9a-zA-Z]+', '', behavior.behavior_name)
@@ -59,6 +50,10 @@ class CodeGenerator:
         outcomes = behavior.root_sm.sm_outcomes
         self.author = behavior.author
         self.creation_date = behavior.creation_date
+        self.manual = [behavior.manual_code_import,
+                       behavior.manual_code_init,
+                       behavior.manual_code_create,
+                       behavior.manual_code_func]
 
         # prefix
         code = '#!/usr/bin/env python\n'
@@ -206,6 +201,15 @@ class CodeGenerator:
 
         # generate import statements
         import_list = []
+        # Add standard imports
+        import_list.append('from flexbe_core import Autonomy')
+        import_list.append('from flexbe_core import Behavior')
+        import_list.append('from flexbe_core import ConcurrencyContainer')
+        import_list.append('from flexbe_core import Logger')
+        import_list.append('from flexbe_core import OperatableStateMachine')
+        import_list.append('from flexbe_core import PriorityContainer')
+        # @TODO fix this after OBE update --> import_list.append('from flexbe_core import initialize_flexbe_core')
+
         for imp_state in imported_states:
             try:
                 use_explicit_package = self.explicit_package
@@ -238,25 +242,18 @@ class CodeGenerator:
             if 'SM' not in imp_state.state_class and init_statement not in self.state_init_list:
                 self.state_init_list.append(init_statement)
 
-        # combine
-        code += 'from flexbe_core import Autonomy\n'
-        code += 'from flexbe_core import Behavior\n'
-        code += 'from flexbe_core import ConcurrencyContainer\n'
-        code += 'from flexbe_core import Logger\n'
-        code += 'from flexbe_core import OperatableStateMachine\n'
-        code += 'from flexbe_core import PriorityContainer\n'
+        import_list = list(set(import_list))  # eliminate any duplicates
         import_list.sort()
         code += '\n'.join(import_list)
         code += '\n\n'
 
         # add manual imports
         code += '# Additional imports can be added inside the following tags\n'
-        code += '# [MANUAL_IMPORT]'
-        if self.manual[0] == '':
-            code += '\n\n'
-        else:
-            code += self.manual[0]
-        code += '# [/MANUAL_IMPORT]\n'
+        code += '# [MANUAL_IMPORT]\n'
+        code += '\n'.join(self.manual[0])
+        if self.manual[0] == '' or len(self.manual[0]) < 2:
+            code += (2 - len(self.manual[0])) * '\n'  # Guarantee at least two lines in section
+        code += '\n# [/MANUAL_IMPORT]\n'
 
         return code
 
@@ -308,6 +305,9 @@ class CodeGenerator:
         code += self.ws + self.ws + 'PriorityContainer' + '.initialize_ros(node)' + '\n'
         self.state_init_list.sort()
         code += '\n'.join(self.state_init_list)
+        # Updated common ROS initialization code - @TODO fix this after OBE update
+        # code += self.ws + self.ws + '# Initialize ROS node information\n'
+        # code += self.ws + self.ws + 'initialize_flexbe_core(node)\n'
         code += '\n'
 
         contained_behaviors = []
@@ -320,17 +320,13 @@ class CodeGenerator:
         for beh in contained_behaviors:
             code += self.ws + self.ws + 'self.add_behavior(' + beh.state_class + \
                 ", '" + beh.state_path[1:] + "', node)\n"
-
         code += '\n'
         # manual
         code += self.ws + self.ws + '# Additional initialization code can be added inside the following tags\n'
-        code += self.ws + self.ws + '# [MANUAL_INIT]'
-        if self.manual[1] == '':
-            code += '\n' + self.ws + self.ws + '\n' + self.ws + self.ws
-        else:
-            code += self.manual[1]
-
-        code += '# [/MANUAL_INIT]\n'
+        code += self.ws + self.ws + '# [MANUAL_INIT]\n'
+        # Look for first comment or self. to set block boundary
+        code += left_align_block(self.manual[1], self.ws + self.ws, self.ws)
+        code += self.ws + self.ws + '# [/MANUAL_INIT]\n'
         code += '\n'
 
         # comments
@@ -383,13 +379,10 @@ class CodeGenerator:
 
         # manual creation code
         code += self.ws + self.ws + '# Additional creation code can be added inside the following tags\n'
-        code += self.ws + self.ws + '# [MANUAL_CREATE]'
-        if self.manual[2] == '':
-            code += '\n' + self.ws + self.ws + '\n' + self.ws + self.ws
-        else:
-            code += self.manual[2]
-
-        code += '# [/MANUAL_CREATE]\n'
+        code += self.ws + self.ws + '# [MANUAL_CREATE]\n'
+        # Look for first comment or self. to set block boundary
+        code += left_align_block(self.manual[2], self.ws + self.ws, self.ws)
+        code += self.ws + self.ws + '# [/MANUAL_CREATE]\n'
         code += '\n'
 
         # generate contained state machines
@@ -665,12 +658,10 @@ class CodeGenerator:
         """Generate the function definitions."""
         code = ''
         code += self.ws + '# Private functions can be added inside the following tags\n'
-        code += self.ws + '# [MANUAL_FUNC]'
-        if self.manual[3] == '':
-            code += '\n' + self.ws + '\n' + self.ws
-        else:
-            code += self.manual[3]
-        code += '# [/MANUAL_FUNC]\n'
+        code += self.ws + '# [MANUAL_FUNC]\n'
+        # Look for first comment, self., or 'def ' to set block boundary
+        code += left_align_block(self.manual[3], self.ws[:], self.ws)
+        code += self.ws + '# [/MANUAL_FUNC]\n'
         return code
 
 
@@ -698,7 +689,7 @@ def extract_manual(code):
             raise Exception('inconsistent tag [MANUAL_IMPORT]')
         import_result = import_split_end[0]
         if import_result != '':
-            manual[0] = import_result
+            manual[0] = left_align_block(import_result, '', '')
         code = code.replace(manual_import_pattern_begin + import_split_end[0] + manual_import_pattern_end, '')
 
     # manual init section
@@ -709,7 +700,7 @@ def extract_manual(code):
             raise Exception('inconsistent tag [MANUAL_INIT]')
         init_result = init_split_end[0]
         if init_result != '':
-            manual[1] = init_result
+            manual[1] = left_align_block(init_result, '', '')
         code = code.replace(manual_init_pattern_begin + init_split_end[0] + manual_init_pattern_end, '')
 
     # manual create section
@@ -720,7 +711,7 @@ def extract_manual(code):
             raise Exception('inconsistent tag [MANUAL_CREATE]')
         create_result = create_split_end[0]
         if create_result != '':
-            manual[2] = create_result
+            manual[2] = left_align_block(create_result, '', '')
         code = code.replace(manual_create_pattern_begin + create_split_end[0] + manual_create_pattern_end, '')
 
     # manual func section
@@ -732,7 +723,7 @@ def extract_manual(code):
             raise Exception('inconsistent tag [MANUAL_FUNC]')
         func_result = func_split_end[0]
         if func_result != '':
-            manual[3] = func_result
+            manual[3] = left_align_block(func_result, '', '')
         code = code.replace(manual_func_pattern_begin + func_split_end[0] + manual_func_pattern_end, '')
 
     code = re.sub(comment_manual_pattern, '', code)

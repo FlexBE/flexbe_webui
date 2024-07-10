@@ -15,9 +15,9 @@
 """WebServer for flexbe_webui."""
 
 import argparse
-from datetime import datetime
 import json
 import os
+from datetime import datetime
 from subprocess import Popen
 from typing import Dict, List, Optional
 
@@ -28,21 +28,17 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from pygments import highlight
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import PythonLexer
-
 import uvicorn
 
 from .io.base_models import Behavior
 from .io.behavior_parser import parse_behavior_folder
 from .io.code_generator import CodeGenerator
-from .io.manifest_generator import generate_file_name, generate_manifest_name, ManifestGenerator
+from .io.manifest_generator import ManifestGenerator, generate_file_name, generate_manifest_name
 from .io.state_parser import parse_state_folder
 from .ros import PackageData
 from .ros.packages import get_packages, has_behaviors, has_states
 from .settings import load_settings
-from .tools import find_subfolder, validate_path_consistency
+from .tools import find_subfolder, highlight_code, validate_path_consistency
 
 
 class WebuiServer:
@@ -340,13 +336,12 @@ class WebuiServer:
                 try:
                     with open(file_path, 'r') as file:
                         code = file.read()
-                    # Apply syntax highlighting
-                    print('    formatting code ...', flush=True)
-                    formatter = HtmlFormatter(style='friendly', full=True, cssclass='code',
-                                              linenos='table')
-                    highlighted_code = highlight(code, PythonLexer(), formatter)
+
+                    highlighted_code = highlight_code(code, self._settings['visualize_whitespace'])
+
                     return {'result': True, 'text': highlighted_code, 'file_path': file_path}
                 except Exception as exc:
+                    print(f"Failed to format code for '{file_path}':\n{type(exc)} - {exc}")
                     return {'result': False, 'text': str(exc)}
 
             except Exception as exc:
@@ -376,7 +371,7 @@ class WebuiServer:
                           f"for '{ws}'/{package_name}/'{file_name}' ...", flush=True)
                     print(exc, flush=True)
                     print('Failed!')
-                    print(json_dict['behavior']['root_sm'], flush=True)
+                    print(json_dict['behavior'], flush=True)
                     result_dict.update({'error_msg': 'Failed to extract behavior'})
                     return result_dict
 
@@ -406,7 +401,7 @@ class WebuiServer:
 
                 cg = CodeGenerator(ws)
                 cg.set_explicit_package(explicit_package)
-                cg.update_manual_sections(python_path, file_name, self._settings['text_encoding'])
+                # @TODO REMOVE cg.update_manual_sections(python_path, file_name, self._settings['text_encoding'])
 
                 code = cg.generate_behavior_code(behavior)
                 # Validate the code

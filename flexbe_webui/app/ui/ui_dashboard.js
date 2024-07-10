@@ -144,7 +144,6 @@ UI.Dashboard = new (function() {
 			if (entry != undefined) entry.value = new_value;
 			element.setAttribute("old_value", new_value);
 			element.style.backgroundColor = Checking.setColorByEntryType(new_value);
-			// Checking.isValidExpressionSyntax(new_value, true)? "initial" : "#fca";
 			element.value = new_value;
 		};
 
@@ -337,6 +336,7 @@ UI.Dashboard = new (function() {
 		name_input_field.setAttribute("class", "inline_text_edit_readonly");
 		name_input_field.setAttribute("type", "text");
 		name_input_field.setAttribute("readonly", "readonly");
+		name_input_field.setAttribute("tabindex", "-1"); // Makes the input field unable to receive focus
 
 		var params_input_field = document.createElement("input");
 		params_input_field.setAttribute("value", new_params != undefined ? new_params : "");
@@ -344,6 +344,7 @@ UI.Dashboard = new (function() {
 		params_input_field.setAttribute("class", "inline_text_edit_readonly");
 		params_input_field.setAttribute("type", "text");
 		params_input_field.setAttribute("readonly", "readonly");
+		params_input_field.setAttribute("tabindex", "-1"); // Makes the input field unable to receive focus
 
 		var td_name_input_field = document.createElement("td");
 		var td_parentheses_left = document.createElement("td");
@@ -362,6 +363,224 @@ UI.Dashboard = new (function() {
 		tr.appendChild(td_parentheses_right);
 		document.getElementById("db_function_table").appendChild(tr);
 	}
+
+	this.editPrivateFunctionClicked = function() {
+
+			var modal = document.getElementById("db_function_edit_modal");
+			var modalTextArea = document.getElementById("db_function_edit_modal_text");
+			var modalOverlay = document.getElementById("db_function_edit_modal_text_overlay");
+			var acceptButton = document.getElementById("db_function_accept_button");
+			var discardButton = document.getElementById("db_function_discard_button");
+
+			modal.style.display = "block";
+			modalTextArea.value = Behavior.getManualCodeFunc();
+
+			let overlayNeedsUpdate = true;
+			function updateOverlay() {
+				if (overlayNeedsUpdate) {
+					var formattedText = modalTextArea.value
+						.replace(/ /g, '·')   // Replace spaces with middle dot
+						.replace(/\t/g, '→\t'); // Replace tabs with arrow
+					modalOverlay.textContent = formattedText;
+					// Correct any discrepancies when scroll reaches the bottom
+					if (modalTextArea.scrollTop + modalOverlay.clientHeight > modalOverlay.scrollHeight) {
+						modalTextArea.scrollTop = modalTextArea.scrollHeight - modalTextArea.clientHeight - (modalTextArea.scrollHeight - modalOverlay.scrollHeight);
+						modalOverlay.scrollTop = modalOverlay.scrollHeight - modalOverlay.clientHeight ;
+					} else {
+						modalOverlay.scrollTop = modalTextArea.scrollTop;
+					}
+
+					// Correct any discrepancies when scroll reaches the right edge
+					if (modalTextArea.scrollLeft + modalOverlay.clientWidth > modalOverlay.scrollWidth) {
+						modalTextArea.scrollLeft = modalTextArea.scrollWidth - modalTextArea.clientWidth - (modalTextArea.scrollWidth - modalOverlay.scrollWidth);
+						modalOverlay.scrollLeft = modalOverlay.scrollWidth - modalOverlay.clientWidth ;
+					} else {
+						modalOverlay.scrollLeft = modalTextArea.scrollLeft;
+					}
+					overlayNeedsUpdate = false;
+				}
+				window.requestAnimationFrame(updateOverlay);
+			}
+
+			// Set up listeners to handle changes
+			modalTextArea.addEventListener("input", function() {
+				overlayNeedsUpdate = true;
+			});
+
+			modalTextArea.addEventListener('scroll', () => {
+				overlayNeedsUpdate = true;
+			});
+
+			// Initial sync up with current data
+			updateOverlay();
+
+			acceptButton.onclick = function() {
+				modal.style.display = "none";
+				updateOverlay(modalTextArea, modalOverlay);
+
+				// Extract the function signatures
+				var func_defs = [];
+				if (modalTextArea.value != "") {
+					let func_result = modalTextArea.value;
+					let function_def_pattern = /^\s*def (\w+)\(self(?:, ([^)]+))?\):$/img;
+					func_result.replace(function_def_pattern, function(all, name, params) {
+						func_defs.push({key: name, value: params});
+					});
+				}
+				console.log(`\x1b[93mAccepting ${func_defs.length} manual functions!\x1b[0m`);
+
+				var dbFunctionTable = document.getElementById("db_function_table");
+				dbFunctionTable.innerHTML = ""; // reset function table
+				Behavior.getPrivateFunctions().length = 0; // clear existing list
+				Behavior.setManualCodeFunc(modalTextArea.value);
+				if (func_defs.length > 0) {
+					// Update the function list
+					func_defs.forEach(function(element, i) {
+						UI.Dashboard.addPrivateFunction(element.key, element.value); // also updates Behavior.private_functions
+					});
+				}
+			}
+
+			discardButton.onclick = function() {
+				console.log(`\x1b[93mDiscarding changes to manual functions!\x1b[0m`);
+				modal.style.display = "none";
+				modalTextArea.value = Behavior.getManualCodeFunc();
+				updateOverlay(modalTextArea, modalOverlay);
+			}
+	}
+
+
+	this.editManualInitClicked = function() {
+		var modal = document.getElementById("db_manual_init_edit_modal");
+		var modalTextArea = document.getElementById("db_manual_init_edit_modal_text");
+		var modalOverlay = document.getElementById("db_manual_init_edit_modal_text_overlay");
+		var acceptButton = document.getElementById("db_manual_init_accept_button");
+		var discardButton = document.getElementById("db_manual_init_discard_button");
+
+		modal.style.display = "block";
+		modalTextArea.value = Behavior.getManualCodeInit();
+
+		let overlayNeedsUpdate = true;
+		function updateOverlay() {
+			if (overlayNeedsUpdate) {
+				var formattedText = modalTextArea.value
+					.replace(/ /g, '·')   // Replace spaces with middle dot
+					.replace(/\t/g, '→\t'); // Replace tabs with arrow
+				modalOverlay.textContent = formattedText;
+				// Correct any discrepancies when scroll reaches the bottom
+				if (modalTextArea.scrollTop + modalOverlay.clientHeight > modalOverlay.scrollHeight) {
+					modalTextArea.scrollTop = modalTextArea.scrollHeight - modalTextArea.clientHeight - (modalTextArea.scrollHeight - modalOverlay.scrollHeight);
+					modalOverlay.scrollTop = modalOverlay.scrollHeight - modalOverlay.clientHeight ;
+				} else {
+					modalOverlay.scrollTop = modalTextArea.scrollTop;
+				}
+
+				// Correct any discrepancies when scroll reaches the right edge
+				if (modalTextArea.scrollLeft + modalOverlay.clientWidth > modalOverlay.scrollWidth) {
+					modalTextArea.scrollLeft = modalTextArea.scrollWidth - modalTextArea.clientWidth - (modalTextArea.scrollWidth - modalOverlay.scrollWidth);
+					modalOverlay.scrollLeft = modalOverlay.scrollWidth - modalOverlay.clientWidth ;
+				} else {
+					modalOverlay.scrollLeft = modalTextArea.scrollLeft;
+				}
+				overlayNeedsUpdate = false;
+			}
+			window.requestAnimationFrame(updateOverlay);
+		}
+
+		// Set up listeners to handle changes
+		modalTextArea.addEventListener("input", function() {
+			overlayNeedsUpdate = true;
+		});
+
+		modalTextArea.addEventListener('scroll', () => {
+			overlayNeedsUpdate = true;
+		});
+
+		// Initial sync up with current data
+		updateOverlay();
+
+		acceptButton.onclick = function() {
+			modal.style.display = "none";
+			updateOverlay(modalTextArea, modalOverlay);
+
+			console.log(`\x1b[93mAccepting manual init block!\x1b[0m`);
+			Behavior.setManualCodeInit(modalTextArea.value);
+		}
+
+		discardButton.onclick = function() {
+			console.log(`\x1b[93mDiscarding changes to manual init block!\x1b[0m`);
+			modal.style.display = "none";
+			modalTextArea.value = Behavior.getManualCodeInit();
+			updateOverlay(modalTextArea, modalOverlay);
+		}
+	}
+
+
+	this.editManualCreateClicked = function() {
+		var modal = document.getElementById("db_manual_create_edit_modal");
+		var modalTextArea = document.getElementById("db_manual_create_edit_modal_text");
+		var modalOverlay = document.getElementById("db_manual_create_edit_modal_text_overlay");
+		var acceptButton = document.getElementById("db_manual_create_accept_button");
+		var discardButton = document.getElementById("db_manual_create_discard_button");
+
+		modal.style.display = "block";
+		modalTextArea.value = Behavior.getManualCodeCreate();
+
+		let overlayNeedsUpdate = true;
+		function updateOverlay() {
+			if (overlayNeedsUpdate) {
+				var formattedText = modalTextArea.value
+					.replace(/ /g, '·')   // Replace spaces with middle dot
+					.replace(/\t/g, '→\t'); // Replace tabs with arrow
+				modalOverlay.textContent = formattedText;
+				// Correct any discrepancies when scroll reaches the bottom
+				if (modalTextArea.scrollTop + modalOverlay.clientHeight > modalOverlay.scrollHeight) {
+					modalTextArea.scrollTop = modalTextArea.scrollHeight - modalTextArea.clientHeight - (modalTextArea.scrollHeight - modalOverlay.scrollHeight);
+					modalOverlay.scrollTop = modalOverlay.scrollHeight - modalOverlay.clientHeight ;
+				} else {
+					modalOverlay.scrollTop = modalTextArea.scrollTop;
+				}
+
+				// Correct any discrepancies when scroll reaches the right edge
+				if (modalTextArea.scrollLeft + modalOverlay.clientWidth > modalOverlay.scrollWidth) {
+					modalTextArea.scrollLeft = modalTextArea.scrollWidth - modalTextArea.clientWidth - (modalTextArea.scrollWidth - modalOverlay.scrollWidth);
+					modalOverlay.scrollLeft = modalOverlay.scrollWidth - modalOverlay.clientWidth ;
+				} else {
+					modalOverlay.scrollLeft = modalTextArea.scrollLeft;
+				}
+				overlayNeedsUpdate = false;
+			}
+			window.requestAnimationFrame(updateOverlay);
+		}
+
+		// Set up listeners to handle changes
+		modalTextArea.addEventListener("input", function() {
+			overlayNeedsUpdate = true;
+		});
+
+		modalTextArea.addEventListener('scroll', () => {
+			overlayNeedsUpdate = true;
+		});
+
+		// Initial sync up with current data
+		updateOverlay();
+
+		acceptButton.onclick = function() {
+			modal.style.display = "none";
+			updateOverlay(modalTextArea, modalOverlay);
+
+			console.log(`\x1b[93mAccepting manual create block!\x1b[0m`);
+			Behavior.setManualCodeCreate(modalTextArea.value);
+		}
+
+		discardButton.onclick = function() {
+			console.log(`\x1b[93mDiscarding changes to manual create block!\x1b[0m`);
+			modal.style.display = "none";
+			modalTextArea.value = Behavior.getManualCodeCreate();
+			updateOverlay(modalTextArea, modalOverlay);
+		}
+	}
+
 
 
 	//
@@ -1039,7 +1258,7 @@ UI.Dashboard = new (function() {
 			function() { Behavior.setBehaviorName(old_name); document.getElementById('input_behavior_name').value = Behavior.getBehaviorName(); },
 			function() { Behavior.setBehaviorName(new_name); document.getElementById('input_behavior_name').value = Behavior.getBehaviorName(); }
 		);
-		console.log(`behaviorNameChanged: ${new_name} from {old_name}`);
+		console.log(`behaviorNameChanged: '${new_name}' from '${old_name}'`);
 		Behavior.setBehaviorName(new_name);
 	}
 
@@ -1271,8 +1490,140 @@ UI.Dashboard = new (function() {
 		document.getElementById('db_input_key_table').innerHTML = "";
 		document.getElementById('db_output_key_table').innerHTML = "";
 
+		document.getElementById('db_manual_import_table').innerHTML = "";
+
+		document.getElementById('db_function_edit_modal_text').value = "";
+
 		// also reset input fields?
 		// currently not
 	}
+
+	//
+	//  Manual Import Statements
+	// =========================
+
+	var _addManualImport = function(new_value) {
+		console.log(`\x1b[92m adding Manual import '${new_value}' ...\x1b[0m`);
+		try {
+			let imports = Behavior.getManualCodeImport();
+			imports.push(new_value.trim());
+		} catch (err) {
+			console.log(`cannot add item due to ${err}`);
+		}
+		var tr = document.createElement("tr");
+
+		var removeFunction = function(import_value) {
+			console.log(`\x1b[92m removing manual import '${import_value}' ...\x1b[0m`);
+			tr.parentNode.removeChild(tr);
+			var index = Behavior.getManualCodeImport().findIndex(function (element) {
+				return element.trim() == import_value.trim(); });
+			if (index !== -1) {
+				 Behavior.getManualCodeImport().splice(index, 1);
+			} else {
+				console.log(`\x1b[92m undefined manual import element in Behavior for '${import_value}'!\x1b[0m`);
+			}
+		};
+		var addFunction = function(import_value) {
+			document.getElementById("db_manual_import_table").appendChild(tr);
+			Behavior.getManualCodeImport().push(import_value);
+		};
+		var changeValueFunction = function(new_value, element) {
+			let old_value = element.getAttribute("old_value");
+			var index = Behavior.getManualCodeImport().findIndex(function (el) {
+				return el == old_value; });
+			if (index !== -1) {
+				Behavior.getManualCodeImport()[index] = new_value;
+			}
+			element.setAttribute("old_value", new_value);
+			if (Checking.isValidImportStatement(new_value)) {
+				element.style.backgroundColor = "#7CFC00";
+			} else {
+				console.log(`\x1b[92m Invalid import statement '${new_value}'!\x1b[0m`);
+				element.style.backgroundColor = "#FF4500";
+			}
+			element.value = new_value;
+		};
+
+		var remove_button = document.createElement("img");
+		remove_button.setAttribute("src", "img/table_row_delete.png");
+		remove_button.setAttribute("title", "Remove this import");
+		remove_button.setAttribute("class", "img_button");
+		remove_button.setAttribute("style", "margin-left: 10px;");
+		remove_button.addEventListener("click", function() {
+			console.log(`\x1b[93m   remove import clicked ...\x1b[0m`);
+			var value = value_input_field.getAttribute("old_value");
+			removeFunction(value);
+
+			ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_REMOVE,
+				"Removed manual import " + value,
+				function() { addFunction(value); },
+				function() { removeFunction(value); }
+			);
+		});
+
+		var value_input_field = document.createElement("input");
+		value_input_field.setAttribute("value", new_value);
+		value_input_field.setAttribute("old_value", new_value);
+		value_input_field.setAttribute("class", "inline_text_edit");
+		value_input_field.setAttribute("type", "text");
+		if (Checking.isValidImportStatement(new_value)) {
+			value_input_field.style.backgroundColor = "#7CFC00";
+		} else {
+			console.log(`\x1b[92m Invalid import statement '${new_value}'!\x1b[0m`);
+			value_input_field.style.backgroundColor = "#FF4500";
+		}
+
+		value_input_field.addEventListener("blur", function() {
+			var old_value = value_input_field.getAttribute("old_value");
+			var new_value = value_input_field.value;
+			if (old_value == new_value) return;
+			changeValueFunction(new_value, value_input_field);
+
+			ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
+				`Changed manual import to '${new_value}'`,
+				function() { changeValueFunction(old_value, value_input_field); },
+				function() { changeValueFunction(new_value, value_input_field); }
+			);
+		});
+		value_input_field.addEventListener("keydown", function(event) {
+			if (event.key === "Enter") {
+				var old_value = value_input_field.getAttribute("old_value");
+				var new_value = value_input_field.value;
+				if (old_value == new_value) return;
+				changeValueFunction(new_value, value_input_field);
+
+				ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
+					`Changed manual import to '${new_value}'`,
+					function() { changeValueFunction(old_value, value_input_field); },
+					function() { changeValueFunction(new_value, value_input_field); }
+				);
+			}
+		});
+
+		var td_value_input_field = document.createElement("td");
+		var td_remove_button = document.createElement("td");
+
+		td_value_input_field.appendChild(value_input_field);
+		td_remove_button.appendChild(remove_button);
+		tr.appendChild(td_value_input_field);
+		tr.appendChild(td_remove_button);
+		document.getElementById("db_manual_import_table").appendChild(tr);
+
+		ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_ADD,
+			`Added manual import '${new_value}'`,
+			function() { removeFunction(new_value); },
+			function() { addFunction(new_value); }
+		);
+	}
+	this.addManualImport = function(new_value) {
+		_addManualImport(new_value);
+	}
+	this.addManualImportClicked = function() {
+		UI.Dashboard.addManualImport(
+			document.getElementById("input_db_manual_import_value_add").value
+		);
+		document.getElementById("input_db_manual_import_value_add").value = "";
+	}
+
 
 }) ();

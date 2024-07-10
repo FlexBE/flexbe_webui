@@ -16,7 +16,12 @@
 """Load settings for flexbe_webui."""
 
 import os
+import re
 from pathlib import Path
+
+from pygments import highlight
+from pygments.formatters import HtmlFormatter
+from pygments.lexers import PythonLexer
 
 
 def find_subfolder(root, subfolder):
@@ -47,3 +52,123 @@ def validate_path_consistency(python_path, manifest_path):
             print(f'Manifest path: {manifest_path_elements}')
             return False  # Invalid
     return True
+
+
+def highlight_code(code, visualize_whitespace=True):
+    """
+    Apply syntax highlighting for source visualization.
+
+    This version allows us to visualize whitespace on screen.
+    """
+    formatter = HtmlFormatter(style='friendly', full=True, cssclass='code',
+                              linenos='table')
+    highlighted_code = highlight(code, PythonLexer(), formatter)
+
+    # Generate the CSS
+    css = formatter.get_style_defs('.code')
+    custom_css = """
+    .code {
+        tab-size: 4; /* Adjust this number to set the desired tab size */
+    }
+    """
+    full_css = f'<style>{css}\n{custom_css}</style>'
+
+    # Combine the CSS and the highlighted code
+    highlighted_code = f'{full_css}\n{highlighted_code}'
+
+    if visualize_whitespace:
+        try:
+            # Use regex to extract the relevant code part from the HTML
+            pattern = re.compile(r'(.*?)(<div class="code">.*?</table></body>)(.*)', re.DOTALL)
+            match = pattern.search(highlighted_code)
+            if match:
+                before_code = match.group(1)
+                code_part = match.group(2)
+                after_code = match.group(3)
+
+                print('\x1b[93mUpdating code part to visualize whitespaces.\x1b[0m', flush=True)
+                # Replace whitespace characters in the code part
+                lines = code_part.split('\n')
+                new_lines = []
+                for line in lines:
+                    # Process line-by-line and update whitespace not part of xml tag
+                    inside_xml = False
+                    ndx = 0
+                    while ndx < len(line):
+                        if line[ndx] == '<':
+                            if line[ndx:(ndx + 5)] == '<span':
+                                inside_xml = True
+                                ndx += 4
+                        elif line[ndx] == '>':
+                            if line[max(0, ndx - 6):(ndx + 1)] == '</span>':
+                                inside_xml = False
+                        if not inside_xml:
+                            if line[ndx] == ' ':
+                                line = line[:ndx] + '·' + line[(ndx + 1):]
+                            elif line[ndx] == '\t':
+                                line = line[:ndx] + '→\t' + line[(ndx + 1):]
+                                ndx += 1  # skip added character
+                        ndx += 1  # process the next character
+                    new_lines.append(line)
+                code_part = '\n'.join(new_lines)
+                # Reassemble the HTML with the modified code part
+                highlighted_code = before_code + code_part + after_code
+            else:
+                print('cannot determine code block to visualize whitespace!', flush=True)
+
+        except Exception as exc:
+            print(f'Failed to process whitespace: {type(exc)} - {exc}', flush=True)
+
+    return highlighted_code
+
+
+def left_align_block(code_block, blk_indent, ws_indent):
+    """
+    Move text to left align given block definition.
+
+    @param code_block - block of text
+    @param blk_indent - the desired indent level (might be empty string)
+    @param ws_indent  - white space used to indent (tab or spaces)
+    """
+    # Make sure that manual blocks start in left column of block for us to indent
+    # Modify so that all text in block starts in left most column of text block, and indent relative to that
+    # This allows UI to not have large indent blocks to show.
+
+    lines = code_block.split('\n')
+    ws = ws_indent[:1]  # Single character used to indent
+
+    # Filter out empty lines and calculate the minimum indent level and characters (> 0 indent)
+    indents = [(len(line) - len(line.lstrip()), line[:len(line) - len(line.lstrip())]) for line in lines if line.strip()]
+    min_indent_level, _ = min((x for x in indents), key=lambda x: x[0], default=(None, None))
+    next_indent_level, next_indent_chars = min((x for x in indents if x[0] > 0), key=lambda x: x[0], default=(None, None))
+    if not next_indent_level:
+        # Everything is left justified, so just assume same as ws_indent
+        current_ws = ws_indent[:1]
+    else:
+        current_ws = next_indent_chars[:1]
+
+        # Check if we are changing the indentations between tabs and spaces
+        if current_ws == '\t' and ws == ' ':
+            ws = ws_indent[:]  # Use multiple characters if replacing tabs with space
+        elif current_ws == ' ' and ws == '\t':
+            current_ws = next_indent_chars
+
+    justified_lines = []
+    for line in lines:
+        # Second pass to process each line and standardize indentation
+        line = line.rstrip()
+        if line:
+            # By definition, len(line) > min_indent or empty
+            shifted_line = line[min_indent_level:].rstrip()
+            if (shifted_line[:1] == current_ws[:1]) and (current_ws[:1] != ws):
+                # Converting remaining spaces/tabs if required
+                shifted_line = shifted_line.replace(current_ws, ws)
+            justified_lines.append(blk_indent + shifted_line)
+        else:
+            justified_lines.append(line)  # Empty line
+
+    if len(justified_lines) < 2:
+        justified_lines.append('')
+
+    new_block = '\n'.join(justified_lines)
+    return new_block
