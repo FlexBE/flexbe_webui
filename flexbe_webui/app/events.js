@@ -49,7 +49,6 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('top-level-toolbar').addEventListener('click', function(event) {
 		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
 		if (event.target.id  == '' || event.target.id == 'top-level-toolbar') {
-			console.log(`\x1b[92m clickHandler - focus on top-level-toolbar  from target='${event.target.id}'\x1b[0m`);
 			UI.Menu.setupTabHandling();
 		}
 	});
@@ -82,7 +81,6 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById("dashboard").addEventListener('click', function(event) {
 		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
 		 if (event.target.id  == '' || event.target.id == 'dashboard') {
-			console.log(`\x1b[92m clickHandler - focus on dashboard from target='${event.target.id}'\x1b[0m`);
 			UI.Dashboard.setupTabHandling();
 		}
 	 });
@@ -137,14 +135,12 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('statemachine').addEventListener('click', function(event) {
 		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
 		if (event.target.id  == '' || event.target.id == 'statemachine') {
-			console.log(`\x1b[92m clickHandler - focus on statemachine from target='${event.target.id}'\x1b[0m`);
 			document.getElementById("statemachine").focus({preventScroll: true});
 		}
 	});
 	document.getElementById('panel_properties').addEventListener('click', function(event) {
 		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
 		if (event.target.id  == '' || event.target.id == 'panel_properties') {
-			console.log(`\x1b[92m clickHandler - focus on panel_properties from target='${event.target.id}'\x1b[0m`);
 			UI.Panels.setFocus();
 		}
 	});
@@ -218,7 +214,6 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('runtimecontrol').addEventListener('click', function(event) {
 		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
 		if (event.target.id  == '' || event.target.id == 'runtimecontrol') {
-			console.log(`\x1b[92m clickHandler - focus on runtimecontrol from target='${event.target.id}'\x1b[0m`);
 			UI.RuntimeControl.setupTabHandling();
 		}
 	});
@@ -253,7 +248,6 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('settings').addEventListener('click', function(event) {
 		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
 		if (event.target.id  == '' || event.target.id == 'settings') {
-			console.log(`\x1b[92m clickHandler - focus on settings from target='${event.target.id}'\x1b[0m`);
 			UI.Settings.setupTabHandling();
 		}
 	});

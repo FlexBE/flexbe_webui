@@ -195,23 +195,18 @@ UI.Panels = new (function() {
 			}
 			return a.tabIndex - b.tabIndex;
 		});
-
-		console.log(`UI.Panel.updateTabTargets for '${panel.id}' found ${tab_targets.length} tabs active element='${document.activeElement.id}'`);
 	}
 
 	// Define the event listener function
 	this.handleKeyDown = function(event) {
-		console.log(`Panel keydown handler for '${activePanel}' from '${event.target.id}' key='${event.key}' !`);
 		if (event.key === "Tab") {
 			// Panel is active so capture all the TABS
 			event.preventDefault(); // Prevent the default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 			if (activePanel === that.NO_PANEL) {
-				console.log(`TAB event captured by panel '${activePanel}' from '${event.target.id}' - ignore!`);
 				return;
 			}
 			if (tab_targets.length == 0) {
-				console.log(`TAB event captured by panel '${activePanel}' from '${event.target.id}' - no tab targets so ignore!`);
 				return;
 			}
 			let match = undefined;
@@ -243,10 +238,8 @@ UI.Panels = new (function() {
 				//console.log(`Panel keydown handler for '${activePanel}' from '${event.target.id}' key='${event.key}' - moved to  '${document.activeElement.id}'!`);
 			} else {
 				tab_targets[0].focus({ preventScroll: true }); // Move focus to the first input
-				console.log(`Panel keydown handler for '${activePanel}' from '${event.target.id}' key='${event.key}' - move to first tab target '${tab_targets[0].id}' '${document.activeElement.id}'!`);
 			}
 		} else if (event.key === 'Escape') {
-			console.log(`\x1b[93m Hide all panels on Esc key for '${activePanel}' from '${event.target.id}'\x1b[0m`);
 			event.preventDefault(); // Prevent the default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 			that.hideAllPanels();

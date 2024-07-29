@@ -69,7 +69,6 @@ UI.Panels.StateProperties = new (function() {
 		}
 
 		const autoCompleteSetup = function(evt) {
-			console.log(`\x1b[94mSet up autocomplete for '${el.id}' type='${state_type}' event='${evt.type}' '${evt.target.id}'\x1b[0m`)
 			let ac = document.getElementById("properties_autocomplete");
 			let suggestions = (mode == "input")? Autocomplete.generateInputUserdata(el.value, state) :
 							  (mode == "output")? Autocomplete.generateOutputUserdata(el.value, state) :
@@ -118,7 +117,6 @@ UI.Panels.StateProperties = new (function() {
 		listeners_to_cleanup.push({'element': el, 'listener_type': 'keyup', 'handler': autoCompleteSetup});
 
 		const autoCompleteHandler = function(evt) {
-			console.log(`\x1b[94mHandle autocomplete for '${el.id}' type='${state_type}' event='${evt.type}' '${evt.target.id}'\x1b[0m`)
 			let ac = document.getElementById("properties_autocomplete");
 			setTimeout(function() {
 				ac.setAttribute("style", "display: none;");
@@ -132,7 +130,6 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.displayPropertiesForState = function(state) {
-		console.log(`displayPropertiesForState '${state.getStateName()}' ...`);
 		document.getElementById("panel_properties_state").style.display = "block";
 		document.getElementById("panel_properties_behavior").style.display = "none";
 		document.getElementById("panel_properties_statemachine").style.display = "none";
@@ -290,7 +287,6 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.displayPropertiesForStatemachine = function(state) {
-		console.log(`displayPropertiesForStatemachine '${state.getStateName()}' ...`);
 		document.getElementById("panel_properties_state").style.display = "none";
 		document.getElementById("panel_properties_behavior").style.display = "none";
 		document.getElementById("panel_properties_statemachine").style.display = "block";
@@ -619,7 +615,6 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.displayPropertiesForBehavior = function(state) {
-		console.log(`displayPropertiesForBehavior '${state.getStateName()}'  with active element='${document.activeElement.id}' ...`);
 		let tt = document.getElementById("properties_tooltip");
 		if (tt != undefined) {
 			tt.parentNode.removeChild(tt);
@@ -1025,7 +1020,6 @@ UI.Panels.StateProperties = new (function() {
 			T.debugWarn("Current state not set for properties!");
 			return;
 		}
-		console.log(`stateProperties '${sub_panel}' show ...`);
 		UI.Panels.setActivePanel(UI.Panels.STATE_PROPERTIES_PANEL, sub_panel);
 		if (apply_pulse != undefined) clearTimeout(apply_pulse);
 		document.getElementById('button_apply_properties').style.background = "";
@@ -1073,7 +1067,6 @@ UI.Panels.StateProperties = new (function() {
 			console.log(`\x1b[93mIgnore request to delete '${current_prop_state.getStateName()}'`);
 			return;
 		}
-		console.log(`\x1b[93m Confirmed request to delete of '${current_prop_state.getStateName()}'\x1b[0m`);
 
 		let container_path = current_prop_state.getContainer().getStatePath();
 		let undo_state = current_prop_state;
@@ -1146,7 +1139,6 @@ UI.Panels.StateProperties = new (function() {
 					}
 				} else {
 					T.logError("Failed to open the state code!");
-					console.log("\x1b[91mFailed to open the state code!\x1b[0m");
 				}
 			});
 		} catch (err) {
@@ -1329,7 +1321,6 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.displayStateProperties = function(state) {
-		console.log(`  calling displayStateProperties '${state.getStateName()}' - active='${document.activeElement.id}' ...`);
 		that.removeHover();
 		current_prop_state = state;
 		that.clearChildElements(); // clear any old elements

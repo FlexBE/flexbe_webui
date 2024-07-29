@@ -518,20 +518,15 @@ UI.Tools = new (function() {
 		if (event.key === "Tab") {
 			// No other panel is handling tabs, so move to main panel
 			if (event.target.id === '') {
-				console.log(`Tab keyup - captured from target '${event.target.id}' at top level!`);
 				event.preventDefault(); // Prevent the default action
 				event.stopPropagation(); // Stop the event from propagating to other handlers
 				return;
 			} else {
-				console.log(`Tab keyup unhandled from target '${event.target.id}' at top level!`);
 				return;
 			}
 		} else if (event.key === 'Enter' || event.key === ' ') {
-			console.log(`top level saw '${event.key}' keyup from target '${event.target.id}' preventDefault but did not capture!`);
 			event.preventDefault(); // Prevent the default action
 			return;
-		//} else {
-		//	console.log(`top level saw '${event.key}' keyup from target '${event.target.id}' but did not capture!`);
 		}
 	}
 
