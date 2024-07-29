@@ -1,5 +1,6 @@
 const Checking = new (function() {
 	var that = this;
+	var flagWarning = false;
 
 	const python_varname_pattern = /^[a-z_][a-z0-9_]*$/i;
 
@@ -24,6 +25,7 @@ const Checking = new (function() {
 			that.variables.add('Logger.REPORT_INFO');
 			that.variables.add('Logger.REPORT_WARN');
 			that.variables.add('Logger.REPORT_ERROR');
+			flagWarning = false;
 
 			var error = that.checkDashboard();
 			if (error != undefined) {
@@ -39,7 +41,7 @@ const Checking = new (function() {
 					that.variables.add(name);
 				});
 			});
-			console.log(`\x1b[93mInternal variables list for checking:${JSON.stringify(Array.from(that.variables))}\x1b[0m`);
+			console.log(`\x1b[93mInternal variables list for checking:\n  ${JSON.stringify(Array.from(that.variables))}\x1b[0m`);
 
 			console.log(`\x1b[94mCheck statemachine ...\x1b[0m`);
 			error = that.checkStatemachine();
@@ -47,6 +49,11 @@ const Checking = new (function() {
 				console.log(`\x1b[91m Failed checkStateMachine for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
 				UI.Menu.toStatemachineClicked();
 				return error;
+			}
+
+			if (flagWarning) {
+				T.logWarn(`\n\nCheck warnings - but this did not invalidate the behavior!`);
+				flagWarning = false;
 			}
 		} catch (error) {
 			console.log(`\x1b[91m Failed behavior check for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
@@ -173,9 +180,12 @@ const Checking = new (function() {
 
 	this.checkStatemachine = function() {
 		let sm_name = Behavior.getStatemachine().getStateName();
-		if (sm_name == '') sm_name = "_state_machine";
+		if (sm_name == '') {
+			sm_name = "_state_machine";
+		} else {
+			that.checkStateName(sm_name);
+		}
 		that.variables.add(sm_name);
-		// console.log(`\x1b[96mCheck state machine ${sm_name} with\n    ${JSON.stringify(Array.from(that.variables))} variables ...\x1b[0m`);
 		let error = that.checkSingleStatemachine(Behavior.getStatemachine());
 		if (error != undefined) return error;
 
@@ -248,9 +258,40 @@ const Checking = new (function() {
 		return warnings;
 	}
 
+	this.checkStateName = function(stateName) {
+		    // Regular expression to match initial capitals style
+			const initialCapitalsRegex = /^[A-Z][a-z0-9]*([A-Z][a-z0-9]*)*$/;
+			if (!initialCapitalsRegex.test(stateName)) {
+				T.logInfo(`State '${stateName}' does not follow suggested InitialCapitals style naming`);
+				flagWarning = true;
+			}
+	}
+
+	this.checkOutcomeLabel = function(stateName, outName) {
+		// Regular expression to match initial capitals style
+		if (outName == undefined) return;
+		const lower = outName.toLowerCase().trim().replace(' ', '_');
+
+		const regex_pattern = /^[a-z_][a-z0-9_]*$/;
+		if (!regex_pattern.test(lower)) {
+			T.logInfo(`State '${stateName}' outcome '${outName}' has unexpected characters - stick with lower case letters and digits`);
+			flagWarning = true;
+		}
+		if (lower !== outName) {
+			T.logInfo(`State '${stateName}' outcome '${outName}' does not follow suggested snake_case style naming`);
+			flagWarning = true;
+		}
+
+		if (lower.startsWith('preempt')) {
+			T.logError(`State '${stateName}' outcome '${outName}' uses reserved name 'preempt'`);
+			flagWarning = true; // should we invalidate here?
+		}
+	}
+
 	this.checkSingleState = function(state) {
 		if (state.getStateName() == "") return "state at path " + state.getStatePath() + " has empty name";
 
+		that.checkStateName(state.getStateName());
 		// parameters
 		if (state.getParameters().length > 0) {
 			let sparams = state.getParameterValues();
@@ -270,6 +311,7 @@ const Checking = new (function() {
 					let err_text = `Unknown parameter type for ${sparams[i]} (${param_type}) of ${state.getStateName()} `;
 					console.log('\x1b[91m' + err_text + '\x1b[0m');
 					T.logError(err_text); // log it, but don't invalidate for now
+					flagWarning = true;
 					//return err_text;  // @todo - invalidate SM
 				} else {
 					let valid = true;
@@ -298,6 +340,7 @@ const Checking = new (function() {
 							console.log('\x1b[91m' + err_text + '\x1b[0m');
 							T.logError(err_text); // log it, but don't invalidate SM for now
 							valid = false;
+							flagWarning = true;
 							//return err_text;  // @todo - invalidate SM
 						}
 					}
@@ -340,6 +383,9 @@ const Checking = new (function() {
 		}
 
 		// outcomes
+		state.getOutcomes().forEach((oc) => {
+			that.checkOutcomeLabel(state.getStateName(), oc);
+		});
 		if (state.getOutcomesUnconnected().length > 0) return "outcome " + state.getOutcomesUnconnected()[0] + " of state " + state.getStatePath() + " is unconnected";
 		if (state.getContainer().isConcurrent()) {
 			let outcome_target_list = [];
@@ -468,7 +514,12 @@ const Checking = new (function() {
 			return true;
 		} catch (e) {
 			// May be valid Python that fails Javascript, try a simple conversion of some keywords
-			let convert = equation.replace(' and ', ' && ').replace(' or ', ' || ').replace(' not ',' !').replace(" math", " Math");
+			let convert = expr.replace(' and ', ' && ')
+								.replace(' or ', ' || ')
+								.replace(' not ',' !')
+								.replace(" math", " Math")
+								.replace(/\s+/g, '');
+
 			try {
 				new Function(`return (${convert});`);
 				return true;
@@ -500,6 +551,7 @@ const Checking = new (function() {
 		} catch (exc) {
 			console.log(`${exc} - <${item}> - ${typeof item}`);
 			console.log(exc.stack);
+			flagWarning = true;
 		}
 
 		// Check for number
@@ -538,17 +590,20 @@ const Checking = new (function() {
 								// console.log(`\x1b[95m Detected lambda expression '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=<${lambdaEqn}> (${isValidEqn})\x1b[0m`);
 								return "lambda";
 							} else {
-								console.log(`\x1b[95m Invalid Python equation for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=\{${lambdaEqn}\} (${isValidEqn})\x1b[0m`);
+								T.logWarn(`Invalid Python equation for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=\{${lambdaEqn}\} (${isValidEqn})`);
+								flagWarning = true;
 								return "unknown" // if lambda plus args, then assume equation is invalid attempt
 							}
 						} else {
-							console.log(`\x1b[95m Invalid Python expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn expression=\{${lambdaEqn}\} (${isValidEqn})\x1b[0m`);
+							T.logWarn(`Invalid Python expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn expression=\{${lambdaEqn}\} (${isValidEqn})`);
+							flagWarning = true;
 							return "unknown" // if lambda plus args, then assume equation is invalid attempt
 						}
 					} // else is not a lambda, so keep processing as string
 				} catch (err) {
-					console.log(`lambda match error - '${JSON.stringify(match)}' ...`);
+					T.logWarn(`lambda match error '${checkItem}' - '${JSON.stringify(match)}' ...`);
 					console.log(err.stack);
+					flagWarning = true;
 				}
 			}
 		}
