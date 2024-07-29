@@ -172,3 +172,88 @@ def left_align_block(code_block, blk_indent, ws_indent):
 
     new_block = '\n'.join(justified_lines)
     return new_block
+
+
+def format_state_code_string(code_string, target_line_length, ws=' '):
+    """Align code and avoid extra long lines."""
+    # Helper function to split parameters correctly
+    def split_parameters(line):
+        parts = []
+        current = ''
+        inside_brackets = 0
+        for char in line:
+            if char in ('[', '(', '}'):
+                inside_brackets += 1
+            elif char in (']', ')', '}'):
+                inside_brackets -= 1
+            if char == ',' and inside_brackets == 0:
+                parts.append(current.strip() + ',')
+                current = ''
+            else:
+                current += char
+        parts.append(current.strip())
+        return parts
+
+    # Find the opening parenthesis and split the line accordingly
+    def format_line(line, ws):
+        open_pos = min((line.find(char) for char in '([{'), key=lambda x: x if x != -1 else float('inf'))
+        if open_pos == float('inf'):
+            return [line.rstrip()]
+
+        prepend = ws * (open_pos + 1)
+        if ws == '\t':
+            prepend = '\t' * ((len(prepend) - 1) // 4 + 1)
+
+        prefix = line[:open_pos + 1]
+        suffix = line[open_pos + 1:]
+
+        parameters = split_parameters(suffix)
+        formatted_parts = [prefix + parameters[0]]
+        for param in parameters[1:]:
+            formatted_parts.append(prepend + param)
+        return formatted_parts
+
+    lines = code_string.strip().split('\n')
+    formatted_lines = []
+
+    for line in lines:
+        if len(line) > target_line_length and any([char in line for char in '({[<']):
+            formatted_lines.extend(format_line(line, ws[:1]))
+        else:
+            formatted_lines.append(line.rstrip())
+
+    code_text = '\n'.join(formatted_lines)
+    return code_text
+
+
+def break_long_line(text, max_length=80):
+    """Break long lines in description text."""
+    if (len(text) <= max_length):
+        return [text]
+
+    prefix = ''
+    for i, char in enumerate(text):
+        if not char.isspace():
+            prefix = text[:i]
+            break
+
+    words = text.strip().split(' ')
+    line = ''
+    result = ''
+    for word in words:
+        if len(line) + len(word) + 1 > max_length:
+            if len(line) == 0:
+                # If the word itself is longer than max_length, break the word
+                while len(word) > max_length:
+                    result += word[:max_length] + '\n'
+                    word = word[max_length:]
+                line = prefix + word + ' '
+            else:
+                # Otherwise, add the line to the result and start a new line
+                result += line.rstrip() + '\n'
+                line = prefix + word + ' '
+        else:
+            line += word + ' '
+
+    result += line.rstrip()  # Add the last line
+    return result.split('\n')

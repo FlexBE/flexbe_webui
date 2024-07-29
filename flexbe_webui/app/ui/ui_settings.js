@@ -28,6 +28,7 @@ UI.Settings = new (function() {
 	var synthesis_type;
 	var synthesis_system;
 
+	var tab_targets = [];
 	var text_encoding;
 	var transition_mode;
 
@@ -52,7 +53,6 @@ UI.Settings = new (function() {
 			'runtime_timeout': runtime_timeout,
 			'save_in_source': save_in_source,
 			'source_code_root': source_code_root,
-			//'start_parser': state_parser,
 			'stop_behaviors': stop_behaviors,
 			'synthesis_enabled': synthesis_enabled,
 			'synthesis_topic': synthesis_topic,
@@ -64,7 +64,7 @@ UI.Settings = new (function() {
 	}
 
 	var storeSettings = function() {
-		var config = JSON.stringify({
+		let config = JSON.stringify({
 			'code_indentation': code_indentation,
 			'collapse_info': collapse_info,
 			'collapse_warn': collapse_warn,
@@ -80,7 +80,6 @@ UI.Settings = new (function() {
 			'runtime_timeout': runtime_timeout,
 			'save_in_source': save_in_source,
 			'source_code_root': source_code_root,
-			//'state_parser': state_parser,
 			'stop_behaviors': stop_behaviors,
 			'synthesis_enabled': synthesis_enabled,
 			'synthesis_topic': synthesis_topic,
@@ -215,7 +214,7 @@ UI.Settings = new (function() {
 			// console.log("    " + state_pkg.name + " ...");
 			API.get(`io/states/${state_pkg.name}`, state_defs => {
 				state_defs.forEach(state_data => {
-					var state_def = IO.StateParser.parseState(state_data);
+					let state_def = IO.StateParser.parseState(state_data);
 					WS.Statelib.addToLib(state_def);
 				});
 			});
@@ -231,7 +230,7 @@ UI.Settings = new (function() {
 			API.get(`io/behaviors/${behavior_pkg.name}`, behavior_defs => {
 				behavior_defs.forEach(behavior_data => {
 					IO.BehaviorLoader.loadBehaviorInterface(behavior_data, function(ifc) {
-						var behavior_def = new WS.BehaviorStateDefinition(behavior_data, ifc.smi_outcomes, ifc.smi_input, ifc.smi_output);
+						let behavior_def = new WS.BehaviorStateDefinition(behavior_data, ifc.smi_outcomes, ifc.smi_input, ifc.smi_output);
 						WS.Behaviorlib.addToLib(behavior_def);
 					});
 				});
@@ -246,19 +245,19 @@ UI.Settings = new (function() {
 			return;
 		}
 		if (add_all_option) {
-			var option = document.createElement("option");
+			let option = document.createElement("option");
 			option.setAttribute("value", "ALL");
 			option.innerText = "ALL";
 			select_el.appendChild(option);
 		}
-		for (var i=0; i<behavior_pkg_cache.length; i++) {
-			var option = document.createElement("option");
+		for (let i=0; i<behavior_pkg_cache.length; i++) {
+			let option = document.createElement("option");
 			option.setAttribute("value", behavior_pkg_cache[i]["name"]);
 			option.innerText = behavior_pkg_cache[i]["name"];
 			select_el.appendChild(option);
 		}
 		if (!add_all_option) {
-			var default_package_index = behavior_pkg_cache.map((pkg) => { return pkg['name']; }).indexOf(default_package);
+			let default_package_index = behavior_pkg_cache.map((pkg) => { return pkg['name']; }).indexOf(default_package);
 			if (default_package_index < 0) {
 				default_package_index = 0;
 				default_package = behavior_pkg_cache[0]['name'];
@@ -273,13 +272,13 @@ UI.Settings = new (function() {
 			return;
 		}
 		if (add_all_option) {
-			var option = document.createElement("option");
+			let option = document.createElement("option");
 			option.setAttribute("value", "ALL");
 			option.innerText = "ALL";
 			select_el.appendChild(option);
 		}
-		for (var i=0; i<state_pkg_cache.length; i++) {
-			var option = document.createElement("option");
+		for (let i=0; i<state_pkg_cache.length; i++) {
+			let option = document.createElement("option");
 			option.setAttribute("value", state_pkg_cache[i]["name"]);
 			option.innerText = state_pkg_cache[i]["name"];
 			select_el.appendChild(option);
@@ -288,55 +287,55 @@ UI.Settings = new (function() {
 
 	var displaySettingsHints = function() {
 		if (behavior_pkg_cache == undefined || behavior_pkg_cache.length == 0) {
-			var action_div = document.createElement("div");
+			let action_div = document.createElement("div");
 
-			var pkg_select = document.createElement("select");
+			let pkg_select = document.createElement("select");
 			pkg_select.setAttribute("style", "width:100%; margin: 5px 0;");
-			var pkg_select_update_title = function() {
+			let pkg_select_update_title = function() {
 				if (pkg_select.options.length > 0) {
 					pkg_select.setAttribute("title", pkg_select.options[pkg_select.selectedIndex].getAttribute("title"));
 				}
 			};
 			pkg_select.addEventListener('change', pkg_select_update_title);
 			console.log(`\x1b[91m skipping ros_pkg_cache check and selection options\x1b[0m`);
-			// var packages = ros_pkg_cache.filter((pkg) => { return !pkg['path'].startsWith("/opt/ros"); });
-			// for (var i=0; i<packages.length; i++) {
-			// 	var option = document.createElement("option");
+			// let packages = ros_pkg_cache.filter((pkg) => { return !pkg['path'].startsWith("/opt/ros"); });
+			// for (let i=0; i<packages.length; i++) {
+			// 	let option = document.createElement("option");
 			// 	option.setAttribute("value", packages[i]["name"]);
 			// 	option.setAttribute("title", packages[i]["path"]);
 			// 	option.innerText = packages[i]["name"];
 			// 	pkg_select.appendChild(option);
 			// }
 
-			// var suggestion = packages.findElement((pkg) => { return pkg['name'] == "flexbe_behaviors"; });
+			// let suggestion = packages.findElement((pkg) => { return pkg['name'] == "flexbe_behaviors"; });
 			// suggestion = suggestion || packages.findElement((pkg) => { return pkg['name'].indexOf("flexbe_behaviors") != -1; });
 			// if (suggestion != undefined) {
 			// 	pkg_select.selectedIndex = packages.indexOf(suggestion);
 			// }
 			pkg_select_update_title();
 
-			var pkg_convert_cb = document.createElement("input");
+			let pkg_convert_cb = document.createElement("input");
 			pkg_convert_cb.setAttribute("id", "pkg_convert_cb");
 			pkg_convert_cb.setAttribute("type", "checkbox");
 			if (suggestion != undefined) pkg_convert_cb.setAttribute("checked", "checked");
-			var pkg_convert_label = document.createElement("label");
+			let pkg_convert_label = document.createElement("label");
 			pkg_convert_label.setAttribute("for", "pkg_convert_cb");
 			pkg_convert_label.innerText = "Convert existing behaviors";
-			var pkg_convert_group = document.createElement("div");
+			let pkg_convert_group = document.createElement("div");
 			pkg_convert_group.setAttribute("title", "If this package already contains behaviors in the old format, import them into this package. You can remove the old behavior packages afterwards.");
 			pkg_convert_group.setAttribute("style", "vertical-align:middle; margin: 0 0 5px 0;");
 			pkg_convert_group.appendChild(pkg_convert_cb);
 			pkg_convert_group.appendChild(pkg_convert_label);
 
-			var pkg_init_button = document.createElement("input");
+			let pkg_init_button = document.createElement("input");
 			pkg_init_button.setAttribute("value", "Initialize");
 			pkg_init_button.setAttribute("type", "button");
 			pkg_init_button.addEventListener("click", function() {
 				T.clearLog();
 				T.logInfo("DEPRECATED: Initializing package " + pkg_select.value + "...");
 				T.show();
-				var pkg_name = pkg_select.value;
-				var convert = pkg_convert_cb.checked;
+				let pkg_name = pkg_select.value;
+				let convert = pkg_convert_cb.checked;
 				console.log(`   skipping initializeBehavior '${pkg_name}'  (${convert})`);
 				// IO.PackageGenerator.initializeBehaviorPackage(pkg_name, convert, () => {
 				// 	that.retrieveConfigurationSettings(); // load configuration parameters from server
@@ -355,7 +354,7 @@ UI.Settings = new (function() {
 				action_div
 			);
 		} else {
-			var msg = document.getElementById('msg_no_behavior_packages');
+			let msg = document.getElementById('msg_no_behavior_packages');
 			if (msg != undefined) msg.parentNode.removeChild(msg);
 		}
 
@@ -364,30 +363,30 @@ UI.Settings = new (function() {
 				'The list of available states is empty. You can find available states <a href="https://github.com/FlexBE" target="_blank">on Github</a>.'
 			);
 		} else {
-			var msg = document.getElementById('msg_no_state_packages');
+			let msg = document.getElementById('msg_no_state_packages');
 			if (msg != undefined) msg.parentNode.removeChild(msg);
 		}
 	}
 
 	var updateWorkspaceDisplay = function() {
-		var createEntry = function(pkg) {
-			var entry = document.createElement("div");
-			entry.setAttribute("class", "tag");
+		let createEntry = function(pkg) {
+			let entry = document.createElement("div");
+			entry.setAttribute("class", "display-tag");
 			entry.setAttribute("title", pkg['path']);
 			entry.innerText = pkg['name'];
 			pkg['display'] = entry;
 			return entry;
 		}
-		var behavior_el = document.getElementById("workspace_behavior_packages");
+		let behavior_el = document.getElementById("workspace_behavior_packages");
 		behavior_el.innerHTML = "";
 		behavior_pkg_cache.forEach((behavior_pkg) => {
-			var entry = createEntry(behavior_pkg);
+			let entry = createEntry(behavior_pkg);
 			behavior_el.appendChild(entry);
 		});
-		var state_el = document.getElementById("workspace_state_packages");
+		let state_el = document.getElementById("workspace_state_packages");
 		state_el.innerHTML = "";
 		state_pkg_cache.forEach((state_pkg) => {
-			var entry = createEntry(state_pkg);
+			let entry = createEntry(state_pkg);
 			state_el.appendChild(entry);
 		});
 	}
@@ -401,7 +400,7 @@ UI.Settings = new (function() {
 				const chosen_file = await chooseFile(files_result.folder_path, files_result.config_files);
 				if (chosen_file) {
 					console.log(`Attempting to load configuration from '${chosen_file}' ...`);
-					var json_dict = {};
+					let json_dict = {};
 					json_dict['folder_path'] = files_result.folder_path;
 					json_dict['file_name'] = chosen_file;
 					that.retrieveConfigurationSettings(json_dict);
@@ -427,7 +426,7 @@ UI.Settings = new (function() {
 				const chosen_file = await chooseFile(files_result.folder_path, files_result.config_files);
 				if (chosen_file) {
 					console.log(`Attempting to save configuration to '${chosen_file}' ...`);
-					var json_dict = {};
+					let json_dict = {};
 					json_dict['folder_path'] = files_result.folder_path;
 					json_dict['file_name'] = chosen_file;
 					json_dict['configuration'] = getConfiguration();
@@ -466,44 +465,52 @@ UI.Settings = new (function() {
 	//=========
 
 	this.collapseInfoClicked = function(evt) {
+		if (collapse_info === evt.target.checked) return;
 		collapse_info = evt.target.checked;
 		storeSettings();
 	}
 
 	this.collapseWarnClicked = function(evt) {
+		if (collapse_warn === evt.target.checked) return;
 		collapse_warn = evt.target.checked;
 		storeSettings();
 	}
 
 	this.collapseErrorClicked = function(evt) {
+		if (collapse_error === evt.target.checked) return;
 		collapse_error = evt.target.checked;
 		storeSettings();
 	}
 
 	this.collapseHintClicked = function(evt) {
+		if (collapse_hint === evt.target.checked) return;
 		collapse_hint = evt.target.checked;
 		storeSettings();
 	}
 
 	this.runtimeTimeoutChanged = function() {
+		if (runtime_timeout === document.getElementById("input_runtime_timeout").value) return;
 		runtime_timeout = document.getElementById("input_runtime_timeout").value;
 		RC.Controller.onboardTimeout = runtime_timeout;
 		storeSettings();
 	}
 
 	this.saveInSourceClicked = function(evt) {
+		if (save_in_source === evt.target.checked) return;
 		save_in_source = evt.target.checked;
 		console.log(`Save in source checkbox changed ${save_in_source}`);
 		storeSettings();
 	}
 
 	this.sourceCodeRootChanged = function() {
+		if (source_code_root === document.getElementById("input_source_code_root").value) return;
 		source_code_root = document.getElementById("input_source_code_root").value;
 		console.log(`Source code root changed ${source_code_root}`);
 		storeSettings();
 	}
 
 	this.stopBehaviorsClicked = function(evt) {
+		if (stop_behaviors = evt.target.checked) return;
 		stop_behaviors = evt.target.checked;
 		storeSettings();
 	}
@@ -522,31 +529,36 @@ UI.Settings = new (function() {
 	//======
 
 	this.defaultPackageChanged = function() {
-		var el = document.getElementById('select_default_package');
-		default_package = el.value;
+		let el = document.getElementById('select_default_package');
 		el.blur(); // lose focus on widget
+		if (el.value === default_package) return;
+		default_package = el.value;
 		storeSettings();
 	}
 
 	this.codeIndentationChanged = function() {
-		var el = document.getElementById('select_code_indentation');
+		let el = document.getElementById('select_code_indentation');
+		if (code_indentation === el.selectedIndex) return;
 		code_indentation = el.selectedIndex;
 		storeSettings();
 	}
 
 	this.encodingChanged = function() {
-		var el = document.getElementById('select_encoding');
+		let el = document.getElementById('select_encoding');
+		if (text_encoding === el.value) return;
 		text_encoding = el.value;
 		storeSettings();
 	}
 
 	this.explicitStatesClicked = function(evt) {
+		if (explicit_states === evt.target.checked) return;
 		explicit_states = evt.target.checked;
 		storeSettings();
 	}
 
 	this.editorCommandChanged = function() {
-		var el = document.getElementById('input_editor_command');
+		let el = document.getElementById('input_editor_command');
+		if (el.value === editor_command) return;
 		editor_command = el.value;
 		storeSettings();
 	}
@@ -556,7 +568,7 @@ UI.Settings = new (function() {
 	}
 
 	this.getCodeIndentation = function() {
-		var chars = ['\t', '  ', '    ', '        '];
+		let chars = ['\t', '  ', '    ', '        '];
 		return chars[code_indentation];
 	}
 
@@ -574,24 +586,29 @@ UI.Settings = new (function() {
 	//========
 
 	this.transitionEndpointsChanged = function() {
-		var el = document.getElementById('select_transition_mode');
+		let el = document.getElementById('select_transition_mode');
+		if (transition_mode === el.selectedIndex) return;
 		transition_mode = el.selectedIndex;
 		storeSettings();
 	}
 
 	this.gridsizeChanged = function() {
-		var el = document.getElementById('input_gridsize');
-		gridsize = parseInt(el.value);
+		let el = document.getElementById('input_gridsize');
+		let val = parseInt(el.value);
+		if (val === gridsize) return;
+		gridsize = val;
 		storeSettings();
 	}
 
 	this.commandsEnabledClicked = function(evt) {
+		if (commands_enabled === evt.target.checked) return;
 		commands_enabled = evt.target.checked;
 		storeSettings();
 	}
 
 	this.commandsKeyChanged = function() {
-		var el = document.getElementById('input_commands_key');
+		let el = document.getElementById('input_commands_key');
+		if (commands_key === el.value) return;
 		commands_key = el.value;
 		storeSettings();
 	}
@@ -627,8 +644,8 @@ UI.Settings = new (function() {
 			document.getElementById('label_editor_title').innerHTML = ns.slice(1,-1);
 		}
 		document.getElementById('ros_prop_namespace').value = ns;
-		var status_disp = document.getElementById('ros_prop_status');
-		var connect_button = document.getElementById('button_ros_connect');
+		let status_disp = document.getElementById('ros_prop_status');
+		let connect_button = document.getElementById('button_ros_connect');
 		if (RC.ROS.isOfflineMode()) {
 			status_disp.value = "Offline mode - no ROS connection.";
 			status_disp.style.color = "#900";
@@ -685,12 +702,13 @@ UI.Settings = new (function() {
 	//===========
 
 	// this.stateParserChanged = function() {
-	// 	var el = document.getElementById('select_state_parser');
+	// 	let el = document.getElementById('select_state_parser');
 	// 	state_parser = el.value;
 	// 	storeSettings();
 	// }
 
 	this.pkgCacheEnabledClicked = function(evt) {
+		if (pkg_cache_enabled === evt.target.checked) return;
 		pkg_cache_enabled = evt.target.checked;
 		storeSettings();
 	}
@@ -712,25 +730,29 @@ UI.Settings = new (function() {
 	//===========
 
 	this.synthesisEnabledClicked = function(evt) {
+		if (synthesis_enabled === evt.target.checked) return;
 		synthesis_enabled = evt.target.checked;
 		storeSettings();
 		updateSynthesisInterface();
 	}
 
 	this.synthesisTopicChanged = function() {
-		var el = document.getElementById('input_synthesis_topic');
+		let el = document.getElementById('input_synthesis_topic');
+		if (el.value === synthesis_topic) return;
 		synthesis_topic = el.value;
 		storeSettings();
 	}
 
 	this.synthesisTypeChanged = function() {
-		var el = document.getElementById('input_synthesis_type');
+		let el = document.getElementById('input_synthesis_type');
+		if (synthesis_type === el.value) return;
 		synthesis_type = el.value;
 		storeSettings();
 	}
 
 	this.synthesisSystemChanged = function() {
-		var el = document.getElementById('input_synthesis_system');
+		let el = document.getElementById('input_synthesis_system');
+		if (synthesis_system === el.value) return;
 		synthesis_system = el.value;
 		storeSettings();
 	}
@@ -770,15 +792,15 @@ UI.Settings = new (function() {
 			// Create modal elements
 			const modal = document.createElement('div');
 			modal.id = 'file-modal';
-			modal.className = 'modal';
+			modal.className = 'file-select-modal';
 			document.body.appendChild(modal);
 
 			const modalContent = document.createElement('div');
-			modalContent.className = 'modal-content';
+			modalContent.className = 'file-select-modal-content';
 			modal.appendChild(modalContent);
 
 			const closeSpan = document.createElement('span');
-			closeSpan.className = 'close';
+			closeSpan.className = 'file-select-close';
 			closeSpan.innerHTML = '&times;';
 			modalContent.appendChild(closeSpan);
 
@@ -819,20 +841,22 @@ UI.Settings = new (function() {
 			fileListDiv.id = 'file-list';
 			modalContent.appendChild(fileListDiv);
 
+			modalContent.appendChild(document.createElement('br')); // Line break
+
 			const selectFileButton = document.createElement('button');
-			selectFileButton.id = 'select-file-button';
+			selectFileButton.id = 'file-select-button';
 			selectFileButton.textContent = 'Select File';
 			modalContent.appendChild(selectFileButton);
 
 			const cancelButton = document.createElement('button');
-			cancelButton.id = 'cancel-button';
+			cancelButton.id = 'file-select-cancel-button';
 			cancelButton.textContent = 'Cancel';
 			modalContent.appendChild(cancelButton);
 
 			// Style for the modal (can be moved to a CSS file)
 			const style = document.createElement('style');
 			style.textContent = `
-				.modal {
+				.file-select-modal {
 					display: block;
 					position: fixed;
 					z-index: 1;
@@ -845,7 +869,7 @@ UI.Settings = new (function() {
 					background-color: rgba(0,0,0,0.4);
 					padding-top: 60px;
 				}
-				.modal-content {
+				.file-select-modal-content {
 					background-color: #fefefe;
 					margin: 5% auto;
 					padding: 20px;
@@ -853,14 +877,14 @@ UI.Settings = new (function() {
 					width: 80%;
 					max-width: 500px;
 				}
-				.close {
+				.file-select-close {
 					color: #aaa;
 					float: right;
 					font-size: 28px;
 					font-weight: bold;
 				}
-				.close:hover,
-				.close:focus {
+				.file-select-close:hover,
+				.file-select-close:focus {
 					color: black;
 					text-decoration: none;
 					cursor: pointer;
@@ -871,25 +895,25 @@ UI.Settings = new (function() {
 					margin-bottom: 5px;
 					font-weight: bold;
 				}
-				#folder-path-input,
-				#file-input {
+				#file-select-folder-path-input,
+				#file-select-file-input {
 					width: 100%;
 					padding: 10px;
 					margin-bottom: 20px;
 					border: 1px solid #ccc;
 					box-sizing: border-box;
 				}
-				#folder-path-input {
+				#file-select-folder-path-input {
 					background-color: #f0f0f0;
 					cursor: default;
 				}
-				#file-list {
+				#file-select--list {
 					display: flex;
 					flex-direction: column;
 					gap: 10px;
 					margin-bottom: 20px;
 				}
-				#file-list button {
+				#file-select-list button {
 					width: 100%;
 					padding: 10px;
 					text-align: left;
@@ -897,10 +921,10 @@ UI.Settings = new (function() {
 					background-color: #fff;
 					cursor: pointer;
 				}
-				#file-list button:hover {
+				#file-select-list button:hover {
 					background-color: #f0f0f0;
 				}
-				#select-file-button {
+				#file-select-button {
 					width: 50%;
 					padding: 10px;
 					background-color: #007bff;
@@ -908,10 +932,10 @@ UI.Settings = new (function() {
 					border: none;
 					cursor: pointer;
 				}
-				#select-file-button:hover {
+				#file-select-button:hover {
 					background-color: #0056b3;
 				}
-				#cancel-button {
+				#file-select-cancel-button {
 					width: 50%;
 					padding: 10px;
 					background-color: #ff0000;
@@ -919,7 +943,7 @@ UI.Settings = new (function() {
 					border: none;
 					cursor: pointer;
 				}
-				#cancel-button:hover {
+				#file-select-cancel-button:hover {
 					background-color: #0056b3;
 				}
 			`;
@@ -947,24 +971,150 @@ UI.Settings = new (function() {
 			};
 
 			cancelButton.onclick = () => {
+				document.getElementById("input_runtime_timeout").focus({preventScroll: true});
 				resolve(undefined);
 				modal.remove();
 			};
 
 			// Handle modal close
 			closeSpan.onclick = () => {
+				document.getElementById("input_runtime_timeout").focus({preventScroll: true});
 				resolve(undefined);
 				modal.remove();
 			};
 
 			// Handle click outside of modal
 			window.onclick = (event) => {
-				if (event.target == modal) {
+				if (event.target === modal) {
+					document.getElementById("input_runtime_timeout").focus({preventScroll: true});
 					resolve(undefined);
 					modal.remove();
 				}
 			};
+
+			// Capture all key presses and handle tabbing
+			modalContent.addEventListener('keydown', (event) => {
+				if (event.key === 'Tab') {
+					const focusableElements = modalContent.querySelectorAll('input, button, [tabindex]');
+					const focusArray = Array.prototype.slice.call(focusableElements);
+					const currentIndex = focusArray.indexOf(document.activeElement);
+					let nextIndex = 0;
+
+					if (event.shiftKey) {
+						nextIndex = (currentIndex === 0) ? focusArray.length - 1 : currentIndex - 1;
+					} else {
+						nextIndex = (currentIndex === focusArray.length - 1) ? 0 : currentIndex + 1;
+					}
+
+					focusArray[nextIndex].focus({preventScroll: true});
+					event.preventDefault();
+					event.stopPropagation();
+				} else if ((event.key === 'Enter' || event.key === ' ') && document.activeElement.tagName === 'BUTTON') {
+					// Handle Enter or Space key for button click
+					event.preventDefault();
+					event.stopPropagation();
+					document.activeElement.click();
+				}
+
+			});
+
+			// Set initial focus
+			fileInput.focus({preventScroll: true});
+
 		});
+	}
+
+	this.setupTabHandling = function() {
+		// Set focus on the main panel to capture key presses
+		document.getElementById("settings").focus({preventScroll: true});
+		tab_targets = updateTabTargets("settings");
+		// We do not set intial focus on runtime
+	}
+
+	this.removeTabHandling = function() {
+		tab_targets.length = 0;
+	}
+
+	var updateTabTargets = function(panel_id) {
+		let select_tags = 'input, select, button';
+
+		let panel = document.getElementById(panel_id);
+		let targets = Array.from(panel.querySelectorAll(select_tags));
+		targets = targets.filter(function(el) {
+			if (el.tabIndex === -1) return false;
+			if (el.id == '') return false;
+			let parentDiv = el.parentElement;
+			while (parentDiv) {
+				if (parentDiv.id == panel.id) {
+					return true;
+				}
+				parentDiv = parentDiv.parentElement;
+			}
+			return false; // never matched our panel id
+		});
+
+		targets.sort(function(a, b) {
+			if (a.tabIndex === b.tabIndex) {
+				// if tabIndex not set, then use DOCUMENT_POSITION_PRECEDING flag test (b proceeds a)
+				return a.compareDocumentPosition(b) & 2 ? 1 : -1;
+			}
+			return a.tabIndex - b.tabIndex;
+		});
+
+		return targets;
+	}
+
+	// Define the event listener function
+	this.handleKeyDown = function(event) {
+		if (event.key === "Tab") {
+			// RC is active so capture all the TABS
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+			if (tab_targets.length == 0) return;
+			let match = undefined;
+			let match_ndx = -1;
+			if (document.activeElement) {
+				for (let i = 0; i < tab_targets.length; i++) {
+					if (document.activeElement && (document.activeElement.id == tab_targets[i].id)) {
+						match = tab_targets[i];
+						match_ndx = i;
+						break;
+					}
+				}
+			}
+			if (match) {
+				let new_match_ndx = -1;
+				let new_match = undefined;
+				let try_match_ndx = match_ndx;
+				while (new_match != document.activeElement && new_match_ndx != match_ndx) {
+					// Handle hidden element (e.g. synthesis block on statemachine panel)
+					new_match_ndx = event.shiftKey
+										? (try_match_ndx - 1 + tab_targets.length) % tab_targets.length
+										: (try_match_ndx + 1) % tab_targets.length;
+					new_match = tab_targets[new_match_ndx];
+					new_match.focus({ preventScroll: true });
+					try_match_ndx = new_match_ndx; // Continue to look for next valid target
+				}
+			} else {
+				tab_targets[0].focus({ preventScroll: true }); // Move focus to the first displayed input
+			}
+		} else if (event.target.id === 'settings') {
+			// Settings is active so capture all keys
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+		}
+	}
+
+	this.handleKeyUp = function(event) {
+		if (event.key === "Tab") {
+			// Panel is active so capture all the TABS
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+		} else if (event.target.id === 'settings') {
+			// RC is active so capture all keys
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+		}
 	}
 
 }) ();

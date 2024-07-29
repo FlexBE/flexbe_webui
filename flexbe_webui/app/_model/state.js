@@ -187,6 +187,10 @@ const State = function(_state_name, state_def) {
 		if (behavior != undefined) {
 			behavior.setStateName(_state_name);
 		}
+		if (_state_name === state_name) {
+			// No change in state name - ignore to avoid spam!
+			return;
+		}
 		if (container != undefined && container.getStateByName(_state_name) != undefined) {
 			T.logWarn("Renaming state failed, name already in use!");
 			return;
@@ -498,7 +502,7 @@ const State = function(_state_name, state_def) {
 	}
 
 	this.toBaseJSON = function() {
-		var state_path = that.getStatePath();
+		let state_path = that.getStatePath();
 		return {
 			state_name: state_name,
 			state_class: state_class,

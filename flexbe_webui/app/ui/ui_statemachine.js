@@ -27,6 +27,8 @@ UI.Statemachine = new (function() {
 	var drawn_sms = [];
 	var grid = [];
 
+	var tab_targets = [];
+
 	Mousetrap.bind("shift", function() {
 		displayGrid();
 		background.attr({'cursor': 'move'});
@@ -44,7 +46,7 @@ UI.Statemachine = new (function() {
 			hideGrid();
 			drawings.forEach(function(entry) {
 				if (entry.obj instanceof State && entry.obj.getStateClass() == ':CONTAINER') return;
-				var d = entry.drawing;
+				let d = entry.drawing;
 				d.translate(-pan_shift.x, -pan_shift.y);
 			});
 			pan_shift = {x: 0, y: 0};
@@ -59,12 +61,12 @@ UI.Statemachine = new (function() {
 	}
 
 	var displayGrid = function() {
-		var gridsize = UI.Settings.getGridsize();
-		var offset = {x: UI.Statemachine.getPanShift().x % gridsize, y: UI.Statemachine.getPanShift().y % gridsize};
-		for (var i = offset.x; i < R.width; i += gridsize) {
+		let gridsize = UI.Settings.getGridsize();
+		let offset = {x: UI.Statemachine.getPanShift().x % gridsize, y: UI.Statemachine.getPanShift().y % gridsize};
+		for (let i = offset.x; i < R.width; i += gridsize) {
 			grid.push(R.path("M" + i + ",0L" + i + "," + R.height).attr({stroke: '#ddd'}));
 		}
-		for (var i = offset.y; i < R.height; i += gridsize) {
+		for (let i = offset.y; i < R.height; i += gridsize) {
 			grid.push(R.path("M0," + i + "L" + R.width + "," + i).attr({stroke: '#ddd'}));
 		}
 	}
@@ -86,15 +88,16 @@ UI.Statemachine = new (function() {
 			if (connecting) return;
 			selecting = true;
 
-			var mx = mouse_pos.attr("cx");
-			var my = mouse_pos.attr("cy");
+			let mx = mouse_pos.attr("cx");
+			let my = mouse_pos.attr("cy");
 
 			selection_area.attr({opacity: 1, x: mx, y: my, width: 0, height: 0}).toFront();
 		}
 	}
+
 	var updateSelection = function(dx, dy, x, y, event) {
 		if (panning) {
-			var shift = {x: x - pan_origin.x, y: y - pan_origin.y};
+			let shift = {x: x - pan_origin.x, y: y - pan_origin.y};
 			pan_shift.x += shift.x;
 			if (pan_shift.x > 0) {
 				pan_shift.x -= shift.x;
@@ -107,7 +110,7 @@ UI.Statemachine = new (function() {
 			}
 			drawings.forEach(function(el) {
 				if (el.obj instanceof State && el.obj.getStateClass() == ':CONTAINER') return;
-				var d = el.drawing;
+				let d = el.drawing;
 				d.translate(shift.x, shift.y);
 			});
 			pan_origin.x = x;
@@ -115,7 +118,7 @@ UI.Statemachine = new (function() {
 
 		}
 		if (selecting) {
-			var xoffset = 0, yoffset = 0;
+			let xoffset = 0, yoffset = 0;
 			if (dx < 0) {
 				xoffset = dx;
 				dx = -dx;
@@ -141,17 +144,20 @@ UI.Statemachine = new (function() {
 	}
 
 	var beginSelectionMove = function() {
+		console.log(`\x1b[91m Selection move is disabled for now - (beginSelectionMove)\x1b[0m`);
 		//selection_set = R.set();
 		//that.getSelectedStates().forEach(function (element) {
 		//	selection_set.push(that.getDrawnState(element));
 		//});
 	}
 	var updateSelectionMove = function(dx, dy, x, y, event) {
-		//var old_x = selection_set.attr("x");
-		//var old_y = selection_set.attr("y");
+		console.log(`\x1b[91m Selection move is disabled for now - (beginSelectionMove)\x1b[0m`);
+		//let old_x = selection_set.attr("x");
+		//let old_y = selection_set.attr("y");
 		//selection_set.attr({x: old_x + dx, y: old_y + dy});
 	}
 	var endSelectionMove = function() {
+		console.log(`\x1b[91m Selection move is disabled for now - (beginSelectionMove)\x1b[0m`);
 		//selection_set.forEach(function (element) {
 		//
 		//});
@@ -159,8 +165,8 @@ UI.Statemachine = new (function() {
 	}
 
 	var displayInitialDot = function() {
-		var dummyStateObj = new State("INIT", WS.Statelib.getFromLib(":INIT"));
-		var drawing = R.circle(10, 40, 5)
+		let dummyStateObj = new State("INIT", WS.Statelib.getFromLib(":INIT"));
+		let drawing = R.circle(10, 40, 5)
 				.attr({fill: '#000'})
 				.data("state", dummyStateObj)
 				.data("label", "")
@@ -186,8 +192,6 @@ UI.Statemachine = new (function() {
 	}
 
 	var initializeDrawingArea = function() {
-		console.log(`ui.SM initializeDrawingArea area`);
-
 		R = Raphael("drawing_area");
 		drag_indicator = R.rect(0,0,1,1).attr({opacity: 0});
 		selection_area = R.rect(0,0,0,0).attr({opacity: 0, stroke: "#000", 'stroke-dasharray': "--", fill: "rgba(250,250,250,0.4)", 'stroke-width': 0.5})
@@ -212,9 +216,8 @@ UI.Statemachine = new (function() {
 	}
 
 	this.recreateDrawingArea = function() {
-		console.log(`ui.SM recreateDrawing area`);
 		// clear
-		for (var i=0; i<drawings.length; ++i) {
+		for (let i=0; i<drawings.length; ++i) {
 			drawings[i].drawing.remove();
 		}
 		drawings = [];
@@ -308,7 +311,7 @@ UI.Statemachine = new (function() {
 	this.applyLayeredGraphLayout = function() {
 		that.refreshView();
 
-		var g = new dagre.graphlib.Graph();
+		let g = new dagre.graphlib.Graph();
 
 		// Set an object for the graph label
 		g.setGraph({rankdir: 'LR'});
@@ -316,7 +319,7 @@ UI.Statemachine = new (function() {
 		// Default to assigning a new object as a label for each new edge.
 		g.setDefaultEdgeLabel(function() { return {}; });
 
-		var node_drawings = drawings.filter(function(element) {
+		let node_drawings = drawings.filter(function(element) {
 			return (
 				element.obj instanceof State
 				|| element.obj instanceof Statemachine
@@ -328,20 +331,20 @@ UI.Statemachine = new (function() {
 			);
 		});
 		if (node_drawings.length == 0) return;
-		var transitions = displayed_sm.getTransitions();
+		let transitions = displayed_sm.getTransitions();
 
 		// generate node array
-		var nodes = [];
-		for (var i=0; i<node_drawings.length; i++) {
-			var n = node_drawings[i].drawing.getBBox();
+		let nodes = [];
+		for (let i=0; i<node_drawings.length; i++) {
+			let n = node_drawings[i].drawing.getBBox();
 			g.setNode(node_drawings[i].obj.getStateName(), {width: n.width, height: n.height});
 			//nodes.push({x: n.x + n.width/2, y: n.y + n.height/2, fixed: false});
 		}
 
 		// generate link array
-		var links = [];
-		for (var i=0; i<transitions.length; i++) {
-			var t = transitions[i];
+		let links = [];
+		for (let i=0; i<transitions.length; i++) {
+			let t = transitions[i];
 			if (t.getFrom().getStateName() == "INIT") continue;
 			g.setEdge(t.getFrom().getStateName(), t.getTo().getStateName());
 		}
@@ -349,7 +352,7 @@ UI.Statemachine = new (function() {
 
 		// update state positions
 		g.nodes().forEach(function (n){
-			var state = node_drawings.findElement(function (element) {
+			let state = node_drawings.findElement(function (element) {
 				return n == element.obj.getStateName();
 			}).obj;
 			state.setPosition({x: g.node(n).x, y: g.node(n).y});
@@ -357,7 +360,7 @@ UI.Statemachine = new (function() {
 
 		//update transition positions
 		g.edges().forEach( function(e){
-			var t = transitions.filter(function(element) {
+			let t = transitions.filter(function(element) {
 				return (element.getTo().getStateName() == e.w && element.getFrom().getStateName() == e.v);
 			});
 			t = t[0];
@@ -369,7 +372,7 @@ UI.Statemachine = new (function() {
 	this.applyGraphLayout = function() {
 		that.refreshView();
 
-		var node_drawings = drawings.filter(function(element) {
+		let node_drawings = drawings.filter(function(element) {
 			return (
 				element.obj instanceof State
 				|| element.obj instanceof Statemachine
@@ -381,39 +384,39 @@ UI.Statemachine = new (function() {
 			);
 		});
 		if (node_drawings.length == 0) return;
-		var transitions = displayed_sm.getTransitions();
+		let transitions = displayed_sm.getTransitions();
 
 		// generate node array
-		var nodes = [];
-		for (var i=0; i<node_drawings.length; i++) {
-			var n = node_drawings[i].drawing.getBBox();
+		let nodes = [];
+		for (let i=0; i<node_drawings.length; i++) {
+			let n = node_drawings[i].drawing.getBBox();
 			nodes.push({x: n.x + n.width/2, y: n.y + n.height/2, fixed: false});
 		}
 		nodes.push({x: 10, y: 40, fixed: true});
 
 		// generate link array
-		var links = [];
-		for (var i=0; i<transitions.length; i++) {
-			var t = transitions[i];
+		let links = [];
+		for (let i=0; i<transitions.length; i++) {
+			let t = transitions[i];
 			if (t.getFrom().getStateName() == "INIT") continue;
-			var from = node_drawings.indexOf(node_drawings.findElement(function (element) {
+			let from = node_drawings.indexOf(node_drawings.findElement(function (element) {
 				return t.getFrom().getStateName() == element.obj.getStateName();
 			}));
-			var to = node_drawings.indexOf(node_drawings.findElement(function (element) {
+			let to = node_drawings.indexOf(node_drawings.findElement(function (element) {
 				return t.getTo().getStateName() == element.obj.getStateName();
 			}));
 			links.push({source: from, target: to});
 		}
 		if (displayed_sm.getInitialState() != undefined) {
-			var from_init = node_drawings.length;
-			var to_init = node_drawings.indexOf(node_drawings.findElement(function (element) {
+			let from_init = node_drawings.length;
+			let to_init = node_drawings.indexOf(node_drawings.findElement(function (element) {
 				return displayed_sm.getInitialState().getStateName() == element.obj.getStateName();
 			}));
 			links.push({source: from_init, target: to_init});
 		}
 
 		// apply layout algorithm
-		/*var force = d3.layout.force()
+		/*let force = d3.layout.force()
 			.nodes(nodes)
 			.links(links)
 			.size([R.width, R.height])
@@ -423,7 +426,7 @@ UI.Statemachine = new (function() {
 			.gravity(0.05)
 			.charge(-100)
 			.linkStrength(1);*/
-		var force = cola.d3adaptor()
+		let force = cola.d3adaptor()
 			.nodes(nodes)
 			.links(links)
 			.linkDistance (function(link, i) {
@@ -432,15 +435,15 @@ UI.Statemachine = new (function() {
 			.size([R.width, R.height]);
 
 		force.start();
-		for (var i = 0; i < 20; ++i) force.tick();
+		for (let i = 0; i < 20; ++i) force.tick();
 		force.stop();
 
 		// update state positions
 		nodes = force.nodes();
-		for (var i=0; i<node_drawings.length; i++) {
-			var s = node_drawings[i].obj;
-			var temp_x;
-			var temp_y;
+		for (let i=0; i<node_drawings.length; i++) {
+			let s = node_drawings[i].obj;
+			let temp_x;
+			let temp_y;
 
 			if (nodes[i].x < 0) temp_x = 0;
 			else if (nodes[i].x > R.width) temp_x = R.width;
@@ -457,11 +460,11 @@ UI.Statemachine = new (function() {
 	this.fireEvent = function (element,event) {
 		if (document.createEventObject) {
 			// dispatch for IE
-			var evt = document.createEventObject();
+			let evt = document.createEventObject();
 			return element.fireEvent('on'+event,evt)
 		} else {
 			// dispatch for firefox + others
-			var evt = document.createEvent("HTMLEvents");
+			let evt = document.createEvent("HTMLEvents");
 			evt.initEvent(event, true, true); // event type,bubbling,cancelable
 			return !element.dispatchEvent(evt);
 		}
@@ -478,7 +481,7 @@ UI.Statemachine = new (function() {
 		}
 
 		// clear
-		for (var i=0; i<drawings.length; ++i) {
+		for (let i=0; i<drawings.length; ++i) {
 			drawings[i].drawing.remove();
 		}
 		drawings = [];
@@ -489,11 +492,6 @@ UI.Statemachine = new (function() {
 		if (!displayed_sm){
 			// This gets triggered by resize call prior to statemachine setup
 			console.log(`\x1b[91m ui.SM.refreshView - displayed_sm is undefined!\x1b[0m`);
-			// try {
-			// 	throw new Error('just get calling functions');
-			// } catch (e) {
-			// 	console.log(e.stack);
-			// }
 			return;
 		}
 
@@ -502,15 +500,15 @@ UI.Statemachine = new (function() {
 		}
 
 		// get statemachine data
-		var states = displayed_sm.getStates();
-		var sm_outcomes = displayed_sm.getSMOutcomes();
-		var transitions = displayed_sm.getTransitions();
-		var dataflow = displayed_sm.getDataflow();
+		let states = displayed_sm.getStates();
+		let sm_outcomes = displayed_sm.getSMOutcomes();
+		let transitions = displayed_sm.getTransitions();
+		let dataflow = displayed_sm.getDataflow();
 
-		for (var i=0; i<states.length; ++i) {
-			var s = states[i];
-			var a = RC.Controller.isRunning() && RC.Controller.isCurrentState(s, true);
-			var l = RC.Controller.isLocked() && RC.Controller.isOnLockedPath(s.getStatePath());
+		for (let i=0; i<states.length; ++i) {
+			let s = states[i];
+			let a = RC.Controller.isRunning() && RC.Controller.isCurrentState(s, true);
+			let l = RC.Controller.isLocked() && RC.Controller.isOnLockedPath(s.getStatePath());
 			if (s instanceof Statemachine)
 				drawings.push(new Drawable.Statemachine(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
 			else if (s instanceof BehaviorState)
@@ -518,21 +516,21 @@ UI.Statemachine = new (function() {
 			else
 				drawings.push(new Drawable.State(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
 		}
-		for (var i=0; i<sm_outcomes.length; ++i) {
+		for (let i=0; i<sm_outcomes.length; ++i) {
 			o = sm_outcomes[i];
-			var obj = new Drawable.Outcome(o, R, false, !outcomes_displayed);
+			let obj = new Drawable.Outcome(o, R, false, !outcomes_displayed);
 			drawings.push(obj);
 		}
 
 		// draw transitions at last
-		var transitions_readonly = RC.Controller.isReadonly() || dataflow_displayed || displayed_sm.isInsideDifferentBehavior() || Behavior.isReadonly();
-		var new_transitions = [];
-		for (var i=0; i<transitions.length; ++i) {
-			var t = transitions[i];
+		let transitions_readonly = RC.Controller.isReadonly() || dataflow_displayed || displayed_sm.isInsideDifferentBehavior() || Behavior.isReadonly();
+		let new_transitions = [];
+		for (let i=0; i<transitions.length; ++i) {
+			let t = transitions[i];
 			if (t.getTo() == undefined) continue;
 			if (drag_transition != undefined && t.getFrom().getStateName() == drag_transition.getFrom().getStateName() && t.getOutcome() == drag_transition.getOutcome()) continue;
-			var draw_outline = dataflow_displayed || !outcomes_displayed && (t.getTo().getStateClass() == ":OUTCOME" || t.getTo().getStateClass() == ":CONDITION")
-			var dt = new Drawable.Transition(t, R, transitions_readonly, drawings, false, draw_outline, Drawable.Transition.PATH_CURVE);
+			let draw_outline = dataflow_displayed || !outcomes_displayed && (t.getTo().getStateClass() == ":OUTCOME" || t.getTo().getStateClass() == ":CONDITION")
+			let dt = new Drawable.Transition(t, R, transitions_readonly, drawings, false, draw_outline, Drawable.Transition.PATH_CURVE);
 			if (t.getBeginning() != undefined){
 				Drawable.Helper.endPointClick(dt.drawing[2][0], dt.drawing[2][0].data("corners"));
 				t.setBeginning({
@@ -558,13 +556,13 @@ UI.Statemachine = new (function() {
 			drawings.push(dt);
 		}
 
-		var new_transitions = [];
+		new_transitions = [];
 		if (dataflow_displayed) {
-			for (var i=0; i<dataflow.length; ++i) {
-				var d = dataflow[i];
-				var color = '#000';
+			for (let i=0; i<dataflow.length; ++i) {
+				let d = dataflow[i];
+				let color = '#000';
 				if (d.getFrom().getStateName() == "INIT" && !displayed_sm.isInsideDifferentBehavior()) {
-					var available_userdata = (displayed_sm == Behavior.getStatemachine())?
+					let available_userdata = (displayed_sm == Behavior.getStatemachine())?
 						Behavior.getDefaultUserdata().map(function(obj) { return obj.key; }) :
 						displayed_sm.getInputKeys();
 					if (!available_userdata.contains(d.getOutcome())) {
@@ -574,7 +572,7 @@ UI.Statemachine = new (function() {
 						d.setAutonomy(0);
 					}
 				}
-				var dt = new Drawable.Transition(d, R, true, drawings, false, false, Drawable.Transition.PATH_STRAIGHT, color);
+				let dt = new Drawable.Transition(d, R, true, drawings, false, false, Drawable.Transition.PATH_STRAIGHT, color);
 				new_transitions.forEach(function(ot) {
 					if (dt.obj.getFrom().getStateName() == ot.obj.getFrom().getStateName() && dt.obj.getTo().getStateName() == ot.obj.getTo().getStateName()) {
 						dt.merge(ot);
@@ -587,9 +585,9 @@ UI.Statemachine = new (function() {
 
 		// draw comment notes
 		if (comments_displayed) {
-			var notes = Behavior.getCommentNotes().filter(function(n) { return n.getContainerPath() == displayed_sm.getStatePath(); });
-			for (var i = 0; i < notes.length; i++) {
-				var n = new Drawable.Note(notes[i], R);
+			let notes = Behavior.getCommentNotes().filter(function(n) { return n.getContainerPath() == displayed_sm.getStatePath(); });
+			for (let i = 0; i < notes.length; i++) {
+				let n = new Drawable.Note(notes[i], R);
 				drawings.push(n);
 				if (notes[i].getContent() == "") n.editNote();
 			}
@@ -609,24 +607,24 @@ UI.Statemachine = new (function() {
 
 		// update menu button toggle state
 		if (UI.Menu.isPageStatemachine()) {
-			var dfgButton = document.getElementById("tool_button Data Flow Graph");
+			let dfgButton = document.getElementById("tool_button Data Flow Graph");
 			dfgButton.setAttribute("style", dataflow_displayed? "background: #ccc" : "");
-			var hocButton = document.getElementById("tool_button Fade Outcomes");
+			let hocButton = document.getElementById("tool_button Fade Outcomes");
 			hocButton.setAttribute("style", !outcomes_displayed? "background: #ccc" : "");
-			var hcButton = document.getElementById("tool_button Hide Comments");
+			let hcButton = document.getElementById("tool_button Hide Comments");
 			hcButton.setAttribute("style", !comments_displayed? "background: #ccc" : "");
 		}
 		// apply current pan shift
 		drawings.forEach(function(entry) {
 			if (entry.obj instanceof State && entry.obj.getStateClass() == ':CONTAINER') return;
-			var d = entry.drawing;
+			let d = entry.drawing;
 			d.translate(pan_shift.x, pan_shift.y);
 			d.mousemove(updateMousePos);
 		});
 	}
 
 	this.getDrawnState = function(state) {
-		for (var i=0; i<drawings.length; ++i) {
+		for (let i=0; i<drawings.length; ++i) {
 			if(drawings[i].obj.getStateName() == state.getStateName()) {
 				return drawings[i].drawing;
 			}
@@ -637,8 +635,8 @@ UI.Statemachine = new (function() {
 		if (connecting) return;
 		that.removeSelection();
 
-		var autonomy = 0;
-		var autonomy_index = state.getOutcomes().indexOf(label);
+		let autonomy = 0;
+		let autonomy_index = state.getOutcomes().indexOf(label);
 		if (autonomy_index != -1)
 			autonomy = state.getAutonomy()[autonomy_index];
 
@@ -674,7 +672,7 @@ UI.Statemachine = new (function() {
 		if (drag_transition == displayed_sm.getInitialTransition()) {
 			displayed_sm.setInitialState(displayed_sm.getStateByName(previous_transition_end));
 		} else if (previous_transition_end != undefined) {
-			var old_to = displayed_sm.getStateByName(previous_transition_end);
+			let old_to = displayed_sm.getStateByName(previous_transition_end);
 			if (old_to == undefined) {
 				old_to = displayed_sm.getSMOutcomeByName(previous_transition_end);
 			}
@@ -709,12 +707,12 @@ UI.Statemachine = new (function() {
 			return;
 		}
 
-		var is_initial = drag_transition == displayed_sm.getInitialTransition();
-		var from = drag_transition.getFrom().getStateName();
-		var to = previous_transition_end;
-		var outcome = drag_transition.getOutcome();
-		var autonomy = drag_transition.getAutonomy();
-		var container_path = displayed_sm.getStatePath();
+		let is_initial = drag_transition == displayed_sm.getInitialTransition();
+		let from = drag_transition.getFrom().getStateName();
+		let to = previous_transition_end;
+		let outcome = drag_transition.getOutcome();
+		let autonomy = drag_transition.getAutonomy();
+		let container_path = displayed_sm.getStatePath();
 
 		if (!is_initial) {
 			displayed_sm.removeTransitionObject(drag_transition);
@@ -730,8 +728,8 @@ UI.Statemachine = new (function() {
 			"Unset initial state"
 			: "Removed transition from " + from + " to " + to.split('#')[0] + " on outcome " + outcome + ".",
 			function() {
-				var container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
-				var target = container.getStateByName(to);
+				let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
+				let target = container.getStateByName(to);
 				if (target == undefined && container.getOutcomes().contains(to.split('#')[0])) target = container.getSMOutcomeByName(to);
 				if (is_initial) {
 					container.setInitialState(target);
@@ -741,13 +739,13 @@ UI.Statemachine = new (function() {
 				UI.Statemachine.refreshView();
 			},
 			function() {
-				var container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
-				var target = container.getStateByName(to);
+				let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
+				let target = container.getStateByName(to);
 				if (target == undefined && container.getOutcomes().contains(to.split('#')[0])) target = container.getSMOutcomeByName(to);
 				if (is_initial) {
 					container.setInitialState(undefined);
 				} else {
-					var transition = container.getTransitions().findElement(function(trans) {
+					let transition = container.getTransitions().findElement(function(trans) {
 						return trans.getFrom().getStateName() == from && trans.getOutcome() == outcome;
 					});
 					if (transition != undefined) {
@@ -770,14 +768,14 @@ UI.Statemachine = new (function() {
 			&& drag_transition.getFrom().getStateName() != "INIT")
 			return;
 
-		var is_initial = drag_transition == displayed_sm.getInitialTransition();
-		var has_transition = displayed_sm.hasTransition(drag_transition);
-		var undo_end = previous_transition_end;
-		var redo_end = state.getStateName();
-		var from = drag_transition.getFrom().getStateName();
-		var outcome = drag_transition.getOutcome();
-		var autonomy = drag_transition.getAutonomy();
-		var container_path = displayed_sm.getStatePath();
+		let is_initial = drag_transition == displayed_sm.getInitialTransition();
+		let has_transition = displayed_sm.hasTransition(drag_transition);
+		let undo_end = previous_transition_end;
+		let redo_end = state.getStateName();
+		let from = drag_transition.getFrom().getStateName();
+		let outcome = drag_transition.getOutcome();
+		let autonomy = drag_transition.getAutonomy();
+		let container_path = displayed_sm.getStatePath();
 
 		if (undo_end == redo_end) {
 			that.abortTransition();
@@ -809,13 +807,13 @@ UI.Statemachine = new (function() {
 			"Set initial state to " + state.getStateName()
 			: "Connected outcome " + outcome + " of " + from + " with " + state.getStateName().split('#')[0],
 			function() {
-				var container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
-				var target = container.getStateByName(undo_end);
+				let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
+				let target = container.getStateByName(undo_end);
 				if (target == undefined && container.getOutcomes().contains(undo_end)) target = container.getSMOutcomeByName(undo_end);
 				if (is_initial) {
 					container.setInitialState(target);
 				} else {
-					var transition = container.getTransitions().findElement(function(trans) {
+					let transition = container.getTransitions().findElement(function(trans) {
 						return trans.getFrom().getStateName() == from && trans.getOutcome() == outcome;
 					});
 					if (target != undefined) {
@@ -828,13 +826,13 @@ UI.Statemachine = new (function() {
 				UI.Statemachine.refreshView();
 			},
 			function() {
-				var container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
-				var target = container.getStateByName(redo_end);
+				let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
+				let target = container.getStateByName(redo_end);
 				if (target == undefined && container.getOutcomes().contains(redo_end.split('#')[0])) target = container.getSMOutcomeByName(redo_end);
 				if (is_initial) {
 					container.setInitialState(target);
 				} else {
-					var transition = container.getTransitions().findElement(function(trans) {
+					let transition = container.getTransitions().findElement(function(trans) {
 						return trans.getFrom().getStateName() == from && trans.getOutcome() == outcome;
 					});
 					if (transition != undefined) {
@@ -853,12 +851,12 @@ UI.Statemachine = new (function() {
 	this.getSelectedStates = function() {
 		if (selection_area.attr("opacity") == 0) return [];
 
-		var states = displayed_sm.getStates().map(function(element) {
+		let states = displayed_sm.getStates().map(function(element) {
 			return {obj: element, drawing: that.getDrawnState(element)};
 		});
 
-		var drawings = states.filter(function(element) {
-			var b = element.drawing.getBBox();
+		let drawings = states.filter(function(element) {
+			let b = element.drawing.getBBox();
 			return selection_area.isPointInside(b.x, b.y)
 				&& selection_area.isPointInside(b.x, b.y + b.height)
 				&& selection_area.isPointInside(b.x + b.width, b.y)
@@ -871,12 +869,12 @@ UI.Statemachine = new (function() {
 	}
 
 	this.getSelectedStatesAndTransitions = function() {
-		var selected_states = that.getSelectedStates();
+		let selected_states = that.getSelectedStates();
 
-		var selected_transitions = displayed_sm.getTransitions().filter(function(t) {
+		let selected_transitions = displayed_sm.getTransitions().filter(function(t) {
 			if (t.getFrom().getStateName() == "INIT") return false;
-			var from_state = selected_states.findElement(function (element) { return element.getStateName() == t.getFrom().getStateName() });
-			var to_state = selected_states.findElement(function (element) { return element.getStateName() == t.getTo().getStateName() });
+			let from_state = selected_states.findElement(function (element) { return element.getStateName() == t.getFrom().getStateName() });
+			let to_state = selected_states.findElement(function (element) { return element.getStateName() == t.getTo().getStateName() });
 			return from_state != undefined && to_state != undefined;
 		});
 
@@ -884,9 +882,9 @@ UI.Statemachine = new (function() {
 	}
 
 	this.updateMergedTransitions = function(transition){
-		var transitions = displayed_sm.getTransitions();
-		for (var i=0; i<transitions.length; ++i) {
-			var t = transitions[i];
+		let transitions = displayed_sm.getTransitions();
+		for (let i=0; i<transitions.length; ++i) {
+			let t = transitions[i];
 			if (t.getTo() == undefined) continue;
 
 			if (transition.getFrom().getStateName() == t.getFrom().getStateName() && transition.getTo().getStateName() == t.getTo().getStateName()) {
@@ -900,20 +898,17 @@ UI.Statemachine = new (function() {
 
 	//shifts transition positions proportionately when moving states
 	this.shiftTransitions = function(state, old_pos){
-		console.log('UI.StateMachine  shiftTransitions');
-		var transitions = displayed_sm.getTransitions();
-		var otherX;
-		var otherY;
-		var width;
-		var height;
-		var old = [];
-		//console.log(JSON.stringify(transitions));
+		let transitions = displayed_sm.getTransitions();
+		let otherX;
+		let otherY;
+		let width;
+		let height;
+		let old = [];
 
-		for (var i=0; i<transitions.length; ++i) {
-			var t = transitions[i];
-			console.log(t.getOutcome());
-			var xShift = 0;
-			var yShift = 0;
+		for (let i=0; i<transitions.length; ++i) {
+			let t = transitions[i];
+			let xShift = 0;
+			let yShift = 0;
 			if (t.getTo() == undefined || t.getFrom() == undefined)
 				continue;
 
@@ -956,7 +951,6 @@ UI.Statemachine = new (function() {
 					yShift = Math.abs(t.getY()-otherY)/height * (state.getPosition().y-old_pos.y);
 				}
 
-				//console.log([state.getPosition().x, state.getPosition().y, old_pos.x, old_pos.y, otherX, otherY, width, height, xShift, yShift]);
 				if(t.getX() > old_pos.x && t.getX() > otherX && state.getPosition().x >= old_pos.x){
 					xShift = 0;
 				}
@@ -969,22 +963,32 @@ UI.Statemachine = new (function() {
 				else if (t.getY() < old_pos.y && t.getY() < otherY && state.getPosition().y <= old_pos.y){
 					yShift = 0;
 				}
-				t.setX(t.getX()+xShift);
-				t.setY(t.getY()+yShift);
+				let xNew = t.getX() + xShift;
+				let yNew = t.getY() + yShift;
+				if (xNew < 10) {
+					console.log(`\x1b[91m  ${state.getStateName()} - shift transition '${t.getOutcome()}' : limit x label position (${xNew}, ${yNew})\x1b[0m`);
+					xNew = 10;
+				}
+				if (yNew < 10) {
+					console.log(`\x1b[91m  ${state.getStateName()} - shift transition '${t.getOutcome()}' : limit y label position (${xNew}, ${yNew})\x1b[0m`);
+					yNew = 10;
+				}
+
+				t.setX(xNew);
+				t.setY(yNew);
 			}
 
 			if(Object.keys(temp_dict).length > 1){
 				old.push(temp_dict);
 			}
 		}
-		//console.log(old);
 		return old;
 
 	}
 
 	this.undoShiftTransitions = function(transitions){
-		for (var i=0; i<transitions.length; ++i) {
-			var temp = transitions[i];
+		for (let i=0; i<transitions.length; ++i) {
+			let temp = transitions[i];
 			if("x" in temp){
 				temp.t.setX(temp.x);
 				temp.t.setY(temp.y);
@@ -1004,4 +1008,36 @@ UI.Statemachine = new (function() {
 		}
 	}
 
+	this.setupTabHandling = function() {
+		// Set focus on the main panel to capture key presses
+		document.getElementById("statemachine").focus({preventScroll: true});
+	}
+
+
+	// Define the event listener function
+	this.handleKeyDown = function(event) {
+		if (event.key === "Tab") {
+			// RC is active so capture all the TABS
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+			UI.Panels.setFocus();
+			UI.Panels.handleKeyDown(event);
+		} else if (event.target.id === 'statemachine') {
+			// SM view is active so capture all keys
+			event.preventDefault(); // Prevent the default action
+		}
+	}
+
+	this.handleKeyUp = function(event) {
+		if (event.key === "Tab") {
+			// Statemachine editor is active so capture all the TABS
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+		}
+		// else if (event.target.id === 'statemachine') {
+		// 	// SM view is active so capture all keys
+		// 	console.log(`\x1b[93mStatemachine view saw keyup for other keys '${event.key}' ('${event.target.id}') - no preventDefault but allow propagation!\x1b[0m`);
+		// 	//event.preventDefault(); // Prevent the default action
+		// }
+	}
 }) ();

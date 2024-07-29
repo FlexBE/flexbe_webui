@@ -15,7 +15,7 @@
 """Manifest generator."""
 
 import re
-# from .base_models import *
+from flexbe_webui.tools import break_long_line
 
 
 class ManifestGenerator:
@@ -43,7 +43,9 @@ class ManifestGenerator:
         content += self.ws + '<date>' + date + '</date>\n'
         content += self.ws + '<description>\n'
         for line in desc.split('\n'):
-            content += self.ws + self.ws + line.strip() + '\n'
+            split_lines = break_long_line(line)
+            for line2 in split_lines:
+                content += self.ws + self.ws + line2.rstrip() + '\n'
         content += self.ws + '</description>\n'
         content += '\n'
 

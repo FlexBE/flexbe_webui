@@ -104,7 +104,7 @@ const Behavior = new (function() {
 		private_variables = _private_variables;
 	}
 	this.updatePrivateVariables = function(old_key, new_key, new_value) {
-		for (var i = private_variables.length - 1; i >= 0; i--) {
+		for (let i = private_variables.length - 1; i >= 0; i--) {
 			if (private_variables[i].key == old_key) {
 				private_variables[i].key = new_key;
 				private_variables[i].value = new_value;
@@ -119,7 +119,7 @@ const Behavior = new (function() {
 		default_userdata = _default_userdata;
 	}
 	this.updateDefaultUserdata = function(old_key, new_key, new_value) {
-		for (var i = default_userdata.length - 1; i >= 0; i--) {
+		for (let i = default_userdata.length - 1; i >= 0; i--) {
 			if (default_userdata[i].key == old_key) {
 				default_userdata[i].key = new_key;
 				default_userdata[i].value = new_value;
@@ -134,7 +134,7 @@ const Behavior = new (function() {
 		private_functions = _private_functions;
 	}
 	this.updatePrivateFunctions = function(old_name, new_name, new_params) {
-		for (var i = private_functions.length - 1; i >= 0; i--) {
+		for (let i = private_functions.length - 1; i >= 0; i--) {
 			if (private_functions[i].name == old_name) {
 				private_functions[i].name = new_name;
 				private_functions[i].params = new_params;
@@ -149,7 +149,7 @@ const Behavior = new (function() {
 		behavior_parameters = _behavior_parameters;
 	}
 	this.updateBehaviorParameter = function(old_name, new_value, key) {
-		for (var i = behavior_parameters.length - 1; i >= 0; i--) {
+		for (let i = behavior_parameters.length - 1; i >= 0; i--) {
 			if (behavior_parameters[i].name == old_name) {
 				if (key == "name")
 					behavior_parameters[i].name = new_value;
@@ -167,7 +167,7 @@ const Behavior = new (function() {
 		};
 	}
 	this.removeBehaviorParameter = function(target_name) {
-		var to_remove = behavior_parameters.findElement(function(element) {
+		let to_remove = behavior_parameters.findElement(function(element) {
 			return element.name == target_name;
 		});
 		behavior_parameters.remove(to_remove);
@@ -187,7 +187,7 @@ const Behavior = new (function() {
 		root_sm.removeOutcome(to_remove);
 	}
 	this.updateInterfaceOutcome = function(old_value, new_value) {
-		for (var i = interface_outcomes.length - 1; i >= 0; i--) {
+		for (let i = interface_outcomes.length - 1; i >= 0; i--) {
 			if (interface_outcomes[i] == old_value) {
 				interface_outcomes[i] = new_value;
 
@@ -212,7 +212,7 @@ const Behavior = new (function() {
 		root_sm.setInputKeys(interface_input_keys);
 	}
 	this.updateInterfaceInputKeys = function(old_value, new_value) {
-		for (var i = interface_input_keys.length - 1; i >= 0; i--) {
+		for (let i = interface_input_keys.length - 1; i >= 0; i--) {
 			if (interface_input_keys[i] == old_value) {
 				interface_input_keys[i] = new_value;
 				root_sm.getInputKeys().remove(old_value);
@@ -237,7 +237,7 @@ const Behavior = new (function() {
 		root_sm.setOutputKeys(interface_output_keys);
 	}
 	this.updateInterfaceOutputKeys = function(old_value, new_value) {
-		for (var i = interface_output_keys.length - 1; i >= 0; i--) {
+		for (let i = interface_output_keys.length - 1; i >= 0; i--) {
 			if (interface_output_keys[i] == old_value)
 				interface_output_keys[i] = new_value;
 				root_sm.getOutputKeys().remove(old_value);
@@ -347,7 +347,7 @@ const Behavior = new (function() {
 	}
 
 	this.createNames = function() {
-		var result = {
+		let result = {
 			behavior_name: '',
 			rosnode_name: '',
 			class_name: '',
@@ -367,15 +367,14 @@ const Behavior = new (function() {
 	}
 
 	this.createStructureInfo = function() {
-		var result = [];
+		let result = [];
 
 		createStateStructure(root_sm, result);
-
 		return result;
 	}
 
 	var createStateStructure = function(s, info) {
-		var result = {};
+		let result = {};
 		result.path = s.getStatePath();
 		result.state_id = -1;  // not calculated or used in UI (@TODO - later)
 		result.outcomes = s.getOutcomes();
@@ -394,12 +393,12 @@ const Behavior = new (function() {
 				}
 
 				result.autonomy = s.getAutonomy();
-				var transitions = s.getContainer().getTransitions();
-				for (var i=0; i<result.outcomes.length; i++) {
-					var transition = transitions.findElement(function(element) {
+				let transitions = s.getContainer().getTransitions();
+				for (let i=0; i<result.outcomes.length; i++) {
+					let transition = transitions.findElement(function(element) {
 						return element.getFrom().getStateName() == s.getStateName() && element.getOutcome() == result.outcomes[i];
 					});
-					var target_name = transition.getTo().getStateName();
+					let target_name = transition.getTo().getStateName();
 					if (s.getContainer().isConcurrent() && transition.getTo().getStateClass() == ':CONDITION') {
 						target_name = target_name.split('#')[0];
 					}
@@ -413,7 +412,7 @@ const Behavior = new (function() {
 				s = s.getBehaviorStatemachine();
 			}
 			if (s instanceof Statemachine) {
-				var children = s.getStates();
+				let children = s.getStates();
 				for (let c=0; c<children.length; c++) {
 					let child = children[c];
 					result.children.push(child.getStateName());
@@ -436,7 +435,7 @@ const Behavior = new (function() {
 			author: author,
 			creation_date: creation_date,
 			private_variables: private_variables,		// {key, value}
-			default_userdata: default_userdata,		// {key, value}
+			default_userdata: default_userdata,			// {key, value}
 			private_functions: private_functions,		// {name, params}
 			behavior_parameters: behavior_parameters,	// {type, name, default, label, hint, additional}
 			interface_outcomes: interface_outcomes,

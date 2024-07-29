@@ -584,4 +584,28 @@ Tools = new (function() {
 		new_window.document.close();
 
 	}
+
+	this.validateUniqueIDs = function() {
+		let elements = document.querySelectorAll('[id]');
+		let ids = new Set();
+		let duplicates = [];
+
+		elements.forEach(element => {
+			let id = element.id;
+			if (ids.has(id)) {
+				duplicates.push(id);
+			} else {
+				ids.add(id);
+			}
+		});
+
+		console.log(`\x1b[93m  Checked ${elements.length} and found ${duplicates.length} duplicates!\x1b[0m`);
+		if (duplicates.length > 0) {
+			console.log("Duplicate IDs found:", duplicates);
+			return false;
+		} else {
+			return true;
+		}
+	}
+
 }) ();

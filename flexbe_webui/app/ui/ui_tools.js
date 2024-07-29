@@ -7,14 +7,30 @@ UI.Tools = new (function() {
 
 	var last_ros_command = undefined;
 
-	Mousetrap.bind("ctrl+space", function() { UI.Tools.toggle(); }, 'keydown');
-	Mousetrap.bind("ctrl+space", function() { UI.Tools.evaluate(); }, 'keyup');
-	Mousetrap.bind("enter", function() { that.displayCommandInput(); }, 'keyup');
+	Mousetrap.bind("ctrl+space", function(evt) {
+		console.log(`Open tool icons ...`);
+		evt.preventDefault();
+		evt.stopPropagation();
+		UI.Tools.toggle();
+	}, 'keydown');
+	Mousetrap.bind("ctrl+space", function(evt) {
+		console.log(`Evaluate tool selection ...`);
+		evt.preventDefault();
+		evt.stopPropagation();
+		UI.Tools.evaluate();
+	}, 'keyup');
+	// Mousetrap.bind("enter", function() { that.displayCommandInput(); }, 'keydown');
+	// Mousetrap.bind("enter", function(evt) {
+	// 	console.log(`mousetrap keyup at top level document '${evt.key}'`);
+	// 	console.log(`    '${evt.target.id}'`);
+	// 	evt.preventDefault();
+	// }, 'keyup'); // avoid default click handling of buttons
 	var mouse = {x: 0, y: 0};
 	document.addEventListener('mousemove', function(e){
 		mouse.x = e.clientX || e.pageX;
 		mouse.y = e.clientY || e.pageY
 	}, false);
+
 	var hover_mode = false;
 	var closest_button = undefined;
 
@@ -25,15 +41,15 @@ UI.Tools = new (function() {
 	var getPanel = function() { return document.getElementById("tool_overlay"); }
 
 	var placeButtonsCircular = function(radius, animate) {
-		for (var i = 0; i < id_list.length; i++) {
-			var d = document.createElement("div");
+		for (let i = 0; i < id_list.length; i++) {
+			let d = document.createElement("div");
 			d.setAttribute("class", "tool_overlay_button");
 			getPanel().appendChild(d);
-			var el = document.getElementById("tool_overlay_" + id_list[i]);
-			var angle = -225 + i * 45;
+			let el = document.getElementById("tool_overlay_" + id_list[i]);
+			let angle = -225 + i * 45;
 			d.setAttribute("style", "transform: rotate(" + angle + "deg) translate(" + radius + "px) rotate(" + -angle + "deg);");
-			var bb = d.getBoundingClientRect();
-			var p = el.parentNode;
+			let bb = d.getBoundingClientRect();
+			let p = el.parentNode;
 			el.setAttribute("style", "top: " + (bb.top - parseInt(p.style.top)) + "px; left: " + (bb.left - parseInt(p.style.left)) + "px;"
 							+ (animate? "transition: all 0.2s ease;" : ""));
 			p.removeChild(d);
@@ -41,42 +57,42 @@ UI.Tools = new (function() {
 	}
 
 	var getClosestButton = function() {
-		var panel = getPanel();
-		var angle = Math.atan2((mouse.y - (parseInt(panel.style.top) + 50)), (mouse.x - (parseInt(panel.style.left) + 50)));
+		let panel = getPanel();
+		let angle = Math.atan2((mouse.y - (parseInt(panel.style.top) + 50)), (mouse.x - (parseInt(panel.style.left) + 50)));
 		angle = angle * 180 / Math.PI;
-		var snapped_angle = Math.round(angle / 45) * 45;
-		var angle_index = (snapped_angle + 225) / 45;
+		let snapped_angle = Math.round(angle / 45) * 45;
+		let angle_index = (snapped_angle + 225) / 45;
 		angle_index = angle_index % 8;
 		return document.getElementById("tool_overlay_" + id_list[angle_index]);
 	}
 
 	var createHistoryContent = function() {
-		var activities = ActivityTracer.getActivityList();
-		var current = ActivityTracer.getCurrentIndex();
-		var save = ActivityTracer.getLastSaveIndex();
-		var changes = ActivityTracer.hasUnsavedChanges();
+		let activities = ActivityTracer.getActivityList();
+		let current = ActivityTracer.getCurrentIndex();
+		let save = ActivityTracer.getLastSaveIndex();
+		let changes = ActivityTracer.hasUnsavedChanges();
 
-		var info = document.getElementById("history_info");
+		let info = document.getElementById("history_info");
 		info.innerHTML = "<b>" + Behavior.getBehaviorName() + "</b><br /><br />";
 		if (!changes) {
 			info.innerHTML += "Last saved: <i>no changes</i><br />";
 		} else if (save == 0) {
 			info.innerHTML += "Last saved: <i>never</i><br />";
 		} else {
-			var savetime = Math.round((Date.now() - activities[save].time) / 60000);
+			let savetime = Math.round((Date.now() - activities[save].time) / 60000);
 			info.innerHTML += "Last saved: <i>" + savetime + " min ago</i><br />";
 		}
 
-		var list = document.getElementById("history_list");
+		let list = document.getElementById("history_list");
 		list.innerHTML = "";
-		for (var i = activities.length - 1; i >= 0; i--) {
-			var a = (i > 0)? activities[i] : {description: "<i>no changes</i>"};
-			var entry = document.createElement("div");
+		for (let i = activities.length - 1; i >= 0; i--) {
+			let a = (i > 0)? activities[i] : {description: "<i>no changes</i>"};
+			let entry = document.createElement("div");
 			entry.setAttribute("class", "history_element");
 			entry.innerHTML = ((i == current)? "> " : "") + ((i == save)? "# " : "") + a.description;
 			list.appendChild(entry);
 
-			var addListener = function(index) {
+			const addListener = function(index) {
 				entry.addEventListener('click', function() {
 					ActivityTracer.goToIndex(index);
 					createHistoryContent();
@@ -100,10 +116,10 @@ UI.Tools = new (function() {
 		if (RC.Controller.isReadonly()) return;
 
 		if (hide_timeout != undefined) clearTimeout(hide_timeout);
-		var panel = getPanel();
+		let panel = getPanel();
 
-		var position_top = Math.min(Math.max(mouse.y - 50, 120), window.innerHeight - 210);
-		var position_left = Math.min(Math.max(mouse.x - 50, 120), window.innerWidth - 210);
+		let position_top = Math.min(Math.max(mouse.y - 50, 120), window.innerHeight - 210);
+		let position_left = Math.min(Math.max(mouse.x - 50, 120), window.innerWidth - 210);
 
 		panel.style.display = "block";
 		panel.style.top = position_top + "px";
@@ -137,7 +153,7 @@ UI.Tools = new (function() {
 	this.toggle = function() {
 		if (RC.Controller.isReadonly()) return;
 
-		var panel = getPanel();
+		let panel = getPanel();
 		if (!hover_mode) {
 			if (panel.style.display != "block") {
 				that.display();
@@ -146,9 +162,9 @@ UI.Tools = new (function() {
 				that.hide();
 			}
 		} else {
-			var mouse_distance = Math.sqrt(Math.pow(mouse.x - (parseInt(panel.style.left) + 50), 2) + Math.pow(mouse.y - (parseInt(panel.style.top) + 50), 2));
+			let mouse_distance = Math.sqrt(Math.pow(mouse.x - (parseInt(panel.style.left) + 50), 2) + Math.pow(mouse.y - (parseInt(panel.style.top) + 50), 2));
 			if (mouse_distance > 170) {
-				var new_closest_button = getClosestButton();
+				let new_closest_button = getClosestButton();
 				if (closest_button != new_closest_button) {
 					if (closest_button != undefined)
 						closest_button.style.backgroundColor = "";
@@ -165,9 +181,9 @@ UI.Tools = new (function() {
 	}
 
 	this.evaluate = function() {
-		var panel = getPanel();
+		let panel = getPanel();
 		if (hover_mode) {
-			var will_stay = true;
+			let will_stay = true;
 			hover_mode = false;
 			if (closest_button != undefined) {
 				will_stay = false;
@@ -176,7 +192,7 @@ UI.Tools = new (function() {
 				closest_button = undefined;
 			} else {
 				// triggering keydown again the first time is slow, so make sure we dont miss any selection
-				var mouse_distance = Math.sqrt(Math.pow(mouse.x - (parseInt(panel.style.left) + 50), 2) + Math.pow(mouse.y - (parseInt(panel.style.top) + 50), 2));
+				let mouse_distance = Math.sqrt(Math.pow(mouse.x - (parseInt(panel.style.left) + 50), 2) + Math.pow(mouse.y - (parseInt(panel.style.top) + 50), 2));
 				if (mouse_distance > 170) {
 					getClosestButton().click();
 					will_stay = false;
@@ -202,7 +218,7 @@ UI.Tools = new (function() {
 		setTimeout(function() {
 			document.getElementById("command_overlay").style.bottom = "20px";
 			document.getElementById("command_overlay").style.opacity = "1";
-			document.getElementById("tool_input_command").focus();
+			document.getElementById("tool_input_command").focus({ preventScroll: true });
 		}, 10);
 	}
 
@@ -211,9 +227,9 @@ UI.Tools = new (function() {
 			command_history.push(cmd);
 			command_history_idx = command_history.length;
 
-			for (var i = 0; i < command_library.length; i++) {
-				var c = command_library[i];
-				var args = cmd.match(c.match);
+			for (let i = 0; i < command_library.length; i++) {
+				let c = command_library[i];
+				let args = cmd.match(c.match);
 				if (args != null) {
 					c.impl(args);
 					return true;
@@ -233,32 +249,30 @@ UI.Tools = new (function() {
 	}
 
 	this.commandListener = function(event) {
-		var hide = false;
-		var cmd_input = document.getElementById("tool_input_command");
-		var cmd = cmd_input.value;
+		let hide = false;
+		let cmd_input = document.getElementById("tool_input_command");
+		let cmd = cmd_input.value;
 
 		// process command
-		if (event.keyCode == 13) { // enter
+		if (event.key === 'Enter') { // enter
 			hide = true;
-
 			that.tryExecuteCommand(cmd);
 		}
 
 		// close overlay
-		if (event.keyCode == 27 // esc
-		 || event.keyCode == 32 && event.ctrlKey) { // ctrl+space
+		if (event.key === 'Escape' || (event.key === ' ' && event.ctrlKey)) { // esc or ctrl+space
 			hide = true;
 		}
 
 		// navigate history
-		if (event.keyCode == 38) { // up arrow
-			if (command_history_idx > 0) {
+		if (event.key === 'ArrowUp') { // up arrow
+				if (command_history_idx > 0) {
 				command_history_idx -= 1;
 				cmd = command_history[command_history_idx];
 				cmd_input.value = cmd;
 			}
 		}
-		if (event.keyCode == 40) { // down arrow
+		if (event.key === 'ArrowDown') { // down arrow
 			if (command_history_idx < command_history.length) {
 				command_history_idx += 1;
 				cmd = (command_history_idx < command_history.length)? command_history[command_history_idx] : "";
@@ -267,10 +281,10 @@ UI.Tools = new (function() {
 		}
 
 		// add autocomplete
-		var suggestions = (cmd == "")? [] : Autocomplete.generateCommandList(cmd, command_library);
+		let suggestions = (cmd == "")? [] : Autocomplete.generateCommandList(cmd, command_library);
 		document.getElementById("command_overlay_suggestions").innerHTML = "";
-		var displaySuggestions = function(s) {
-			var div = document.createElement("div");
+		let displaySuggestions = function(s) {
+			let div = document.createElement("div");
 			div.setAttribute("class", "command_overlay_suggestion");
 			div.innerText = s.text;
 			document.getElementById("command_overlay_suggestions").appendChild(div);
@@ -281,29 +295,29 @@ UI.Tools = new (function() {
 		} else {
 			document.getElementById("command_overlay_suggestions").style.opacity = "1";
 		}
-		if (event.keyCode == 39 // right arrow
+		if (event.key === 'ArrowRight' // right arrow
 			&& cmd_input.selectionStart == cmd.length
 			&& suggestions.length > 0)
 		{
 			if (cmd.indexOf(" ") == -1) {
 				cmd_input.value = cmd + Autocomplete.getSameFill(cmd, suggestions);
 			} else {
-				var suggested_cmd = command_library.findElement(function(el) { return el.desc == suggestions[0].text; });
-				var count_spaces = cmd.split(" ").length - 1;
-				var split_suggested_cmd = suggested_cmd.desc.split(" ");
+				let suggested_cmd = command_library.findElement(function(el) { return el.desc == suggestions[0].text; });
+				let count_spaces = cmd.split(" ").length - 1;
+				let split_suggested_cmd = suggested_cmd.desc.split(" ");
 				if (split_suggested_cmd[count_spaces].endsWith(":")) {
 					cmd_input.value += split_suggested_cmd[count_spaces] + " ";
 				} else {
-					var arg_idx = count_spaces - cmd.split(":").length;
-					var current_arg = cmd.substr(cmd.lastIndexOf(" ") + 1);
+					let arg_idx = count_spaces - cmd.split(":").length;
+					let current_arg = cmd.substr(cmd.lastIndexOf(" ") + 1);
 					if (suggested_cmd.completions != undefined && suggested_cmd.completions[arg_idx] != undefined) {
-						var completions = suggested_cmd.completions[arg_idx]().filter(function(el) {
+						let completions = suggested_cmd.completions[arg_idx]().filter(function(el) {
 							return el.startsWith(current_arg);
 						}).map(function(el) {
 							return {text: el, hint: "", fill: el};
 						});
 						if (completions.length > 0) {
-							var fill = Autocomplete.getSameFill(current_arg, completions);
+							let fill = Autocomplete.getSameFill(current_arg, completions);
 							if (fill.length > 0 || completions.length == 1) {
 								cmd_input.value = cmd.substr(0, cmd.lastIndexOf(" ") + 1) + current_arg + fill;
 							} else {
@@ -378,7 +392,7 @@ UI.Tools = new (function() {
 		}
 	}
 
-	this.confirmUIExit = function() {
+	this.confirmUIExit = async function() {
 		if (RC.Controller.isRunning()) {
 			console.log(`\x1b[91mCannot exit UI while a behavior is running!\x1b[0m`);
 			T.logError("Cannot exit UI while a behavior is running!");
@@ -391,7 +405,7 @@ UI.Tools = new (function() {
 			return false;
 		} else if (ActivityTracer.hasUnsavedChanges()) {
 			console.log('request confirmation with unsaved changes.');
-			var userConfirmed = confirm("Current behavior has changes.\nPress OK if you want to exit the UI\n and throw changes away?");
+			let userConfirmed = await UI.Tools.customConfirm("Current behavior has changes.\nPress Confirm if you want to exit the UI\n and throw changes away?");
 
 			// Check the user's response
 			if (userConfirmed) {
@@ -424,5 +438,102 @@ UI.Tools = new (function() {
 			}
 		});
 	}
+
+	this.customConfirm = async function(confirmMsg) {
+		return new Promise((resolve) => {
+			const modal = document.getElementById('custom_confirm_dialog');
+			const msgSpan = document.getElementById('custom_confirm_dialog_msg');
+			const cancelBtn = document.getElementById('custom_confirm_dialog_cancel_btn');
+			const confirmBtn = document.getElementById('custom_confirm_dialog_confirm_btn');
+
+			msgSpan.textContent = confirmMsg;
+			modal.style.display = "block";
+			cancelBtn.focus({preventScroll: true}); // Focus on the Cancel button by default
+
+			function closeModalClicked(event) {
+				event.stopImmediatePropagation(); // this modal is in control for now
+				event.preventDefault();
+				modal.style.display = "none";
+				modal.removeEventListener('click', closeModalClicked, true);
+				cancelBtn.removeEventListener('keydown', closeModalKeyPress, true);
+				confirmBtn.removeEventListener('keydown', closeModalKeyPress, true);
+				let result = false;
+				if (event.target === confirmBtn) {
+					// otherwise we click outside, which counts as cancel
+					result = true;
+				}
+				resolve(result);
+			}
+
+			function closeModalKeyPress(event) {
+				if (!modal.contains(event.target)) return;
+
+				if (event.key === 'Tab') {
+					// Move focus between confirmation buttons
+					document.activeElement == cancelBtn ? confirmBtn.focus({preventScroll: true}) : cancelBtn.focus({preventScroll: true});
+					event.stopImmediatePropagation(); // this modal is in control for now
+					event.preventDefault();
+					return; // no resolution yet
+				} else if (event.key === 'Esc') {
+					event.target = cancelBtn; // Escape always cancels
+					closeModalClicked(event);
+				} else if (event.key === 'Enter' || event.key === ' ') {
+					closeModalClicked(event);
+				} else {
+					event.stopImmediatePropagation(); // this modal is in control for now
+					event.preventDefault();
+				}
+			}
+			cancelBtn.addEventListener('keydown', closeModalKeyPress, true); // keydown to match default Tab
+			confirmBtn.addEventListener('keydown', closeModalKeyPress, true); // keydown to match default Tab
+			modal.addEventListener('click', closeModalClicked, true);
+		});
+	}
+
+	this.handleTopLevelKeyDown = function(event) {
+		if (event.key === "Tab") {
+			// No other panel is handling tabs, so move to main panel
+			if (event.target.id === '') {
+				console.log(`Tab keydown captured from target '${event.target.id}' at top level (focus='${document.activeElement.id}') - set focus to toolbar!`);
+				UI.Menu.updateFocus();
+				event.preventDefault(); // Prevent the default action
+				event.stopPropagation(); // Stop the event from propagating to other handlers
+			} else {
+				console.log(`Tab keydown seen at top-level from target '${event.target.id}' but did not capture!`);
+			}
+			return;
+		} else if (event.key === "Enter") {
+			if (event.target.id === 'dashboard' || event.target.id === 'statemachine' || event.target.id === 'runtimecontrol') {
+				console.log(`top level saw '${event.key}' keydown from target '${event.target.id}' - open command entry!`);
+				event.preventDefault(); // Prevent the default action
+				event.stopPropagation(); // Stop the event from propagating to other handlers
+				document.getElementById('tool_input_command').addEventListener('keydown', UI.Tools.commandListener);
+				that.displayCommandInput();
+				return;
+			}
+		}
+	}
+
+	this.handleTopLevelKeyUp = function(event) {
+		if (event.key === "Tab") {
+			// No other panel is handling tabs, so move to main panel
+			if (event.target.id === '') {
+				console.log(`Tab keyup - captured from target '${event.target.id}' at top level!`);
+				event.preventDefault(); // Prevent the default action
+				event.stopPropagation(); // Stop the event from propagating to other handlers
+				return;
+			} else {
+				console.log(`Tab keyup unhandled from target '${event.target.id}' at top level!`);
+				return;
+			}
+		} else if (event.key === 'Enter' || event.key === ' ') {
+			console.log(`top level saw '${event.key}' keyup from target '${event.target.id}' preventDefault but did not capture!`);
+			event.preventDefault(); // Prevent the default action
+			return;
+		//} else {
+		//	console.log(`top level saw '${event.key}' keyup from target '${event.target.id}' but did not capture!`);
+		}
+	}
+
 
 }) ();

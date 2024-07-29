@@ -17,16 +17,17 @@
 import datetime
 import re
 
-from flexbe_webui.tools import left_align_block
+from flexbe_webui.tools import left_align_block, format_state_code_string, break_long_line
 
 
 class CodeGenerator:
     """Behavior Code Generator."""
 
-    def __init__(self, ws='    '):
+    def __init__(self, ws='    ', target_line_length=100):
         """Initialize behavior generator."""
         self.manual = ['', '', '', '']  # [manual_code_import, manual_code_init, manual_code_create, manual_code_func]
         self.ws = ws
+        self.target_line_length = target_line_length
         self.state_init_list = []
         self.sm_counter = 0
         self.sm_names = []
@@ -125,13 +126,11 @@ class CodeGenerator:
         code += 'class ' + class_name + '(Behavior):\n'
         code += self.ws + '"""\n'
         code += self.ws + 'Define ' + behavior_name + '.\n\n'  # pep257 style single line comment
-        lines = description.split('\n')
-        for line in lines:
-            line = line.strip()
-            if len(line) == 0:
-                code += '\n'
-            else:
-                code += self.ws + line + '\n'
+        for line in description.split('\n'):
+            split_lines = break_long_line(line)
+            for line2 in split_lines:
+                code += self.ws + line2.rstrip() + '\n'
+
         code += self.ws + '"""\n'
         return code
 
@@ -263,13 +262,12 @@ class CodeGenerator:
         code += '"""\n'
         code += 'Define ' + behavior_name + '.\n'
         code += '\n'
-        lines = desc.split('\n')
-        for line in lines:
-            line = line.strip()
-            if len(line) == 0:
-                code += '\n'
-            else:
-                code += line + '\n'
+
+        for line in desc.split('\n'):
+            split_lines = break_long_line(line)
+            for line2 in split_lines:
+                code += line2.rstrip() + '\n'
+
         code += '\nCreated on ' + date + '\n'
         code += '@author: ' + author + '\n'
         code += '"""\n'
@@ -461,8 +459,8 @@ class CodeGenerator:
         # state machine needs to start with initial state
         states = sm.states
         states.sort(key=lambda x: x.state_name)
-        init_trans = next(x for x in sm.transitions if x.from_state.state_name == 'INIT')
-        init_state = next(x for x in states if x.state_name == init_trans.to.state_name)
+        init_trans = next(x for x in sm.transitions if x.from_state_name == 'INIT')
+        init_state = next(x for x in states if x.state_name == init_trans.to_state_name)
 
         if init_state != states[0]:
             states.remove(init_state)
@@ -476,10 +474,10 @@ class CodeGenerator:
 
     def generate_state(self, state, transitions, states):
         """Generate the state definition."""
-        code = ''
+        state_code = ''
 
         # comment section for internal data
-        code += self.ws + self.ws + self.ws + '# x:' + str(round(state.position_x)) + ' y:' + str(round(state.position_y))
+        state_code += self.ws + self.ws + self.ws + '# x:' + str(round(state.position_x)) + ' y:' + str(round(state.position_y))
         internal_param_list = []
         for ndx, p_k in enumerate(state.parameters):
             if not p_k.startswith('?'):
@@ -488,22 +486,23 @@ class CodeGenerator:
             internal_param_list.append(p_k + ' = ' + p_v)
 
         if len(internal_param_list) > 0:
-            code += ' {' + ','.join(internal_param_list) + '}'
+            state_code += ' {' + ','.join(internal_param_list) + '}'
 
-        code += '\n'
+        state_code += '\n'
 
-        code += self.ws + self.ws + self.ws + "OperatableStateMachine.add('" + state.state_name + "',\n"
+        state_code += self.ws + self.ws + self.ws + f"OperatableStateMachine.add('{state.state_name}',\n"
 
         if self.ws != '\t':
             prepend = ' ' * len(self.ws + self.ws + self.ws + 'OperatableStateMachine.add(')
         else:
             prepend = '\t' * 7
 
+        code = ''
         # class
         if state.state_machine:
             # temp = [x['sm'].state_path for x in self.sm_names]
             sm_name = next(x for x in self.sm_names if x['sm'].state_path == state.state_path)['name']
-            code += prepend + sm_name + ',\n'
+            code += sm_name + ',\n'
         elif state.behavior_state:
             defkeys_str = ''
             be_defkeys_str = []
@@ -513,7 +512,7 @@ class CodeGenerator:
                 be_defkeys_str.append("'" + in_key + "'")
 
             if len(be_defkeys_str) > 0:
-                defkeys_str = ',\n' + prepend + 'default_keys=[' + ','.join(be_defkeys_str) + ']'
+                defkeys_str = 'default_keys=[' + ','.join(be_defkeys_str) + ']'
 
             params_str = ''
             be_params_str = []
@@ -524,10 +523,25 @@ class CodeGenerator:
                 be_params_str.append("'" + param + "': " + state.parameter_values[ndx])
 
             if len(be_params_str) > 0:
-                params_str = ',\n' + prepend + 'parameters={' + ', '.join(be_params_str) + '}'
+                params_str = 'parameters={' + ', '.join(be_params_str) + '}'
 
-            code += prepend + 'self.use_behavior(' + \
-                state.state_class + ", '" + state.state_path[1:] + "'" + defkeys_str + params_str + '),\n'
+            code += 'self.use_behavior('
+            prepend_beh = ' ' * len(code)
+            if self.ws == '\t':
+                prepend_beh = '\t' * ((len(code) - 1) // 4 + 1)
+
+            code += f"{state.state_class}, '{state.state_path[1:]}'"
+            if defkeys_str != '':
+                code += ",\n" + prepend_beh
+                code += f'\n{prepend_beh}'.join(format_state_code_string(defkeys_str,
+                                                                         self.target_line_length - len(prepend)
+                                                                         - len(prepend_beh), self.ws).split('\n'))
+            if params_str != '':
+                code += ",\n" + prepend_beh
+                code += f'\n{prepend_beh}'.join(format_state_code_string(params_str,
+                                                                         self.target_line_length - len(prepend)
+                                                                         - len(prepend_beh), self.ws).split('\n'))
+            code += '),\n'
         else:
             class_key = ''
             use_explicit_package = self.explicit_package
@@ -542,32 +556,37 @@ class CodeGenerator:
                 class_key = state.state_class
             else:
                 class_key = state.state_pkg + '__' + state.state_class
-            code += prepend + class_key + '('
+            code += class_key + '('
+            prepend_state = ' ' * len(code)
+            if self.ws == '\t':
+                prepend_state = '\t' * ((len(code) - 1) // 4 + 1)
 
             param_strings = []
             for ndx, param in enumerate(state.parameters):
                 if param.startswith('?'):
                     continue
-                param_strings.append(param + '=' + state.parameter_values[ndx])
+                formatted_string = format_state_code_string(param + '=' + state.parameter_values[ndx],
+                                                            self.target_line_length - len(prepend) - len(prepend_state),
+                                                            self.ws)
+                param_strings.append(f'\n{prepend_state}'.join(formatted_string.split('\n')))
 
-            code += ', '.join(param_strings)
+            code += f',\n{prepend_state}'.join(param_strings)
             code += '),\n'
 
         # transitions
-        code += prepend + 'transitions={'
         transition_strings = []
-        state_transitions = [tran for tran in transitions if tran.from_state.state_name == state.state_name]
+        state_transitions = [tran for tran in transitions if tran.from_state_name == state.state_name]
 
         for ndx, out in enumerate(state.outcomes):
             outcome_transition = next(tran for tran in state_transitions if tran.outcome == out)
             if outcome_transition is None:
                 raise Exception("outcome '" + out + "' in state '"
                                 + state.state_name + "' is not connected")
-            if outcome_transition.to.state_name == state.state_name:
+            if outcome_transition.to_state_name == state.state_name:
                 print("Looping transition for outcome '" + out
                       + "' in state '" + state.state_name + "' detected")
-            transition_target = outcome_transition.to.state_name
-            if outcome_transition.to.state_class == ':CONDITION':
+            transition_target = outcome_transition.to_state_name
+            if outcome_transition.to_state_class == ':CONDITION':
                 transition_target = transition_target.split('#')[0]
 
             if (outcome_transition.x is not None or outcome_transition.beg_x is not None
@@ -589,7 +608,7 @@ class CodeGenerator:
                 else:
                     temp = temp + str(round(outcome_transition.end_x)) + ' ' + str(round(outcome_transition.end_y))
 
-                temp += '\n' + prepend
+                temp += '\n'
                 if self.ws != '\t':
                     temp += len('transitions={') * ' '
                 else:
@@ -599,40 +618,20 @@ class CodeGenerator:
             else:
                 transition_strings.append("'" + out + "': '" + transition_target + "'")
 
-        code += ', '.join(transition_strings)
-        code += '},\n'
+        transition_code = 'transitions={'
+
+        transition_code += ', '.join(transition_strings) + '}'
+        code += format_state_code_string(transition_code, self.target_line_length - len(prepend), self.ws)
+        code += ',\n'
 
         # autonomy
-        code += prepend + 'autonomy={'
+        aut_code = 'autonomy={'
         autonomy_strings = []
         for ndx, out in enumerate(state.outcomes):
             autonomy_strings.append("'" + out + "': " + autonomy_mapping(state.autonomy[ndx]))
 
-        code += ', '.join(autonomy_strings)
-        code += '}'
-
-        # #positions
-        # code += self.ws + self.ws + self.ws + self.ws + self.ws + self.ws + self.ws + self.ws +
-        #         self.ws + self.ws + "transitionsX={"
-        # transition_x_strings = []
-        # for x in range(len(s.outcomes)):
-        #     outcome_transition = next(tran for tran in state_transitions if tran.outcome == state.outcomes[x])
-        #     if (outcome_transition == None):
-        #          raise Exception("outcome '" + state.outcomes[x] + "' in state '" + state.state_name + "' is not connected")
-        #     transition_x_strings.append("'" + state.outcomes[x] + "': " + str(outcome_transition.x))
-        # code += ', '.join(transition_x_strings)
-        # code += '},\n'
-
-        # code += self.ws + self.ws + self.ws + self.ws + self.ws + self.ws + self.ws + self.ws +
-        #         self.ws + self.ws + 'transitionsY={'
-        # transition_y_strings = []
-        # for x in range(len(state.outcomes)):
-        #     outcome_transition = next(tran for tran in state_transitions if tran.outcome == state.outcomes[x])
-        #     if (outcome_transition == None):
-        #          raise Exception("outcome '" + state.outcomes[x] + "' in state '" + state.state_name + "' is not connected")
-        #     transition_y_strings.append("'" + state.outcomes[x] + "': " + str(outcome_transition.y))
-        # code += ', '.join(transition_y_strings)
-        # code += '}'
+        aut_code += ', '.join(autonomy_strings) + "}"
+        code += format_state_code_string(aut_code, self.target_line_length - len(prepend), self.ws)
 
         # remapping
         if len(state.input_keys) + len(state.output_keys) > 0:
@@ -647,12 +646,12 @@ class CodeGenerator:
                 remapping_strings.append("'" + out_key + "': '" + state.output_mapping[ndx] + "'")
             if len(remapping_strings) > 0:
                 code += ',\n'
-                code += prepend + 'remapping={'
-                code += ', '.join(remapping_strings)
-                code += '}'
+                input_key_code = 'remapping={' + ', '.join(remapping_strings) + "}"
+                code += format_state_code_string(input_key_code, self.target_line_length - len(prepend), self.ws)
 
-        code += ')\n\n'
-        return code
+        state_code += prepend + f'\n{prepend}'.join(code.split('\n'))
+        state_code += ')\n\n'
+        return state_code
 
     def generate_functions(self):
         """Generate the function definitions."""

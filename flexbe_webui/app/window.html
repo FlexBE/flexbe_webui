@@ -96,7 +96,7 @@
 </head>
 <body>
 
-	<div class="toolbar">
+	<div class="toolbar" id="top-level-toolbar">
 		<table cellpadding="0" cellspacing="0">
 			<tr>
 				<td>
@@ -150,10 +150,10 @@
 				</td>
 				<td style="padding: 2px;"> </td>
 				<td>
-					<div class="category_button_active" id="button_to_db"><img src="img/db_active.png" width="32" height="32" /> Behavior Dashboard</div>
-					<div class="category_button" id="button_to_sm"><img src="img/sm.png" width="32" height="32" /> Statemachine Editor</div>
-					<div class="category_button" id="button_to_rc"><img src="img/rc.png" width="32" height="32" /> Runtime Control</div>
-					<div class="category_button" id="button_to_se"><img src="img/se.png" width="32" height="32" /> Configuration</div>
+					<div class="category_button_active" id="button_to_db" tabindex="0"><img src="img/db_active.png" width="32" height="32" /> Behavior Dashboard</div>
+					<div class="category_button" id="button_to_sm" tabindex="0"><img src="img/sm.png" width="32" height="32" /> Statemachine Editor</div>
+					<div class="category_button" id="button_to_rc" tabindex="0"><img src="img/rc.png" width="32" height="32" /> Runtime Control</div>
+					<div class="category_button" id="button_to_se" tabindex="0"><img src="img/se.png" width="32" height="32" /> Configuration</div>
 				</td>
 				<td id="title_button_panel">
 				</td>
@@ -296,33 +296,33 @@
 				<div class="back">
 					<h1>Behavior Parameters</h1>
 					<table class="box_table" id="db_parameter_edit_table"></table>
-					<img id="button_db_parameter_turn" src="img/turn_back.png" style="position: absolute; top: 5px; right: 5px" />
+					<img id="db_parameter_edit_table_turn_button" src="img/turn_back.png" class="img_button" tabindex="0" style="position: absolute; top: 5px; right: 5px" />
 				</div>
 			</div>
 		</div>
 
-		<div id="db_function_box" class="box">
-			<h1>Private Functions</h1>
+		<div id="db_function_box" class="edit-box" tabindex="0" style="cursor: pointer;">
+			<h1 style="color: #009;">Private Functions</h1>
 			<font style="color: gray">Defines which functions can be referenced by states that accept functions as parameters. Make sure that the interface of each function matches the requirements of the respective state. These functions can be edited later in the generated code between the <code>[MANUAL_FUNC]</code> tags, or by clicking here.<br> Functions can be accessed in states as <code>self.<i>function_name</i></code>.</font>
 			<table class="box_table" id="db_function_table"></table>
 			<!-- textarea id="db_function_text" style="height: 45px; width: 98%; resize: none; font-family: monospace;"></textarea -->
 		</div>
 
-		<!-- pop up function box-->
+		<!-- pop up function box- ->
 		<div id="db_function_edit_modal" class="modal">
 			<div class="modal-content">
-				<!--font style="color: black; font-size: 18px;">Private Functions</font -->
+				<!- -font style="color: black; font-size: 18px;">Private Functions</font - ->
 				<h1>Private Functions</h1>
 				<div class="textarea-container">
 					<textarea id="db_function_edit_modal_text" class="textarea-modal"></textarea>
 					<div id="db_function_edit_modal_text_overlay" class="textarea-overlay"></div>
 				</div>
 				<div class="edit-button-container" style="display: flex; top: 10px; padding: 10px; justify-content: center; gap: 10px;">
-					<button id="db_function_accept_button">Accept</button>
 					<button id="db_function_discard_button">Discard</button>
+					<button id="db_function_accept_button">Accept</button>
 				</div>
 			</div>
-		</div>
+		</div -->
 
 		<div class="box">
 			<h1>State Machine Interface</h1>
@@ -382,57 +382,42 @@
 			</td></tr></table>
 		</div>
 
-		<div id="db_manual_init_box" class="box">
-			<h1>Manual Initialization Block</h1>
+		<div id="db_manual_init_box" class="edit-box" tabindex="0" style="cursor: pointer;">
+			<h1 style="color: #009;">Manual Initialization Block</h1>
 			<font style="color: gray">This code called during behavior construction in the <code>__init__</code>.<br>This code is stored between the <code>[MANUAL_INIT] ... [/MANUAL_INIT]</code> block.<br>Use this block to define attributes that can be used as inputs to defined states. Click <emph>here</emph> to open a basic text editor, or manually edit in the behavior source code.</font>
 			<table class="box_table" id="db_manual_init_table"></table>
 		</div>
 
-		<!-- pop up manual_init box-->
-		<div id="db_manual_init_edit_modal" class="modal">
-			<div class="modal-content">
-				<!--font style="color: black; font-size: 18px;">Private Functions</font -->
-				<h1>Manual Initialization Code</h1>
-				<div class="textarea-container">
-					<textarea id="db_manual_init_edit_modal_text" class="textarea-modal"></textarea>
-					<div id="db_manual_init_edit_modal_text_overlay" class="textarea-overlay"></div>
-				</div>
-				<div class="edit-button-container" style="display: flex; top: 10px; padding: 10px; justify-content: center; gap: 10px;">
-					<button id="db_manual_init_accept_button">Accept</button>
-					<button id="db_manual_init_discard_button">Discard</button>
-				</div>
-			</div>
-		</div>
-
-		<div id="db_manual_create_box" class="box">
-			<h1>Manual Creation Block</h1>
+		<div id="db_manual_create_box" class="edit-box" tabindex="0" style="cursor: pointer;">
+			<h1 style="color: #009;">Manual Creation Block</h1>
 			<font style="color: gray">This code is called during behavior creation in the <code>create</code> method.<br>This code is stored between the <code>[MANUAL_CREATE] ... [/MANUAL_CREATE]</code> block.<br>Use this block to update data during behavior startup. Click <emph>here</emph> to open a basic text editor, or manually edit in the behavior source code.</font>
 			<table class="box_table" id="db_manual_create_table"></table>
 		</div>
 
-		<!-- pop up manual_create box-->
-		<div id="db_manual_create_edit_modal" class="modal">
-			<div class="modal-content">
-				<!--font style="color: black; font-size: 18px;">Private Functions</font -->
-				<h1>Manual Creation Code</h1>
-				<div class="textarea-container">
-					<textarea id="db_manual_create_edit_modal_text" class="textarea-modal"></textarea>
-					<div id="db_manual_create_edit_modal_text_overlay" class="textarea-overlay"></div>
-				</div>
-				<div class="edit-button-container" style="display: flex; top: 10px; padding: 10px; justify-content: center; gap: 10px;">
-					<button id="db_manual_create_accept_button">Accept</button>
-					<button id="db_manual_create_discard_button">Discard</button>
-				</div>
-			</div>
-		</div>
-
 	</div>
 
-	<div id="statemachine">
+	<!-- common pop up for manual text edit box-->
+	<div id="db_function_edit_modal" class="modal">
+		<div class="modal-content">
+			<!--font style="color: black; font-size: 18px;">Private Functions</font -->
+			<h1 id="db_function_edit_modal_header">Manual Edit</h1>
+			<div class="textarea-container">
+				<textarea id="db_function_edit_modal_text" class="textarea-modal"></textarea>
+				<div id="db_function_edit_modal_text_overlay" class="textarea-overlay"></div>
+			</div>
+			<div class="edit-button-container" style="display: flex; top: 10px; padding: 10px; justify-content: center; gap: 10px;">
+				<button id="db_function_discard_button">Discard</button>
+				<button id="db_function_accept_button">Accept</button>
+			</div>
+		</div>
+	</div>
+
+
+	<div id="statemachine" tabindex="0">
 		<div id="drawing_area" class="box"></div>
 	</div>
 
-	<div id="runtimecontrol">
+	<div id="runtimecontrol" tabindex="0">
 
 		<div id="runtime_state_display" class="drawbox">
 			<div id="runtime_configuration_display" class="runtimebox_text">
@@ -531,6 +516,7 @@
 		</div>
 
 		<div class="box">
+			<!-- Require targeted click to change these inputs (to prevent accidental activation while behavior is running) -->
 			<div id="sync_bar" class="loading_bar">
 				<div id="progress_bar"></div>
 				<div id="progress_left"></div>
@@ -540,7 +526,7 @@
 
 			<table><tr>
 				<td>
-					<input id="button_behavior_lock" type="button" value="Lock Behavior" class="big_button" style="width: 170px" />
+					<input id="button_behavior_lock" type="button" value="Lock Behavior" class="big_button" tabindex="-1" style="width: 170px" />
 				</td><td>
 					<table>
 						<tr id="behavior_lock_display">
@@ -550,7 +536,7 @@
 			</tr></table>
 			<br />
 			Block transitions which require at least
-			<select id="selection_rc_autonomy" style="width: 70px; color: blue; font-weight: bold;">
+			<select id="selection_rc_autonomy"  tabindex="-1" style="width: 70px; color: blue; font-weight: bold;">
 				<option value="0" style="color: black;">No</option>
 				<option value="1" style="color: blue;" selected="selected">Low</option>
 				<option value="2" style="color: green;">High</option>
@@ -558,13 +544,13 @@
 			</select>
 			autonomy.
 			<br /><br />
-			<input id="button_behavior_repeat" type="button" style="width: 100px;" value="Repeat" /> <i>(execute current state again from beginning)</i>
+			<input id="button_behavior_repeat" type="button" style="width: 100px;" tabindex="-1" value="Repeat" /> <i>(execute current state again from beginning)</i>
 			<br />
-			<input id="button_behavior_pause" type="button" style="width: 100px;" value="Pause" /> <i>(stay active, but suspend execution)</i>
+			<input id="button_behavior_pause" type="button" style="width: 100px;" tabindex="-1" value="Pause" /> <i>(stay active, but suspend execution)</i>
 			<br /><br />
-			<input id="button_behavior_sync" type="button" value="Sync" style="float: right;" />
-			<input id="cb_allow_preempt" type="checkbox" />
-			<input id="button_behavior_preempt" type="button" value="Stop Execution" style="color: gray;" disabled="disabled" /> <i>(stopped behaviors can't be resumed)</i>
+			<input id="button_behavior_sync" type="button" value="Sync"  tabindex="-1" style="float: right;" />
+			<input id="cb_allow_preempt" type="checkbox"  tabindex="-1"/>
+			<input id="button_behavior_preempt" type="button" value="Stop Execution" tabindex="-1" style="color: gray;" disabled="disabled" /> <i>(stopped behaviors can't be resumed)</i>
 		</div>
 
 		<div class="widebox" style="height: calc(33% - 35px);">
@@ -572,16 +558,16 @@
 			<div id="runtime_feedback_text" style="overflow: auto; line-height: 1.8em; max-height: calc(100% - 40px); -webkit-user-select: text; user-select: text; cursor: text; font-family: monospace;"></div>
 		</div>
 
-		<div class="box" style="height: calc(33% - 35px);">
+		<div class="box" tabindex="-1" style="height: calc(33% - 35px);">
 			<h1>Documentation</h1>
-			<div id="runtime_documentation_text" style="overflow: auto;"></div>
+			<div id="runtime_documentation_text" style="max-height: calc(100% - 40px); border: 1px black; overflow-y: auto; font-family: monospace;"></div>
 		</div>
 	</div>
 
-	<div id="settings">
+	<div id="settings" tabindex="0">
 
-		<input style="display:none;" id="file_dialog_import" type="file" accept=".json" />
-		<input style="display:none;" id="file_dialog_export" type="file" accept=".json" nwsaveas="flexbe_config.json" />
+		<input style="display:none;" id="file_dialog_import" type="file" tabindex="-1" accept=".json" />
+		<input style="display:none;" id="file_dialog_export" type="file" tabindex="-1" accept=".json" nwsaveas="flexbe_config.json" />
 
 		<div class="box">
 			<h1>Runtime Settings</h1>
@@ -698,7 +684,7 @@
 					<td width="90">ROS Status: </td>
 					<td>
 						<input id="button_ros_connect" type="button" value="Connect" />
-						<input id="ros_prop_status" class="input_field" type="text" style="width:230px;border:none" readonly />
+						<input id="ros_prop_status" class="input_field" type="text" tabindex="-1" style="width:230px;border:none" readonly />
 					</td>
 				</tr>
 				<tr>
@@ -768,8 +754,8 @@
 		</div>
 	</div>
 
-	<div id="panel_properties" class="sidepanel">
-		<div id="panel_properties_state" style="display: none;">
+	<div id="panel_properties" class="sidepanel" tabindex="0">
+		<div id="panel_properties_state" style="display: none;" tabindex="0">
 			<div style="font-weight: bold;">
 				<input id="input_prop_state_name" class="inline_title_text_edit" type="text" />
 			</div>
@@ -809,13 +795,13 @@
 				</table>
 			</div>
 
-			<input id="button_apply_properties" type="button" value="Apply" />
-			<input id="button_close_properties" type="button" value="Close" />
+			<input id="button_apply_properties" type="button" value="Apply"  tabindex="0"/>
+			<input id="button_close_properties" type="button" value="Close"  tabindex="0"/>
 			&nbsp;&nbsp;&nbsp;
-			<input id="button_delete_state" type="button" value="Delete" style="color:darkred" />
+			<input id="button_delete_state" type="button" value="Delete" style="color:darkred" tabindex="0"/>
 		</div>
 
-		<div id="panel_properties_behavior" style="display: none;">
+		<div id="panel_properties_behavior" style="display: none;" tabindex="0">
 			<div style="font-weight: bold;">
 				<input id="input_prop_be_name" class="inline_title_text_edit" type="text" />
 			</div>
@@ -862,7 +848,7 @@
 			<input id="button_delete_be" type="button" value="Delete" style="color:darkred" />
 		</div>
 
-		<div id="panel_properties_statemachine">
+		<div id="panel_properties_statemachine" style="display: none;" tabindex="0" >
 			<div style="font-weight: bold;">
 				<input id="input_prop_sm_name" class="inline_title_text_edit" type="text" />
 			</div>
@@ -942,7 +928,7 @@
 		</div>
 	</div>
 
-	<div id="panel_add_state" class="sidepanel">
+	<div id="panel_add_state" class="sidepanel" tabindex="0">
 		<div class="sidepanel_title_text">
 			Add New State
 		</div>
@@ -976,7 +962,7 @@
 		<div id="panel_class_select"></div>
 	</div>
 
-	<div id="panel_select_behavior" class="sidepanel">
+	<div id="panel_select_behavior" class="sidepanel" tabindex="0">
 		<div class="sidepanel_title_text">
 			Select Behavior
 		</div>
@@ -1041,6 +1027,14 @@
 		<input id="button_note_editor_save" type="button" value="Save" />
 		&nbsp;&nbsp;&nbsp;&nbsp;
 		<input id="cb_note_editor_important" type="checkbox"> important?
+	</div>
+
+	<div id="custom_confirm_dialog" class="custom_confirm_dialog_modal">
+		<div class="custom-confirm-modal-content">
+			<p><span id="custom_confirm_dialog_msg">Are you sure?</span></p>
+			<button id="custom_confirm_dialog_cancel_btn" class="custom-confirm-dialog-modal-button">&#x2716; Cancel</button>
+			<button id="custom_confirm_dialog_confirm_btn" class="custom-confirm-ialog-modal-button">&#x2714; Confirm</button>
+		</div>
 	</div>
 
 </body>

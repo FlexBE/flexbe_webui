@@ -23,6 +23,8 @@ UI.RuntimeControl = new (function() {
 	var pause_behavior_toggle = true;
 	var sync_ext_toggle = false;
 
+	var tab_targets = [];
+
 	var updateDrawing = function() {
 		drawings.forEach(function(element, i) {
 			element.drawing.remove();
@@ -39,18 +41,18 @@ UI.RuntimeControl = new (function() {
 		// Current
 		//---------
 
-		var is_locked = RC.Controller.isLocked() && RC.Controller.isOnLockedPath(current_state.getStatePath());
-		var current_state_drawing = createDrawing(current_state, Drawable.State.Mode.MAPPING, true, is_locked);
-		var bbox = current_state_drawing.drawing.getBBox()
+		let is_locked = RC.Controller.isLocked() && RC.Controller.isOnLockedPath(current_state.getStatePath());
+		let current_state_drawing = createDrawing(current_state, Drawable.State.Mode.MAPPING, true, is_locked);
+		let bbox = current_state_drawing.drawing.getBBox()
 		current_state_drawing.drawing.translate(-bbox.x + (R.width - bbox.width) / 2, -bbox.y + (R.height - bbox.height) / 2);
 		drawings.push(current_state_drawing);
 
 		// Previous
 		//----------
-
+		let previous_state_drawing = undefined;
 		if (previous_state != undefined) {
-			var previous_state_drawing = createDrawing(previous_state, Drawable.State.Mode.SIMPLE, false, false);
-			var b = previous_state_drawing.drawing.getBBox();
+			previous_state_drawing = createDrawing(previous_state, Drawable.State.Mode.SIMPLE, false, false);
+			let b = previous_state_drawing.drawing.getBBox();
 			previous_state_drawing.drawing.translate(-b.x + 10, -b.y + (R.height - previous_state_drawing.drawing.getBBox().height) / 2);
 			drawings.push(previous_state_drawing);
 		}
@@ -58,25 +60,25 @@ UI.RuntimeControl = new (function() {
 		// Next
 		//------
 
-		var next_state_drawings = [];
+		let next_state_drawings = [];
 		next_states.forEach(function(element, i) {
 			next_state_drawings.push(createDrawing(element, Drawable.State.Mode.SIMPLE, false, false));
 		});
 
 		// vertical position
-		var offset_top = 0;
-		var space = (R.height - next_state_drawings.reduce(function(prev, cur, i, a) {
+		let offset_top = 0;
+		let space = (R.height - next_state_drawings.reduce(function(prev, cur, i, a) {
 			return prev + cur.drawing.getBBox().height;
 		}, 0)) / (next_state_drawings.length + 1);
 
 		// horizontal position
-		var offset_left = R.width - next_state_drawings.reduce(function(prev, cur, i, a) {
+		let offset_left = R.width - next_state_drawings.reduce(function(prev, cur, i, a) {
 			return Math.max(prev, cur.drawing.getBBox().width);
 		}, 0) - 10;
 
 		next_state_drawings.forEach(function(element, i) {
 			offset_top += space;
-			var b = element.drawing.getBBox();
+			let b = element.drawing.getBBox();
 			element.drawing.translate(-b.x + offset_left, -b.y + offset_top);
 			offset_top += b.height;
 			drawings.push(element);
@@ -88,16 +90,16 @@ UI.RuntimeControl = new (function() {
 			drawings.push(new Drawable.Transition(income_transition, R, true, drawings, false, false, Drawable.Transition.PATH_STRAIGHT, undefined, true));
 
 		outcome_transitions.forEach(function(element, i) {
-			var highlight = outcome_request.target != undefined && outcome_request.target == current_state.getStatePath() && outcome_request.outcome == element.getOutcome();
+			let highlight = outcome_request.target != undefined && outcome_request.target == current_state.getStatePath() && outcome_request.outcome == element.getOutcome();
 			if (highlight) drawStatusLabel("Onboard requested outcome: " + outcome_request.outcome);
-			var transition = new Drawable.Transition(element, R, true, drawings.filter(function(d) { return d != previous_state_drawing; }),
+			let transition = new Drawable.Transition(element, R, true, drawings.filter(function(d) { return d != previous_state_drawing; }),
 													 highlight, false, Drawable.Transition.PATH_CURVE, undefined, true);
 			transition.drawing
 				.attr({'cursor': 'pointer', 'title': "Click to force outcome " + element.getOutcome()})
 				.data("transition", transition.obj)
 				.click(function() {
 					if (RC.Sync.hasProcess("Transition")) return;
-					var t = this.data("transition");
+					let t = this.data("transition");
 					RC.PubSub.sendOutcomeRequest(t.getFrom(), t.getOutcome());
 					drawStatusLabel("Forcing outcome: " + t.getOutcome());
 				});
@@ -116,11 +118,11 @@ UI.RuntimeControl = new (function() {
 
 	var createDrawing = function(state_obj, mode, active, locked) {
 		if (state_obj instanceof Statemachine) {
-			var drawable = new Drawable.Statemachine(state_obj, R, true, mode, active, locked);
+			let drawable = new Drawable.Statemachine(state_obj, R, true, mode, active, locked);
 			if (active) {
 				drawable.drawing.data("sm_path", state_obj.getStatePath());
 				drawable.drawing.dblclick(function() {
-					var child_state = current_states[current_states.indexOf(current_state) + 1];
+					let child_state = current_states[current_states.indexOf(current_state) + 1];
 					current_state = child_state;
 					updateStateDisplayDepth(child_state.getStatePath());
 				});
@@ -129,11 +131,11 @@ UI.RuntimeControl = new (function() {
 		}
 
 		if (state_obj instanceof BehaviorState) {
-			var drawable = new Drawable.BehaviorState(state_obj, R, true, mode, active, locked);
+			let drawable = new Drawable.BehaviorState(state_obj, R, true, mode, active, locked);
 			if (active) {
 				drawable.drawing.data("new_path", state_obj.getStatePath());
 				drawable.drawing.dblclick(function() {
-					var child_state = current_states[current_states.indexOf(current_state) + 1];
+					let child_state = current_states[current_states.indexOf(current_state) + 1];
 					current_state = child_state;
 					updateStateDisplayDepth(child_state.getStatePath());
 				});
@@ -148,15 +150,15 @@ UI.RuntimeControl = new (function() {
 	}
 
 	var smDisplayHandler = function() {
-		var sm = this.data("statemachine");
-		var current_relative_path = current_state.getStatePath().slice(sm.getStatePath().length + 1);
-		var current_lower_name = current_relative_path.split("/")[0];
-		var current_lower_path = sm.getStatePath() + "/" + current_lower_name;
+		let sm = this.data("statemachine");
+		let current_relative_path = current_state.getStatePath().slice(sm.getStatePath().length + 1);
+		let current_lower_name = current_relative_path.split("/")[0];
+		let current_lower_path = sm.getStatePath() + "/" + current_lower_name;
 		updateStateDisplayDepth(current_lower_path);
 	}
 
 	var updateStateDisplayDepth = function(state_path) {
-		var path_segments = state_path.split("/");
+		let path_segments = state_path.split("/");
 		current_level = path_segments.length - 1;
 		document.getElementById("selection_rc_lock_layer").selectedIndex = document.getElementById("selection_rc_lock_layer").length - current_level;
 
@@ -200,8 +202,8 @@ UI.RuntimeControl = new (function() {
 			return;
 		}
 
-		var state_type = state.getStateType();
-		var doc = "";
+		let state_type = state.getStateType();
+		let doc = "";
 
 		if (state instanceof Statemachine) {
 			doc += "<b>Container</b><br /><br />";
@@ -222,16 +224,16 @@ UI.RuntimeControl = new (function() {
 		} else if (WS.Statelib.getFromLib(state_type) != undefined) {
 			doc += "<b>" + state_type + "</b><br />";
 			doc += WS.Statelib.getFromLib(state_type).getStateDesc() + "<br />";
-			var pkeys = state.getParameters();
-			var pvals = state.getParameterValues();
+			let pkeys = state.getParameters();
+			let pvals = state.getParameterValues();
 			if (pkeys.length > 0) {
 				doc += "<br />";
 				doc += "<b>Parameter Values:</b><br />";
 			}
-			for (var i = 0; i < pkeys.length; i++) {
+			for (let i = 0; i < pkeys.length; i++) {
 				doc += "<div style='font-family: monospace;'><b>" + pkeys[i] + "</b> = ";
 				doc += pvals[i];
-				var resolved = VarSolver.resolveVar(pvals[i], false);
+				let resolved = VarSolver.resolveVar(pvals[i], false);
 				if (resolved !== false && !(resolved instanceof Array) && resolved != pvals[i]) {
 					doc += " (" + resolved + ")</div>";
 				}
@@ -258,15 +260,15 @@ UI.RuntimeControl = new (function() {
 	}
 
 	var createParameterTable = function() {
-		var table = document.getElementById("rc_parameter_table");
+		let table = document.getElementById("rc_parameter_table");
 		table.innerHTML = "";
 
-		var params = Behavior.getBehaviorParameters();
-		var embedded_behaviors = helper_collectEmbeddedBehaviors(Behavior.getStatemachine());
-		for (var i = 0; i < embedded_behaviors.length; i++) {
+		let params = Behavior.getBehaviorParameters();
+		let embedded_behaviors = helper_collectEmbeddedBehaviors(Behavior.getStatemachine());
+		for (let i = 0; i < embedded_behaviors.length; i++) {
 			if (embedded_behaviors[i] == undefined) continue;
-			var b = embedded_behaviors[i];
-			var ps = b.getBehaviorManifest().params.filter(p => {
+			let b = embedded_behaviors[i];
+			let ps = b.getBehaviorManifest().params.filter(p => {
 				return b.getParameterValues()[b.getParameters().indexOf(p.name)] == undefined;
 			});
 			params = params.concat(ps.filter(function(el) {
@@ -290,24 +292,26 @@ UI.RuntimeControl = new (function() {
 			return;
 		}
 
-		for (var i=0; i<params.length; i++) {
-			var name_td = document.createElement("td");
+		for (let i=0; i<params.length; i++) {
+			let name_td = document.createElement("td");
 			name_td.setAttribute("width", "14%");
 			name_td.setAttribute("height", "30");
 			name_td.setAttribute("title", params[i].name);
 			name_td.innerHTML = params[i].label + ":";
 
-			var value_td = document.createElement("td");
+			let value_td = document.createElement("td");
 			value_td.setAttribute("width", "60%");
 			if (params[i].type == "enum") {
-				var select = document.createElement("select");
+				let select = document.createElement("select");
+				select.setAttribute("id", params[i].name);
 				select.setAttribute("name", params[i].name);
 				params[i].additional.forEach(function(opt) {
 					select.innerHTML += '<option value="' + opt + '" ' + ((opt == params[i].default)? 'selected="selected"' : '') + '>' + opt + '</option>';
 				});
 				value_td.appendChild(select);
 			} else if (params[i].type == "numeric") {
-				var input = document.createElement("input");
+				let input = document.createElement("input");
+				input.setAttribute("id", params[i].name);
 				input.setAttribute("name", params[i].name);
 				input.setAttribute("type", "number");
 				input.setAttribute("value", params[i].default);
@@ -316,7 +320,8 @@ UI.RuntimeControl = new (function() {
 				input.setAttribute("step", (params[i].default.indexOf(".") != -1)? "0.1" : "1");
 				value_td.appendChild(input);
 			} else if (params[i].type == "boolean") {
-				var input = document.createElement("input");
+				let input = document.createElement("input");
+				input.setAttribute("id", params[i].name);
 				input.setAttribute("name", params[i].name);
 				input.setAttribute("type", "checkbox");
 				if (params[i].default == "True") {
@@ -324,53 +329,55 @@ UI.RuntimeControl = new (function() {
 				}
 				value_td.appendChild(input);
 			} else if (params[i].type == "text") {
-				var input = document.createElement("input");
+				let input = document.createElement("input");
+				input.setAttribute("id", params[i].name);
 				input.setAttribute("name", params[i].name);
 				input.setAttribute("type", "text");
 				input.setAttribute("value", params[i].default);
 				value_td.appendChild(input);
 			} else if (params[i].type == "yaml") {
-				var add_button = document.createElement("input");
+				let add_button = document.createElement("input");
+				add_button.setAttribute("id", "yaml_button_" + i);
 				add_button.setAttribute("type", "button");
 				add_button.setAttribute("value", "...");
 				add_button.addEventListener('click', function() {
-					var button = this;
+					let button = this;
 					chrome.fileSystem.chooseEntry({type: 'openFile'}, function(entry) {
 						button.parentNode.parentNode.children[0].children[0].setAttribute("value", entry.name);
 					});
 				});
 
-				var file_input = document.createElement("input");
+				let file_input = document.createElement("input");
 				file_input.setAttribute("type", "text");
 				file_input.setAttribute("value", params[i].default);
 				file_input.setAttribute("key", params[i].additional.key);
 				file_input.setAttribute("style", "width: 300px");
 
-				var file_td = document.createElement("td");
+				let file_td = document.createElement("td");
 				file_td.appendChild(file_input);
-				var add_td = document.createElement("td");
+				let add_td = document.createElement("td");
 				add_td.appendChild(add_button);
-				var key_label_td = document.createElement("td");
+				let key_label_td = document.createElement("td");
 				key_label_td.innerHTML = (params[i].additional.key != "")? "(key: " + params[i].additional.key + ")" : "";
 
-				var yaml_tr = document.createElement("tr");
+				let yaml_tr = document.createElement("tr");
 				yaml_tr.appendChild(file_td);
 				//yaml_tr.appendChild(add_td);
 				yaml_tr.appendChild(key_label_td);
-				var yaml_table = document.createElement("table");
+				let yaml_table = document.createElement("table");
 				yaml_table.appendChild(yaml_tr);
 				value_td.appendChild(yaml_table);
 			}
 
-			var hint_td = document.createElement("td");
+			let hint_td = document.createElement("td");
 			hint_td.setAttribute("width", "25%");
-			var text = params[i].hint;
+			let text = params[i].hint;
 			if (params[i].name.indexOf("/") != -1) {
 				text += " (/" + params[i].name.substr(0, params[i].name.lastIndexOf("/")) + ")";
 			}
 			hint_td.innerHTML = '<font style="color: gray">' + text + '</font>';
 
-			var tr = document.createElement("tr");
+			let tr = document.createElement("tr");
 			tr.setAttribute("name", params[i].name);
 			tr.setAttribute("type", params[i].type);
 			tr.appendChild(name_td);
@@ -381,27 +388,27 @@ UI.RuntimeControl = new (function() {
 	}
 
 	var parseParameterConfig = function(callback) {
-		var children = document.getElementById("rc_parameter_table").children;
-		var tagsToGo = children.length;
-		var result = [];
+		let children = document.getElementById("rc_parameter_table").children;
+		let tagsToGo = children.length;
+		let result = [];
 
-		var checkResult = function() {
+		let checkResult = function() {
 			tagsToGo -= 1;
 			if (tagsToGo == 0) callback(result);
 		}
 
-		for (var i = 0; i < children.length; i++) {
-			var c = children[i];
+		for (let i = 0; i < children.length; i++) {
+			let c = children[i];
 			if (c.tagName != "TR") {
 				checkResult();
 				continue;
 			}
 
-			var name = c.getAttribute("name");
-			var type = c.getAttribute("type");
-			var value = "";
+			let name = c.getAttribute("name");
+			let type = c.getAttribute("type");
+			let value = "";
 			if (type == "enum") {
-				var select = c.children[1].children[0];
+				let select = c.children[1].children[0];
 				value = select.options[select.selectedIndex].value;
 				result.push({name: name, value: value});
 				checkResult();
@@ -419,7 +426,7 @@ UI.RuntimeControl = new (function() {
 				checkResult();
 			} else if (type == "yaml") {
 				value = c.children[1].children[0].children[0].children[0].children[0].value;
-				var key = c.children[1].children[0].children[0].children[0].children[0].getAttribute('key');
+				let key = c.children[1].children[0].children[0].children[0].children[0].getAttribute('key');
 				result.push({name: "YAML:" + name, value: value + ":" + key});
 				checkResult();
 			}
@@ -456,8 +463,8 @@ UI.RuntimeControl = new (function() {
 	// ===========
 	this.setRosProperties = function(ns) {
 		console.log(`ui.RC.setRosProperties ns='${ns}' `);
-		var status_disp = document.getElementById('rc_ros_prop_status');
-		var connect_button = document.getElementById('button_rc_connect');
+		let status_disp = document.getElementById('rc_ros_prop_status');
+		let connect_button = document.getElementById('button_rc_connect');
 		if (RC.ROS.isOfflineMode()) {
 			status_disp.value = "Offline mode - no ROS connection.";
 			status_disp.style.color = "#900";
@@ -537,7 +544,7 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.setProgressStatus = function(status) {
-		var color = "";
+		let color = "";
 		switch (status) {
 			case RC.Sync.STATUS_WARN: color = "linear-gradient(#ff3, #dd2)"; break;
 			case RC.Sync.STATUS_ERROR: color = "linear-gradient(#e86, #c64)"; break;
@@ -559,15 +566,15 @@ UI.RuntimeControl = new (function() {
 				param_vals.push("" + r.value);
 			});
 			console.log("Got parameter values, starting behavior...");
-			var selection_box = document.getElementById("selection_rc_autonomy");
-			var autonomy_value = parseInt(selection_box.options[selection_box.selectedIndex].value);
+			let selection_box = document.getElementById("selection_rc_autonomy");
+			let autonomy_value = parseInt(selection_box.options[selection_box.selectedIndex].value);
 			RC.PubSub.sendBehaviorStart(param_keys, param_vals, autonomy_value);
 		});
 	}
 
 	this.attachExternalClicked = function() {
-		var selection_box = document.getElementById("selection_rc_autonomy");
-		var autonomy_level = parseInt(selection_box.options[selection_box.selectedIndex].value);
+		let selection_box = document.getElementById("selection_rc_autonomy");
+		let autonomy_level = parseInt(selection_box.options[selection_box.selectedIndex].value);
 		RC.PubSub.sendAttachBehavior(autonomy_level);
 
 		UI.RuntimeControl.displayBehaviorFeedback(4, "Attaching to behavior...");
@@ -577,13 +584,13 @@ UI.RuntimeControl = new (function() {
 		if (!RC.Controller.isRunning()) return;
 
 		if (RC.Controller.isActive()) {
-			var selection_box = document.getElementById("selection_rc_lock_layer");
+			let selection_box = document.getElementById("selection_rc_lock_layer");
 			locked_state_path = selection_box.options[selection_box.selectedIndex].getAttribute("path");
 			RC.Controller.setLockedStatePath(locked_state_path);
 			RC.PubSub.sendBehaviorLock(locked_state_path);
 		} else if (RC.Controller.needSwitch()) {
-			var selection_box = document.getElementById("selection_rc_autonomy");
-			var autonomy_value = parseInt(selection_box.options[selection_box.selectedIndex].value);
+			let selection_box = document.getElementById("selection_rc_autonomy");
+			let autonomy_value = parseInt(selection_box.options[selection_box.selectedIndex].value);
 			RC.PubSub.sendBehaviorUpdate(param_keys, param_vals, autonomy_value);
 		} else {
 			RC.PubSub.sendBehaviorUnlock(locked_state_path);
@@ -592,8 +599,8 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.updateAutonomySelectionBoxColor = function() {
-		var selection_box = document.getElementById("selection_rc_autonomy");
-		var value = parseInt(selection_box.options[selection_box.selectedIndex].value);
+		let selection_box = document.getElementById("selection_rc_autonomy");
+		let value = parseInt(selection_box.options[selection_box.selectedIndex].value);
 		switch (value) {
 			case 0: selection_box.style.color = "black"; break;
 			case 1: selection_box.style.color = "blue"; break;
@@ -603,8 +610,8 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.autonomySelectionChanged = function() {
-		var selection_box = document.getElementById("selection_rc_autonomy");
-		var value = parseInt(selection_box.options[selection_box.selectedIndex].value);
+		let selection_box = document.getElementById("selection_rc_autonomy");
+		let value = parseInt(selection_box.options[selection_box.selectedIndex].value);
 		that.updateAutonomySelectionBoxColor();
 		if (RC.Controller.isConnected()) {
 			RC.PubSub.sendAutonomyLevel(value);
@@ -677,18 +684,18 @@ UI.RuntimeControl = new (function() {
 		document.getElementById("sync_bar").style.marginBottom = "0";
 		document.getElementById("sync_extension").style.display = "block";
 		RC.Sync.setVisualizationCallback(function (sync_processes) {
-			var processes = sync_processes.clone();
+			let processes = sync_processes.clone();
 			if (processes.length == 0) {
 				document.getElementById("sync_extension").innerHTML = '<div id="sync_empty" style="font-style: italic; color: gray;"> none active</div>';
 				return;
 			} else {
-				var empt = document.getElementById("sync_empty");
+				let empt = document.getElementById("sync_empty");
 				if (empt != undefined) document.getElementById("sync_extension").removeChild(empt);
 			}
-			var extension_divs = document.getElementById("sync_extension").childNodes;
-			for (var i = 0; i < extension_divs.length; i++) {
-				var d = extension_divs[i];
-				var p = processes.findElement(function (el) {
+			let extension_divs = document.getElementById("sync_extension").childNodes;
+			for (let i = 0; i < extension_divs.length; i++) {
+				let d = extension_divs[i];
+				let p = processes.findElement(function (el) {
 					return el.key == d.getAttribute("key") && d.getAttribute("removing") == "false";
 				});
 				if (p == undefined) {
@@ -696,10 +703,10 @@ UI.RuntimeControl = new (function() {
 						d.setAttribute('removing', 'true');
 						d.childNodes[1].style.color = 'gray';
 						d.firstChild.firstChild.style.width = '100%';
-						var success = d.firstChild.firstChild.style.backgroundColor == 'rgb(153, 221, 85)';
+						let success = d.firstChild.firstChild.style.backgroundColor == 'rgb(153, 221, 85)';
 						d.firstChild.firstChild.style.opacity = '0.4';
 						d.childNodes[1].innerText += success? ' - done!' : ' - failed!';
-						var remove = function(el, timeout) {
+						let remove = function(el, timeout) {
 							setTimeout(function() {
 								document.getElementById("sync_extension").removeChild(el);
 								document.getElementById("sync_extension").style.height =
@@ -711,16 +718,16 @@ UI.RuntimeControl = new (function() {
 					continue;
 				}
 				processes.remove(p);
-				var color = (p.status == RC.Sync.STATUS_WARN)? '#dd2' :
+				let color = (p.status == RC.Sync.STATUS_WARN)? '#dd2' :
 							(p.status == RC.Sync.STATUS_ERROR)? '#c64' :
 							'#9d5';
 				d.firstChild.firstChild.style.backgroundColor = color;
 				d.firstChild.firstChild.style.width = (p.fulfilled * 100) + '%';
 				d.childNodes[1].innerText = p.key;
 			}
-			for (var i = 0; i < processes.length; i++) {
-				var p = processes[i];
-				var d = document.createElement("div");
+			for (let i = 0; i < processes.length; i++) {
+				let p = processes[i];
+				let d = document.createElement("div");
 				d.setAttribute('class', 'sync_entry');
 				d.setAttribute('key', p.key);
 				d.setAttribute('removing', 'false');
@@ -770,12 +777,12 @@ UI.RuntimeControl = new (function() {
 	this.displayNoBehavior = function() {
 		hideDisplays();
 		document.getElementById("runtime_no_behavior_display").style.display = "inline";
-		var updateHistoryDisplay = function() {
-			var historyHTML = "";
-			var currentIdx = ActivityTracer.getCurrentIndex();
+		let updateHistoryDisplay = function() {
+			let historyHTML = "";
+			let currentIdx = ActivityTracer.getCurrentIndex();
 			ActivityTracer.getActivityList().forEach((activity, idx) => {
 				if (activity == undefined) return;
-				var fontStyle = "";
+				let fontStyle = "";
 				if (idx > currentIdx) {
 					fontStyle = ' style="text-decoration: line-through;"';
 				}
@@ -796,13 +803,13 @@ UI.RuntimeControl = new (function() {
 			RC.Controller.setCurrentStatePath(target.getStatePath());
 			let path_segments = target.getStatePath().split("/");
 			current_level = path_segments.length - 1; // go to deepest level of target
-			// console.log(`\x1b[94mSet displayOutcomeRequest '${JSON.stringify(outcome_request)}' level=${current_level}\x1b[0m`);
+			//console.log(`\x1b[94mSet displayOutcomeRequest '${JSON.stringify(outcome_request)}' level=${current_level}\x1b[0m`);
 			if (R != undefined) {
 				drawStatusLabel("Onboard requested outcome: " + target.getStateName() + " > " + outcome);
 				updateDrawing();
 			}
 		} else {
-			// console.log(`\x1b[94mClear displayOutcomeRequest '${JSON.stringify(outcome_request)}'\x1b[0m`);
+			//console.log(`\x1b[94mClear displayOutcomeRequest '${JSON.stringify(outcome_request)}'\x1b[0m`);
 			if (R != undefined) {
 				drawStatusLabel("");
 				updateDrawing();
@@ -811,10 +818,10 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.displayLockBehavior = function() {
-		var lock_button = document.getElementById("button_behavior_lock");
+		let lock_button = document.getElementById("button_behavior_lock");
 		lock_button.setAttribute("value", "Lock Behavior");
 
-		var selection_box = document.createElement("select");
+		let selection_box = document.createElement("select");
 		selection_box.setAttribute("id", "selection_rc_lock_layer");
 		if (R == undefined) {
 			lock_button.setAttribute("disabled", "disabled");
@@ -823,13 +830,13 @@ UI.RuntimeControl = new (function() {
 		} else {
 			lock_button.removeAttribute("disabled");
 			// collect containers but skip top-level container (behavior)
-			var options = [];
-			for(var i=current_states.length-1; i>0; i--) {
+			let options = [];
+			for(let i=current_states.length-1; i>0; i--) {
 				if (current_states[i] == undefined) {
-					// console.log("\x1b[34muiRuntimeControl.displayLockBehavior : Skipping undefined current_state[" + i + "] ...\x1b[0m");
+					//console.log("\x1b[34muiRuntimeControl.displayLockBehavior : Skipping undefined current_state[" + i + "] ...\x1b[0m");
 					continue;
 				}
-				var option = document.createElement("option");
+				let option = document.createElement("option");
 				if (i == current_level) {
 					option.setAttribute("selected", "selected");
 				}
@@ -839,7 +846,7 @@ UI.RuntimeControl = new (function() {
 						option.setAttribute("selected", "selected");
 					}
 					option.setAttribute("path", current_states[i].getStatePath());
-					var txt = current_states[i].getStateName();
+					let txt = current_states[i].getStateName();
 					option.setAttribute("title", txt);
 					option.text = ((txt.length > 18)? txt.slice(0,15) + "..." : txt);
 					options.push(option);
@@ -855,38 +862,38 @@ UI.RuntimeControl = new (function() {
 			});
 		}
 
-		var label_td = document.createElement("td");
+		let label_td = document.createElement("td");
 		label_td.innerHTML = "At level: ";
-		var selection_td = document.createElement("td");
+		let selection_td = document.createElement("td");
 		selection_td.appendChild(selection_box);
 
-		var tr = document.getElementById("behavior_lock_display");
+		let tr = document.getElementById("behavior_lock_display");
 		tr.innerHTML = "";
 		tr.appendChild(label_td);
 		tr.appendChild(selection_td);
 	}
 	this.displayUnlockBehavior = function(have_changes) {
-		var lock_button = document.getElementById("button_behavior_lock");
+		let lock_button = document.getElementById("button_behavior_lock");
 		lock_button.setAttribute("value", (have_changes)? "Go for it!" : "Unlock Behavior");
 		lock_button.removeAttribute("disabled");
 
-		var label_td = document.createElement("td");
+		let label_td = document.createElement("td");
 		if (have_changes) {
 			label_td.innerHTML = '<font style="color: gray">Do further changes or switch to the new version and continue its execution.</font>';
 		} else {
 			label_td.innerHTML = '<font style="color: gray">You may now change the behavior or unlock it to continue its execution.</font>';
 		}
 
-		var tr = document.getElementById("behavior_lock_display");
+		let tr = document.getElementById("behavior_lock_display");
 		tr.innerHTML = "";
 		tr.appendChild(label_td);
 	}
 	this.displayBehaviorChanged = function() {
-		var lock_button = document.getElementById("button_behavior_lock");
+		let lock_button = document.getElementById("button_behavior_lock");
 		lock_button.setAttribute("value", "Unlock Behavior");
 		lock_button.setAttribute("disabled", "disabled");
 
-		var button = document.createElement("input");
+		let button = document.createElement("input");
 		button.setAttribute("id", "selection_rc_lock_layer");
 		button.setAttribute("type", "button");
 		button.setAttribute("value", "Reset Changes");
@@ -900,12 +907,12 @@ UI.RuntimeControl = new (function() {
 			RC.Controller.signalReset();
 		});
 
-		var label_td = document.createElement("td");
+		let label_td = document.createElement("td");
 		label_td.innerHTML = '<font style="color: gray">Behavior changed, please save before unlock.</font>';
-		var button_td = document.createElement("td");
+		let button_td = document.createElement("td");
 		button_td.appendChild(button);
 
-		var tr = document.getElementById("behavior_lock_display");
+		let tr = document.getElementById("behavior_lock_display");
 		tr.innerHTML = "";
 		tr.appendChild(label_td);
 		tr.appendChild(button_td);
@@ -920,11 +927,11 @@ UI.RuntimeControl = new (function() {
 		}
 
 		// always update current states when state path updated
-		var path_segments = state_path.split("/");
-		var path_recreate = "";
-		for (var i=1; i<path_segments.length; i++) {
+		let path_segments = state_path.split("/");
+		let path_recreate = "";
+		for (let i=1; i<path_segments.length; i++) {
 			path_recreate += "/" + path_segments[i];
-			var new_current_state = Behavior.getStatemachine().getStateByPath(path_recreate);
+			let new_current_state = Behavior.getStatemachine().getStateByPath(path_recreate);
 			if (new_current_state != current_states[i]) {
 				previous_states[i] = current_states[i];
 			}
@@ -969,7 +976,7 @@ UI.RuntimeControl = new (function() {
 				status_label.remove();
 				status_label = undefined;
 			} else {
-				// console.log(`\x1b[94mPreserving existing status label '${status_label.attr('text')}' (${JSON.stringify(outcome_request)})\x1b[0m`);
+				//console.log(`\x1b[94mPreserving existing status label '${status_label.attr('text')}' (${JSON.stringify(outcome_request)})\x1b[0m`);
 			}
 		}
 
@@ -977,8 +984,8 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.displayBehaviorFeedback = function(level, text) {
-		var color = "black";
-		var collapse = UI.Settings.isCollapseInfo();
+		let color = "black";
+		let collapse = UI.Settings.isCollapseInfo();
 		switch(level) {
 			case 1:
 				color = "orange";
@@ -997,31 +1004,31 @@ UI.RuntimeControl = new (function() {
 				collapse = false;
 				break;
 		}
-		var currentdate = new Date();
-		var time = currentdate.toLocaleTimeString();
+		let currentdate = new Date();
+		let time = currentdate.toLocaleTimeString();
 
-		var text_split = text.split("\n");
-		var text_title = text_split[0];
-		var text_body = "";
-		for (var i = 1; i < text_split.length; i++) {
+		let text_split = text.split("\n");
+		let text_title = text_split[0];
+		let text_body = "";
+		for (let i = 1; i < text_split.length; i++) {
 			text_body += "<br />&nbsp;&nbsp;&nbsp;&nbsp;";
 			text_body += text_split[i].replace(/ /g, "&nbsp;").replace(/\t/g, "&nbsp;&nbsp;&nbsp;&nbsp;");
 		}
 
-		var panel = document.getElementById("runtime_feedback_text");
+		let panel = document.getElementById("runtime_feedback_text");
 
-		var entry_time = document.createElement("font");
+		let entry_time = document.createElement("font");
 		entry_time.style.color = "gray";
 		entry_time.innerHTML = "[" + time + "] ";
 
-		var entry_title = document.createElement("font");
+		let entry_title = document.createElement("font");
 		entry_title.style.color = color;
 		entry_title.style.fontWeight = level == 2? "bold" : "";
 		entry_title.style.fontSize = "9pt";
 		entry_title.innerHTML = text_title;
 
-		var entry_body = undefined;
-		var entry_toggle = undefined;
+		let entry_body = undefined;
+		let entry_toggle = undefined;
 		if (text_body != "") {
 			entry_body = document.createElement("font");
 			entry_body.style.color = color;
@@ -1047,7 +1054,7 @@ UI.RuntimeControl = new (function() {
 			});
 		}
 
-		var entry = document.createElement("div");
+		let entry = document.createElement("div");
 		entry.style.whiteSpace = "nowrap";
 		entry.appendChild(entry_time);
 		entry.appendChild(entry_title);
@@ -1056,7 +1063,7 @@ UI.RuntimeControl = new (function() {
 			entry.appendChild(entry_body);
 		}
 
-		var prev_entry = panel.lastChild
+		let prev_entry = panel.lastChild
 		if (prev_entry != undefined) {
 			prev_entry.children[1].style.fontSize = "";
 		}
@@ -1067,9 +1074,9 @@ UI.RuntimeControl = new (function() {
 
 	var helper_collectEmbeddedBehaviors = function(sm) {
 		if (sm == undefined) return;
-		var states = sm.getStates();
-		var result = [];
-		for (var i = 0; i < states.length; i++) {
+		let states = sm.getStates();
+		let result = [];
+		for (let i = 0; i < states.length; i++) {
 			if (states[i] instanceof Statemachine) {
 				result = result.concat(helper_collectEmbeddedBehaviors(states[i]));
 			}
@@ -1079,6 +1086,102 @@ UI.RuntimeControl = new (function() {
 			}
 		}
 		return result;
+	}
+
+	this.setupTabHandling = function() {
+		// Set focus on the main panel to capture key presses
+		document.getElementById("runtimecontrol").focus({preventScroll: true});
+		tab_targets = updateTabTargets("runtimecontrol");
+		// We do not set intial focus on runtime
+	}
+
+	this.removeTabHandling = function() {
+		tab_targets.length = 0;
+	}
+
+	var updateTabTargets = function(panel_id) {
+		let select_tags = 'input, select, button';
+
+		let panel = document.getElementById(panel_id);
+		let targets = Array.from(panel.querySelectorAll(select_tags));
+		targets = targets.filter(function(el) {
+			if (el.tabIndex === -1)  return false;
+			if (el.id == '') return false;
+			let parentDiv = el.parentElement;
+			while (parentDiv) {
+				if (parentDiv.id == panel.id) {
+					return true;
+				}
+				parentDiv = parentDiv.parentElement;
+			}
+			return false; // never matched our panel id
+		});
+
+		targets.sort(function(a, b) {
+			if (a.tabIndex === b.tabIndex) {
+				// if tabIndex not set, then use DOCUMENT_POSITION_PRECEDING flag test (b proceeds a)
+				return a.compareDocumentPosition(b) & 2 ? 1 : -1;
+			}
+			return a.tabIndex - b.tabIndex;
+		});
+
+		console.log(`\x1b[94m   RC - Found ${targets.length} TAB targets for '${panel_id}'!\x1b[0m`);
+		return targets;
+	}
+
+	// Define the event listener function
+	this.handleKeyDown = function(event) {
+		if (event.key === "Tab") {
+			// RC is active so capture all the TABS
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+			if (tab_targets.length == 0) return;
+			let match = undefined;
+			let match_ndx = -1;
+			if (document.activeElement) {
+				for (let i = 0; i < tab_targets.length; i++) {
+					if (document.activeElement && (document.activeElement.id == tab_targets[i].id)) {
+						match = tab_targets[i];
+						match_ndx = i;
+						break;
+					}
+				}
+			}
+			if (match) {
+				let new_match_ndx = -1;
+				let new_match = undefined;
+				let try_match_ndx = match_ndx;
+				while (new_match != document.activeElement && new_match_ndx != match_ndx) {
+					// Handle hidden element (e.g. synthesis block on statemachine panel)
+					new_match_ndx = event.shiftKey
+										? (try_match_ndx - 1 + tab_targets.length) % tab_targets.length
+										: (try_match_ndx + 1) % tab_targets.length;
+					new_match = tab_targets[new_match_ndx];
+					new_match.focus({ preventScroll: true });
+					try_match_ndx = new_match_ndx; // Continue to look for next valid target
+				}
+			} else {
+				console.log(`Activate initial tab focus in runtimecontrol!`);
+				tab_targets[0].focus({ preventScroll: true }); // Move focus to the first input
+			}
+		} else if (event.target.id === 'runtimecontrol') {
+			// RC is active so capture all keys
+			//console.log(`\x1b[93mRuntime control view capture keydown for other keys ('${event.target.id}')!\x1b[0m`);
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+		}
+	}
+
+	this.handleKeyUp = function(event) {
+		if (event.key === "Tab") {
+			// Panel is active so capture all the TABS
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+		} else if (event.target.id === 'runtimecontrol') {
+			// RC is active so capture all keys require click confirmation
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+		}
 	}
 
 }) ();

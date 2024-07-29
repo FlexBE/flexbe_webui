@@ -1,19 +1,72 @@
 // Add Event Listeners
 document.addEventListener('DOMContentLoaded', function() {
-	var onEnter = function(cb) { return function(event) { if(event.keyCode == 13) cb(); } };
-	var onEnterFocusChange = function (cb, id) { return onEnter(function() { cb(); document.getElementById(id).focus(); }); };
+	var onEnter = function(cb) { return function(event) {
+			// Allow selection based on Enter or space bar if highlighted
+			if(event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault(); // Prevent default action for Enter key
+				event.stopPropagation(); // Stop the event from propagating to other handlers
+
+				// Suppress the default click event that follows
+				var suppressClick = function(clickEvent) {
+					clickEvent.stopImmediatePropagation();
+					clickEvent.preventDefault();
+					console.log(`\x1b[36mClick event suppressed from '${event.target.id}'\x1b[0m`);
+				};
+
+				// Add temporary click event listener to suppress click (automatically removed after used once)
+				event.target.addEventListener('click', suppressClick, { capture: true, once: true });
+
+				cb(event);
+
+			}
+		}
+	};
+
+	var onEnterFocusChange = function (cb, id) { return onEnter(function(event) {
+			cb(event);
+			document.getElementById(id).focus({ preventScroll: true });
+		});
+	};
+
+	function onEnterChange(event) {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault(); // Prevent default action (scrolling for Space)
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+			event.target.checked = !event.target.checked; // Toggle checkbox state
+			event.target.dispatchEvent(new Event('change')); // Trigger change event
+		}
+	}
+
 
 // General
+
+	// These are last chance listeners - we want that any keys are handled by their respective panes first!
+	document.addEventListener('keydown', UI.Tools.handleTopLevelKeyDown);
+	document.addEventListener('keyup',   UI.Tools.handleTopLevelKeyUp);
+
+	document.getElementById('top-level-toolbar').addEventListener('keydown', UI.Menu.handleKeyDown);
+	document.getElementById('top-level-toolbar').addEventListener('keyup', UI.Menu.handleKeyUp);
+	document.getElementById('top-level-toolbar').addEventListener('click', function(event) {
+		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
+		if (event.target.id  == '' || event.target.id == 'top-level-toolbar') {
+			console.log(`\x1b[92m clickHandler - focus on top-level-toolbar  from target='${event.target.id}'\x1b[0m`);
+			UI.Menu.setupTabHandling();
+		}
+	});
+
 	document.getElementById('flexbe_about').addEventListener('click', UI.Feed.showAbout);
 
 	document.getElementById('button_to_db').addEventListener('click', UI.Menu.toDashboardClicked);
 	document.getElementById('button_to_sm').addEventListener('click', UI.Menu.toStatemachineClicked);
 	document.getElementById('button_to_rc').addEventListener('click', UI.Menu.toControlClicked);
 	document.getElementById('button_to_se').addEventListener('click', UI.Menu.toSettingsClicked);
+	document.getElementById('button_to_db').addEventListener('keydown', onEnter(UI.Menu.toDashboardClicked));
+	document.getElementById('button_to_sm').addEventListener('keydown', onEnter(UI.Menu.toStatemachineClicked));
+	document.getElementById('button_to_rc').addEventListener('keydown', onEnter(UI.Menu.toControlClicked));
+	document.getElementById('button_to_se').addEventListener('keydown', onEnter(UI.Menu.toSettingsClicked));
 
 	document.getElementById('terminal').addEventListener('click', UI.Panels.Terminal.hide);
 
-	document.getElementById('tool_input_command').addEventListener('keyup', UI.Tools.commandListener);
 	document.getElementById('tool_overlay_undo').addEventListener('click', UI.Tools.undoClicked);
 	document.getElementById('tool_overlay_redo').addEventListener('click', UI.Tools.redoClicked);
 	document.getElementById('tool_overlay_copy').addEventListener('click', UI.Tools.copyClicked);
@@ -24,6 +77,16 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('tool_overlay_save').addEventListener('click', UI.Tools.saveClicked);
 
 // Behavior Dashboard
+	document.getElementById("dashboard").addEventListener('keydown', UI.Dashboard.handleKeyDown);
+	document.getElementById("dashboard").addEventListener('keyup', UI.Dashboard.handleKeyUp);
+	document.getElementById("dashboard").addEventListener('click', function(event) {
+		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
+		 if (event.target.id  == '' || event.target.id == 'dashboard') {
+			console.log(`\x1b[92m clickHandler - focus on dashboard from target='${event.target.id}'\x1b[0m`);
+			UI.Dashboard.setupTabHandling();
+		}
+	 });
+
 	document.getElementById('select_behavior_package').addEventListener('change', UI.Dashboard.behaviorPackageChanged);
 	document.getElementById('input_behavior_name').addEventListener('blur', UI.Dashboard.behaviorNameChanged);
 	document.getElementById('input_behavior_description').addEventListener('blur', UI.Dashboard.behaviorDescriptionChanged);
@@ -32,84 +95,147 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('input_behavior_date').addEventListener('blur', UI.Dashboard.behaviorDateChanged);
 
 	document.getElementById('button_db_variable_add').addEventListener('click', UI.Dashboard.addPrivateVariableClicked);
-	document.getElementById('input_db_variable_key_add').addEventListener('keyup', onEnter(UI.Dashboard.addPrivateVariableClicked));
-	document.getElementById('input_db_variable_value_add').addEventListener('keyup', onEnterFocusChange(UI.Dashboard.addPrivateVariableClicked, 'input_db_variable_key_add'));
+	document.getElementById('button_db_variable_add').addEventListener('keydown', onEnter(UI.Dashboard.addPrivateVariableClicked));
+	document.getElementById('input_db_variable_key_add').addEventListener('keydown', onEnter(UI.Dashboard.addPrivateVariableClicked));
+	document.getElementById('input_db_variable_value_add').addEventListener('keydown', onEnterFocusChange(UI.Dashboard.addPrivateVariableClicked, 'input_db_variable_key_add'));
 
 	document.getElementById('button_db_userdata_add').addEventListener('click', UI.Dashboard.addDefaultUserdataClicked);
-	document.getElementById('input_db_userdata_key_add').addEventListener('keyup', onEnter(UI.Dashboard.addDefaultUserdataClicked));
-	document.getElementById('input_db_userdata_value_add').addEventListener('keyup', onEnterFocusChange(UI.Dashboard.addDefaultUserdataClicked, 'input_db_userdata_key_add'));
+	document.getElementById('button_db_userdata_add').addEventListener('keydown', onEnter(UI.Dashboard.addDefaultUserdataClicked));
+	document.getElementById('input_db_userdata_key_add').addEventListener('keydown', onEnter(UI.Dashboard.addDefaultUserdataClicked));
+	document.getElementById('input_db_userdata_value_add').addEventListener('keydown', onEnterFocusChange(UI.Dashboard.addDefaultUserdataClicked, 'input_db_userdata_key_add'));
 
 	document.getElementById('button_db_parameter_add').addEventListener('click', UI.Dashboard.addParameterClicked);
-	document.getElementById('input_db_parameter_name_add').addEventListener('keyup', onEnter(UI.Dashboard.addParameterClicked));
-	document.getElementById('button_db_parameter_turn').addEventListener('click', UI.Dashboard.turnParameterClicked);
-
-//	document.getElementById('button_db_function_add').addEventListener('click', UI.Dashboard.addPrivateFunctionClicked);
-//	document.getElementById('input_db_function_name_add').addEventListener('keyup', onEnter(UI.Dashboard.addPrivateFunctionClicked));
-//	document.getElementById('input_db_function_params_add').addEventListener('keyup', onEnterFocusChange(UI.Dashboard.addPrivateFunctionClicked, 'input_db_function_name_add'));
+	document.getElementById('button_db_parameter_add').addEventListener('keydown', onEnter(UI.Dashboard.addParameterClicked));
+	document.getElementById('input_db_parameter_name_add').addEventListener('keydown', onEnter(UI.Dashboard.addParameterClicked));
+	//document.getElementById('db_parameter_edit_table_turn_button').addEventListener('click', UI.Dashboard.turnParameterClicked);
+	//document.getElementById('db_parameter_edit_table_turn_button').addEventListener('keydown', onEnter(UI.Dashboard.turnParameterClicked));
 
 	document.getElementById('button_db_outcome_add').addEventListener('click', UI.Dashboard.addBehaviorOutcomeClicked);
-	document.getElementById('input_db_outcome_add').addEventListener('keyup', onEnter(UI.Dashboard.addBehaviorOutcomeClicked));
+	document.getElementById('button_db_outcome_add').addEventListener('keydown', onEnter(UI.Dashboard.addBehaviorOutcomeClicked));
 	document.getElementById('button_db_input_key_add').addEventListener('click', UI.Dashboard.addBehaviorInputKeyClicked);
-	document.getElementById('input_db_input_key_add').addEventListener('keyup', onEnter(UI.Dashboard.addBehaviorInputKeyClicked));
+	document.getElementById('button_db_input_key_add').addEventListener('keydown', onEnter(UI.Dashboard.addBehaviorInputKeyClicked));
+	document.getElementById('input_db_outcome_add').addEventListener('keydown', onEnter(UI.Dashboard.addBehaviorOutcomeClicked));
+	document.getElementById('input_db_input_key_add').addEventListener('keydown', onEnter(UI.Dashboard.addBehaviorInputKeyClicked));
 	document.getElementById('button_db_output_key_add').addEventListener('click', UI.Dashboard.addBehaviorOutputKeyClicked);
-	document.getElementById('input_db_output_key_add').addEventListener('keyup', onEnter(UI.Dashboard.addBehaviorOutputKeyClicked));
+	document.getElementById('button_db_output_key_add').addEventListener('keydown', onEnter(UI.Dashboard.addBehaviorOutputKeyClicked));
+	document.getElementById('input_db_output_key_add').addEventListener('keydown', onEnter(UI.Dashboard.addBehaviorOutputKeyClicked));
 
 	document.getElementById('button_db_manual_import_add').addEventListener('click', UI.Dashboard.addManualImportClicked);
-	document.getElementById('input_db_manual_import_value_add').addEventListener('keyup', onEnterFocusChange(UI.Dashboard.addManualImportClicked, 'input_db_manual_import_value_add'));
+	document.getElementById('button_db_manual_import_add').addEventListener('keydown', onEnter(UI.Dashboard.addManualImportClicked));
+	document.getElementById('input_db_manual_import_value_add').addEventListener('keydown', onEnterFocusChange(UI.Dashboard.addManualImportClicked, 'input_db_manual_import_value_add'));
 
 	document.getElementById("db_function_box").addEventListener("click", UI.Dashboard.editPrivateFunctionClicked);
 	document.getElementById("db_manual_init_box").addEventListener("click", UI.Dashboard.editManualInitClicked);
 	document.getElementById("db_manual_create_box").addEventListener("click", UI.Dashboard.editManualCreateClicked);
+	document.getElementById("db_function_box").addEventListener("keydown", onEnter(UI.Dashboard.editPrivateFunctionClicked));
+	document.getElementById("db_manual_init_box").addEventListener("keydown", onEnter(UI.Dashboard.editManualInitClicked));
+	document.getElementById("db_manual_create_box").addEventListener("keydown", onEnter(UI.Dashboard.editManualCreateClicked));
 
 // State Machine Editor
+	document.getElementById("statemachine").addEventListener('keydown', UI.Statemachine.handleKeyDown);
+	document.getElementById("statemachine").addEventListener('keyup', UI.Statemachine.handleKeyUp);
+	document.getElementById('statemachine').addEventListener('click', function(event) {
+		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
+		if (event.target.id  == '' || event.target.id == 'statemachine') {
+			console.log(`\x1b[92m clickHandler - focus on statemachine from target='${event.target.id}'\x1b[0m`);
+			document.getElementById("statemachine").focus({preventScroll: true});
+		}
+	});
+	document.getElementById('panel_properties').addEventListener('click', function(event) {
+		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
+		if (event.target.id  == '' || event.target.id == 'panel_properties') {
+			console.log(`\x1b[92m clickHandler - focus on panel_properties from target='${event.target.id}'\x1b[0m`);
+			UI.Panels.setFocus();
+		}
+	});
+
+	document.getElementById('add_state_name').addEventListener('keydown', onEnter(UI.Panels.AddState.addStateConfirmClicked));
 	document.getElementById('button_add_state_confirm').addEventListener('click', UI.Panels.AddState.addStateConfirmClicked);
-	document.getElementById('add_state_name').addEventListener('keyup', onEnter(UI.Panels.AddState.addStateConfirmClicked));
+	document.getElementById('button_add_state_confirm').addEventListener('keydown', onEnter(UI.Panels.AddState.addStateConfirmClicked));
 	document.getElementById('button_add_state_cancel').addEventListener('click', UI.Panels.AddState.addStateCancelClicked);
+	document.getElementById('button_add_state_cancel').addEventListener('keydown', onEnter(UI.Panels.AddState.addStateCancelClicked));
 
 	document.getElementById('button_select_behavior_cancel').addEventListener('click', UI.Panels.SelectBehavior.behaviorSelectCancelClicked);
+	document.getElementById('button_select_behavior_cancel').addEventListener('keydown', onEnter(UI.Panels.SelectBehavior.behaviorSelectCancelClicked));
 
 	document.getElementById('button_apply_properties').addEventListener('click', UI.Panels.StateProperties.applyPropertiesClicked);
+	document.getElementById('button_apply_properties').addEventListener('keydown', onEnter(UI.Panels.StateProperties.applyPropertiesClicked));
 	document.getElementById('button_close_properties').addEventListener('click', UI.Panels.StateProperties.closePropertiesClicked);
+	document.getElementById('button_close_properties').addEventListener('keydown', onEnter(UI.Panels.StateProperties.closePropertiesClicked));
 	document.getElementById('button_delete_state').addEventListener('click', UI.Panels.StateProperties.deleteStateClicked);
+	document.getElementById('button_delete_state').addEventListener('keydown', onEnter(UI.Panels.StateProperties.deleteStateClicked));
 
 	document.getElementById('select_container_type').addEventListener('change', UI.Panels.StateProperties.containerTypeChanged);
 
 	document.getElementById('cb_display_synthesis').addEventListener('change', UI.Panels.StateProperties.displaySynthesisClicked);
+	document.getElementById('cb_display_synthesis').addEventListener('keydown', onEnterChange);
 	document.getElementById('button_prop_synthesize').addEventListener('click', UI.Panels.StateProperties.synthesizeClicked);
+	document.getElementById('button_prop_synthesize').addEventListener('keydown', onEnter(UI.Panels.StateProperties.synthesizeClicked));
 
 	document.getElementById('button_view_state').addEventListener('click', UI.Panels.StateProperties.viewStateSourceCode);
 	document.getElementById('button_view_behavior').addEventListener('click', UI.Panels.StateProperties.openBehavior);
 	document.getElementById('button_view_behavior_code').addEventListener('click', UI.Panels.StateProperties.viewBehaviorSourceCode);
 	document.getElementById('button_view_statemachine').addEventListener('click', UI.Panels.StateProperties.openStatemachine);
+	document.getElementById('button_view_state').addEventListener('keydown', onEnter(UI.Panels.StateProperties.viewStateSourceCode));
+	document.getElementById('button_view_behavior').addEventListener('keydown', onEnter(UI.Panels.StateProperties.openBehavior));
+	document.getElementById('button_view_behavior_code').addEventListener('keydown', onEnter(UI.Panels.StateProperties.viewBehaviorSourceCode));
+	document.getElementById('button_view_statemachine').addEventListener('keydown', onEnter(UI.Panels.StateProperties.openStatemachine));
+
 	document.getElementById('button_prop_outcome_add').addEventListener('click', UI.Panels.StateProperties.addSMOutcome);
 	document.getElementById('button_prop_input_key_add').addEventListener('click', UI.Panels.StateProperties.addSMInputKey);
 	document.getElementById('button_prop_output_key_add').addEventListener('click', UI.Panels.StateProperties.addSMOutputKey);
-	document.getElementById('input_prop_outcome_add').addEventListener('keyup', onEnter(UI.Panels.StateProperties.addSMOutcome));
-	document.getElementById('input_prop_input_key_add').addEventListener('keyup', onEnter(UI.Panels.StateProperties.addSMInputKey));
-	document.getElementById('input_prop_output_key_add').addEventListener('keyup', onEnter(UI.Panels.StateProperties.addSMOutputKey));
+	document.getElementById('button_prop_outcome_add').addEventListener('keydown', onEnter(UI.Panels.StateProperties.addSMOutcome));
+	document.getElementById('button_prop_input_key_add').addEventListener('keydown', onEnter(UI.Panels.StateProperties.addSMInputKey));
+	document.getElementById('button_prop_output_key_add').addEventListener('keydown', onEnter(UI.Panels.StateProperties.addSMOutputKey));
+
+	document.getElementById('input_prop_outcome_add').addEventListener('keydown', onEnter(UI.Panels.StateProperties.addSMOutcome));
+	document.getElementById('input_prop_input_key_add').addEventListener('keydown', onEnter(UI.Panels.StateProperties.addSMInputKey));
+	document.getElementById('input_prop_output_key_add').addEventListener('keydown', onEnter(UI.Panels.StateProperties.addSMOutputKey));
+
 	document.getElementById('button_close_be_properties').addEventListener('click', UI.Panels.StateProperties.closePropertiesClicked);
+	document.getElementById('button_close_be_properties').addEventListener('keydown', onEnter(UI.Panels.StateProperties.closePropertiesClicked));
 	document.getElementById('button_delete_be').addEventListener('click', UI.Panels.StateProperties.deleteStateClicked);
+	document.getElementById('button_delete_be').addEventListener('keydown', onEnter(UI.Panels.StateProperties.deleteStateClicked));
+
 	document.getElementById('button_close_sm_properties').addEventListener('click', UI.Panels.StateProperties.closePropertiesClicked);
+	document.getElementById('button_close_sm_properties').addEventListener('keydown', onEnter(UI.Panels.StateProperties.closePropertiesClicked));
 	document.getElementById('button_delete_sm').addEventListener('click', UI.Panels.StateProperties.deleteStateClicked);
+	document.getElementById('button_delete_sm').addEventListener('keydown', onEnter(UI.Panels.StateProperties.deleteStateClicked));
 
 	document.getElementById('input_prop_state_name').addEventListener('blur', UI.Panels.StateProperties.statePropNameChanged);
 	document.getElementById('input_prop_be_name').addEventListener('blur', UI.Panels.StateProperties.statePropNameChanged);
 	document.getElementById('input_prop_sm_name').addEventListener('blur', UI.Panels.StateProperties.statePropNameChanged);
 
-	document.getElementById('input_class_filter').addEventListener('keyup', UI.Panels.AddState.filterChanged);
+	document.getElementById('input_class_filter').addEventListener('keydown', UI.Panels.AddState.filterChanged);
 	document.getElementById('input_package_filter').addEventListener('change', UI.Panels.AddState.filterChanged);
-	document.getElementById('input_behavior_filter').addEventListener('keyup', UI.Panels.SelectBehavior.behaviorFilterChanged);
+
+	document.getElementById('input_behavior_filter').addEventListener('keydown', UI.Panels.SelectBehavior.behaviorFilterChanged);
 	document.getElementById('input_behavior_package_filter').addEventListener('change', UI.Panels.SelectBehavior.behaviorFilterChanged);
 
 // Runtime Control
+	document.getElementById("runtimecontrol").addEventListener('keydown', UI.RuntimeControl.handleKeyDown);
+	document.getElementById("runtimecontrol").addEventListener('keyup', UI.RuntimeControl.handleKeyUp);
+	document.getElementById('runtimecontrol').addEventListener('click', function(event) {
+		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
+		if (event.target.id  == '' || event.target.id == 'runtimecontrol') {
+			console.log(`\x1b[92m clickHandler - focus on runtimecontrol from target='${event.target.id}'\x1b[0m`);
+			UI.RuntimeControl.setupTabHandling();
+		}
+	});
+
 	document.getElementById('button_rc_connect').addEventListener('click', UI.RuntimeControl.connectClicked);
 	document.getElementById('button_rc_save').addEventListener('click', UI.Menu.saveBehaviorClicked);
 	document.getElementById('button_rc_load').addEventListener('click', UI.Menu.loadBehaviorClicked);
+	document.getElementById('button_rc_connect').addEventListener('keydown', onEnter(UI.RuntimeControl.connectClicked));
+	document.getElementById('button_rc_save').addEventListener('keydown', onEnter(UI.Menu.saveBehaviorClicked));
+	document.getElementById('button_rc_load').addEventListener('keydown', onEnter(UI.Menu.loadBehaviorClicked));
 
 	document.getElementById('button_behavior_start').addEventListener('click', UI.RuntimeControl.startBehaviorClicked);
 	document.getElementById('button_behavior_params_reset').addEventListener('click', UI.RuntimeControl.resetParameterTableClicked);
-
 	document.getElementById('button_behavior_attach_external').addEventListener('click', UI.RuntimeControl.attachExternalClicked);
+	document.getElementById('button_behavior_start').addEventListener('keydown', onEnter(UI.RuntimeControl.startBehaviorClicked));
+	document.getElementById('button_behavior_params_reset').addEventListener('keydown', onEnter(UI.RuntimeControl.resetParameterTableClicked));
+	document.getElementById('button_behavior_attach_external').addEventListener('keydown', onEnter(UI.RuntimeControl.attachExternalClicked));
 
 	document.getElementById('sync_bar').addEventListener('click', UI.RuntimeControl.toggleSyncExtension);
 	document.getElementById('button_behavior_lock').addEventListener('click', UI.RuntimeControl.behaviorLockClicked);
@@ -119,8 +245,18 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('button_behavior_preempt').addEventListener('click', UI.RuntimeControl.preemptBehaviorClicked);
 	document.getElementById('cb_allow_preempt').addEventListener('change', UI.RuntimeControl.allowPreemptClicked);
 	document.getElementById('button_behavior_sync').addEventListener('click', UI.RuntimeControl.syncMirrorClicked);
+	// For above buttons, require targeted click and not Enter with behavior running
 
 // Settings
+	document.getElementById("settings").addEventListener('keydown', UI.Settings.handleKeyDown);
+	document.getElementById("settings").addEventListener('keyup', UI.Settings.handleKeyUp);
+	document.getElementById('settings').addEventListener('click', function(event) {
+		// Add click event listener to the pane to ensure it gains focus for key events (e.g. tabs)
+		if (event.target.id  == '' || event.target.id == 'settings') {
+			console.log(`\x1b[92m clickHandler - focus on settings from target='${event.target.id}'\x1b[0m`);
+			UI.Settings.setupTabHandling();
+		}
+	});
 
 	document.getElementById('select_code_indentation').addEventListener('change', UI.Settings.codeIndentationChanged);
 	document.getElementById('cb_collapse_hint').addEventListener('change', UI.Settings.collapseHintClicked);
@@ -128,7 +264,13 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('cb_collapse_warn').addEventListener('change', UI.Settings.collapseWarnClicked);
 	document.getElementById('cb_collapse_error').addEventListener('change', UI.Settings.collapseErrorClicked);
 
+	document.getElementById('cb_collapse_hint').addEventListener('keydown', onEnterChange);
+	document.getElementById('cb_collapse_info').addEventListener('keydown', onEnterChange);
+	document.getElementById('cb_collapse_warn').addEventListener('keydown', onEnterChange);
+	document.getElementById('cb_collapse_error').addEventListener('keydown', onEnterChange);
+
 	document.getElementById('cb_commands_enabled').addEventListener('change', UI.Settings.commandsEnabledClicked);
+	document.getElementById('cb_commands_enabled').addEventListener('keydown', onEnterChange);
 	document.getElementById('input_commands_key').addEventListener('change', UI.Settings.commandsKeyChanged);
 	document.getElementById('input_commands_form').addEventListener('submit', function(event) {
 		event.preventDefault();
@@ -137,21 +279,24 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('select_default_package').addEventListener('change', UI.Settings.defaultPackageChanged);
 	document.getElementById('input_editor_command').addEventListener('change', UI.Settings.editorCommandChanged);
 	document.getElementById('cb_explicit_states').addEventListener('change', UI.Settings.explicitStatesClicked);
+	document.getElementById('cb_explicit_states').addEventListener('keydown', onEnterChange);
 
 	document.getElementById('input_gridsize').addEventListener('change', UI.Settings.gridsizeChanged);
 
 	document.getElementById('cb_pkg_cache_enabled').addEventListener('change', UI.Settings.pkgCacheEnabledClicked);
+	document.getElementById('cb_pkg_cache_enabled').addEventListener('keydown', onEnterChange);
 
 	document.getElementById('input_runtime_timeout').addEventListener('blur', UI.Settings.runtimeTimeoutChanged);
 
 	document.getElementById('cb_save_in_source').addEventListener('change', UI.Settings.saveInSourceClicked);
+	document.getElementById('cb_save_in_source').addEventListener('keydown', onEnterChange);
 	document.getElementById('input_source_code_root').addEventListener('change', UI.Settings.sourceCodeRootChanged);
 
-	//document.getElementById('select_state_parser').addEventListener('change', UI.Settings.stateParserChanged);
-
 	document.getElementById('cb_stop_behaviors').addEventListener('change', UI.Settings.stopBehaviorsClicked);
+	document.getElementById('cb_stop_behaviors').addEventListener('keydown', onEnterChange);
 
 	document.getElementById('cb_synthesis_enabled').addEventListener('change', UI.Settings.synthesisEnabledClicked);
+	document.getElementById('cb_synthesis_enabled').addEventListener('keydown', onEnterChange);
 	document.getElementById('input_synthesis_topic').addEventListener('change', UI.Settings.synthesisTopicChanged);
 	document.getElementById('input_synthesis_type').addEventListener('change', UI.Settings.synthesisTypeChanged);
 	document.getElementById('input_synthesis_system').addEventListener('change', UI.Settings.synthesisSystemChanged);
@@ -161,10 +306,12 @@ document.addEventListener('DOMContentLoaded', function() {
 	// Misc commands
 	document.getElementById('button_force_discover').addEventListener('click', UI.Settings.forceDiscoverClicked);
 	document.getElementById('button_ros_connect').addEventListener('click', UI.Settings.rosConnectClicked);
+	document.getElementById('button_force_discover').addEventListener('keydown', onEnter(UI.Settings.forceDiscoverClicked));
+	document.getElementById('button_ros_connect').addEventListener('keydown', onEnter(UI.Settings.rosConnectClicked));
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Key Bindings
+	// Key Bindings
 	Mousetrap.bind("ctrl+z", ActivityTracer.undo);
 	Mousetrap.bind("ctrl+y", ActivityTracer.redo);
 
@@ -191,57 +338,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		var evt = new CustomEvent("click", { "detail": "shift+enter" });
 		document.getElementById("button_note_editor_save").dispatchEvent(evt);
 	});
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-	// nw.Window.get().on('new-win-policy', function(frame, url, policy) {
-	//	 policy.ignore();
-	//	 nw.Shell.openExternal(url);
-	// });
-
-	// process.on('exit', (code) => {
-	//	 RC.PubSub.shutdown();
-	//	 ROS.shutdown();
-	//	 IO.PackageParser.stopWatching();
-	// 	IO.StateParser.close();
-	// });
-
-	// nw.App.on('open', () => {
-	//	 nw.Window.open('src/window.html', {
-	//		 'width': 1340,
-	//		 'height': 830,
-	//		 'min_width': 1340,
-	//		 'min_height': 650
-	//	 });
-	// });
-
-	// nw.Window.get().on('close', function() {
-	//	 var allow_close = true;
-	//	 if (RC.Controller.isReadonly() || RC.Controller.isRunning()) {
-	//		 var txt = "Behavior "+Behavior.getBehaviorName()+" is currently running!\n";
-	//		 txt += "Closing this window will NOT stop the behavior.\n";
-	//		 txt += "\nDo you really want to close?";
-	//		 allow_close = confirm(txt);
-
-	//	 } else if (ActivityTracer.hasUnsavedChanges()) {
-	//		 var txt = "You have unsaved changes:\n\n"
-	//		 var activities = ActivityTracer.getActivityList();
-	//		 var current = ActivityTracer.getCurrentIndex();
-	//		 var save = ActivityTracer.getLastSaveIndex();
-	//		 for (var i=save+1; i<=current; i++) {
-	//			 txt += "  - " + activities[i].description + "\n";
-	//		 }
-	//		 txt += "\nDo you really want to close?";
-	//		 allow_close = confirm(txt);
-	//	 }
-	//	 if (allow_close) {
-	//		 RC.PubSub.shutdown();
-	//		 ROS.shutdown();
-	//		 IO.PackageParser.stopWatching();
-	//		 IO.StateParser.close();
-	//		 this.close(true);
-	//	 }
-	// });
 
 	window.addEventListener('resize', function() {
 		console.log(`\x1b[93m Resize drawing areas\x1b[0m`);

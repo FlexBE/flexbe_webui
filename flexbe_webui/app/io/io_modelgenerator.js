@@ -44,13 +44,11 @@ IO.ModelGenerator = new (function() {
 
 
 		// code given as a block of text, separate into individual import lines
-		console.log(`\x1b[92m Generating manual import\n'''${data.manual_code.manual_import}'''\x1b[0m`);
 		let manual_code_import = [];
 		if (data.manual_code.manual_import.trim() !== '') {
 			manual_code_import = data.manual_code.manual_import.trim().split('\n').filter(line => line.trim() !== '');
 		}
 		manual_code_import.forEach(function(element, i) {
-			console.log(`\x1b[92m   --> '${element}'\x1b[0m`);
 			UI.Dashboard.addManualImport(element);
 		});
 

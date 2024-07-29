@@ -540,7 +540,7 @@ IO.CodeParser = new (function() {
 			var params_split = helper_splitOnTopCommas(params[1].replace(class_result[1], ""));
 			params_split.forEach(function(element, i) {
 				if (element == '') {
-					console.log(`\x1b[94m    Skipping empty parameter element for state '${state_name}'\x1b[0m`);
+					//console.log(`\x1b[94m    Skipping empty parameter element for state '${state_name}'\x1b[0m`);
 					return;
 				}
 				var keyvalue = helper_splitKeyValue(element, "=");
@@ -900,10 +900,12 @@ IO.CodeParser = new (function() {
 		var element_split = element.split(separator);
 		if (element_split.length > 1) {
 			// required if value contains separator itself:
-			var value_string = element.replace(element_split[0]+separator, "");
+			let key_string = element_split[0].trim();
+			let value_string = element.replace(element_split[0]+separator, "").trim();
+			let value_cleaned = value_string.replace(/,\n\s*/g, ', '); // remove all comma + newlines from parameter list
 			return {
-				key: element_split[0].trim(),
-				value: value_string.trim()
+				key: key_string,
+				value: value_cleaned
 			};
 		}
 		return undefined;

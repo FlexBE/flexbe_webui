@@ -62,8 +62,9 @@ IO.BehaviorSaver = new (function() {
 							}
 						} else {
 							// Failed to generate and save the behavior code
-							T.logError("Failed to generate the behavior code!");
+							T.logError("Failed to generate and save the behavior code!");
 							T.logInfo(result.error_msg);
+							T.logInfo(result.exception);
 						}
 					}
 			);

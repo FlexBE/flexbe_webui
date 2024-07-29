@@ -29,7 +29,7 @@ class State(BaseModel):
     state_path: str
     behavior: Optional[str] = None
     parameters: List[str] = []
-    parameter_values: List[str] = []
+    parameter_values: List[Optional[str]] = []
     outcomes: List[str] = []
     autonomy: List[int] = []
     meta_outcomes: List[str] = []
@@ -39,8 +39,8 @@ class State(BaseModel):
     output_keys: List[str] = []
     meta_input: List[str] = []
     meta_output: List[str] = []
-    input_mapping: List[str] = []
-    output_mapping: List[str] = []
+    input_mapping: List[Optional[str]] = []
+    output_mapping: List[Optional[str]] = []
     position_x: float
     position_y: float
     # container: dict | None = None
@@ -55,16 +55,11 @@ class State(BaseModel):
 class Transition(BaseModel):
     """Class to hold transition information."""
 
-    from_state: State
-    to: State
+    from_state_name: str
+    to_state_name: str
+    to_state_class: str
     outcome: str
     autonomy: int
-    # x: int | None = None
-    # y: int | None = None
-    # beg_x: int | None = None
-    # beg_y: int | None = None
-    # end_x: int | None = None
-    # end_y: int | None = None
     x: Optional[float] = None
     y: Optional[float] = None
     beg_x: Optional[float] = None

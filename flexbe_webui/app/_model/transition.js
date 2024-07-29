@@ -99,9 +99,11 @@ const Transition = function(_from_state, _to_state, _outcome, _autonomy,
 			temp_end_x = end.x;
 			temp_end_y = end.y;
 		}
+
 		return {
-			from_state: from,
-			to: to,
+			from_state_name: from.getStateName(),
+			to_state_name: to.getStateName(),
+			to_state_class: to.getStateClass(),
 			outcome: outcome,
 			autonomy: autonomy,
 			x: x,

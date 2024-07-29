@@ -55,7 +55,7 @@ Drawable.Note = function(note_obj, paper) {
 		text_input.value = note_obj.getContent();
 		important_cb.checked = note_obj.isImportant();
 
-		text_input.focus();
+		text_input.focus({ preventScroll: true });
 
 		var hide = function() {
 			editor.style.display = "none";

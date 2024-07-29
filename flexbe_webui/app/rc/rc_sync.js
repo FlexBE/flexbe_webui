@@ -65,7 +65,9 @@ RC.Sync = new (function() {
 			return element.key == key;
 		});
 		if (process == undefined) {
-			T.debugWarn("Process '" + key + "' not found for RC.Sync update, can't update progress.");
+			if (key != 'Delay') {
+				T.debugWarn("Process '" + key + "' not found for RC.Sync update, can't update progress.");
+			}
 			return;
 		}
 
@@ -81,7 +83,9 @@ RC.Sync = new (function() {
 			return element.key == key;
 		});
 		if (process == undefined) {
-			T.debugWarn("Process " + key + " not found for RC.Sync update, can't set status.");
+			if (key != 'Delay') {
+				T.debugWarn("Process " + key + " not found for RC.Sync update, can't set status.");
+			}
 			return;
 		}
 

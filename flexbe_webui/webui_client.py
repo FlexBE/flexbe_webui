@@ -17,6 +17,7 @@
 import argparse
 import asyncio
 import os
+import signal
 import sys
 import time
 from datetime import datetime
@@ -62,6 +63,7 @@ class FlexBEMainWindow(QMainWindow):
         self._shutdown_signal.connect(self._quit_application)
         self._async_event_loop = asyncio.new_event_loop()
         self._shutdown_thread = Thread(target=self._start_shutdown_listener)
+        self._running = True
 
         # Poll for server startup, then load page
         self._connected = False
@@ -144,13 +146,13 @@ class FlexBEMainWindow(QMainWindow):
         print(f'\x1b[95mSet up listener for shutdown command from {self._shutdown_query_url} ...\x1b[0m', flush=True)
         async with websockets.connect(self._shutdown_query_url) as websocket:
             print(f'Listening for shutdown command from {self._shutdown_query_url} ...', flush=True)
-            while True:
+            while self._running:
                 try:
-                    message = await websocket.recv()
+                    message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
                     if message == 'Shutdown is allowed.':
                         if self._closing_process:
                             print('\x1b[91mShutdown ...\x1b[0m', flush=True)
-                            break  # Finish with from listener thread to trigger shutdown
+                            break  # Finish from listener thread to trigger shutdown
                         else:
                             print('\x1b[95mReceived shutdown signal with no active event - ignoring!\x1b[0m')
                     else:
@@ -165,8 +167,12 @@ class FlexBEMainWindow(QMainWindow):
                 except websockets.exceptions.ConnectionClosed as exc:
                     print(f'WebSocket connection closed: {exc}', flush=True)
                     break
+                except asyncio.TimeoutError:
+                    # Handle the timeout case (e.g., set message to None or continue)
+                    message = None
                 except Exception as exc:
                     print(f'Unknown exception : {exc}', flush=True)
+        print('Done with shutdown listener', flush=True)
 
     @Slot()
     def _quit_application(self):
@@ -193,6 +199,12 @@ class FlexBEMainWindow(QMainWindow):
         """
         # print('Received request to shutdown - confirm status ...', flush=True)
         self._browser.page().runJavaScript(js_code, 0, handle_js_response)
+
+    def handle_sigint(self, signum, frame):
+        # Handle the SIGINT signal
+        print(f"Keyboard interrupt detected {signum} ...", flush=True)
+        self._shutdown_signal.emit()
+        self._running = False
 
 
 class FlexBEWebView(QWebEngineView):
@@ -274,7 +286,8 @@ def main(args=None):
     parser.add_argument('--clear_cache', type=bool, default=True, help='Clear JavaScript cache (default=True)')
     parser.add_argument('--client_delay', type=float, default=0.0, help='Delay client startup (default=0.0')
     parser.add_argument('--verbose', type=bool, default=True, help='Verbose output (default=True)')
-    parser.add_argument('--debug', type=bool, default=False, help='Show Javascript debug lines with verbose output (default=False)')
+    parser.add_argument('--debug', type=bool, default=False,
+                        help='Show Javascript debug lines with verbose output (default=False)')
     parser.add_argument('--flush', type=bool, default=False, help='Flush python outputs immediately (default=False)')
 
     args, unknown = parser.parse_known_args()
@@ -294,8 +307,14 @@ def main(args=None):
     main_win = FlexBEMainWindow(args)
     app.setWindowIcon(QIcon(flexbe_icon_path))
     main_win.setWindowIcon(QIcon(flexbe_icon_path))
+    signal.signal(signal.SIGINT, main_win.handle_sigint)
 
     main_win.show()  # Explicitly call show if not using showMaximized
+
+    # Use a QTimer to periodically check for signals for ctrl-c
+    timer = QTimer()
+    timer.timeout.connect(lambda: None)
+    timer.start(500)
 
     # Run the Qt application
     ret = app.exec_()
