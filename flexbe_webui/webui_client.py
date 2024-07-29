@@ -43,8 +43,9 @@ class FlexBEMainWindow(QMainWindow):
         """Initialize WebViewer instance."""
         super().__init__()
 
-        self._browser = FlexBEWebView()
-        self._browser.setPage(FlexBEWebEnginePage(self._browser, verbose=args.verbose))
+        self._browser = FlexBEWebView(args)
+        self._browser.setPage(FlexBEWebEnginePage(self._browser, verbose=args.verbose,
+                                                  debug=args.debug, flush=args.flush))
         if args.clear_cache:
             QWebEngineProfile.defaultProfile().clearHttpCache()
         self._url = f'http://{args.url}:{args.port}'
@@ -197,10 +198,11 @@ class FlexBEMainWindow(QMainWindow):
 class FlexBEWebView(QWebEngineView):
     """Allow opening of external windows for code view."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, args):
         """Initialize WebEngineView."""
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self._externals = {}
+        self._flush = args.flush
 
     def createWindow(self, _type):
         """Create window."""
@@ -224,16 +226,21 @@ class FlexBEWebView(QWebEngineView):
 class FlexBEWebEnginePage(QWebEnginePage):
     """Allow console logging to terminal."""
 
-    def __init__(self, *args, verbose=False, **kwargs):
+    def __init__(self, *args, verbose=False, debug=False, flush=False, **kwargs):
         """Initialize page."""
         super().__init__(*args, **kwargs)
         self._verbose = verbose
+        self._debug = debug
+        self._flush = flush
 
     def javaScriptConsoleMessage(self, level: QWebEnginePage.JavaScriptConsoleMessageLevel, message: str,
                                  lineNumber: int, sourceID: str) -> None:
         """Show JavaScript console message in verbose."""
         if self._verbose:
-            print(f'{level.value} : {message} --> {lineNumber} : {sourceID}', flush=True)
+            if self._debug:
+                print(f'{level.value} : {message} --> {lineNumber} : {sourceID}', flush=self._flush)
+            else:
+                print(message, flush=self._flush)
         return super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
 
 
@@ -264,9 +271,11 @@ def main(args=None):
     parser.add_argument('--height', type=int, default=800, help='UI window height (default=800)')
     parser.add_argument('--min_width', type=int, default=1000, help='Minimum UI window width (default=1000)')
     parser.add_argument('--min_height', type=int, default=900, help='Minimum UI window height (default=900)')
-    parser.add_argument('--verbose', type=bool, default=True, help='Verbose output (default=True)')
     parser.add_argument('--clear_cache', type=bool, default=True, help='Clear JavaScript cache (default=True)')
     parser.add_argument('--client_delay', type=float, default=0.0, help='Delay client startup (default=0.0')
+    parser.add_argument('--verbose', type=bool, default=True, help='Verbose output (default=True)')
+    parser.add_argument('--debug', type=bool, default=False, help='Show Javascript debug lines with verbose output (default=False)')
+    parser.add_argument('--flush', type=bool, default=False, help='Flush python outputs immediately (default=False)')
 
     args, unknown = parser.parse_known_args()
 

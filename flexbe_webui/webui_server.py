@@ -371,8 +371,11 @@ class WebuiServer:
                           f"for '{ws}'/{package_name}/'{file_name}' ...", flush=True)
                     print(exc, flush=True)
                     print('Failed!')
-                    print(json_dict['behavior'], flush=True)
-                    result_dict.update({'error_msg': 'Failed to extract behavior'})
+                    print('---------------------')
+                    print(json.dumps(json_dict['behavior'], indent=4), flush=True)
+                    print('---------------------')
+                    print(f"Failed to extract behavior: {exc}", flush=True)
+                    result_dict.update({'error_msg': 'Failed to extract behavior', 'exception': str(exc)})
                     return result_dict
 
                 if package_name != behavior.behavior_package:
