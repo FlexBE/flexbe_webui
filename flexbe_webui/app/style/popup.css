@@ -54,6 +54,16 @@
 	width: 100%;
 }
 
+.inline_function_text_readonly {
+	font-family: monospace;
+	font-size: 9pt;
+	border: 1px solid rgba(0, 0, 0, 0);
+	background-color: rgba(0, 0, 0, 0);
+	padding: 2px;
+	margin: 0px 18px 0px 0px;
+	width: 90%;
+}
+
 .inline_text_edit {
 	font-family: monospace;
 	font-size: 9pt;
@@ -144,6 +154,22 @@
 }
 .tag:hover {
 	border: 1px solid black;
+	background-color: #ddd;
+}
+
+.display-tag {
+	display: inline-block;
+	padding: 2px 4px;
+	border: 1px solid #bbb;
+	border-radius: 2px;
+	background-color: #eee;
+	font-size: 8pt;
+	font-family: monospace;
+	/* cursor: pointer; */
+	margin-right: 2px;
+}
+.display-tag:hover {
+	border: 1px solid #99b;
 	background-color: #ddd;
 }
 

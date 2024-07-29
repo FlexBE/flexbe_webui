@@ -46,6 +46,11 @@ body, html {
 .category_button:hover {
 	background: rgba(255,255,255,0.3);
 }
+
+.category_button:focus {
+    outline: 2px solid rgba(192,192,255,0.5);
+}
+
 .category_button_active {
 	display: inline-block;
 	background: rgba(255,255,255,0.5);
@@ -58,6 +63,11 @@ body, html {
 	text-align: center;
 	vertical-align: middle;
 }
+
+.category_button_active:focus {
+    outline: 2px solid rgba(192,192,255,0.5);
+}
+
 #editor_title {
 	height: 80px;
 	padding: 0px;
@@ -83,6 +93,10 @@ body, html {
 .tool_button:hover {
 	background-color: rgba(100, 100, 100, 0.1);
 	color: #333;
+}
+
+.tool_button:focus {
+    outline: 2px solid rgba(192,192,255,0.5);
 }
 
 #label_editor_title {
@@ -254,4 +268,52 @@ body, html {
 	font-size: 7pt;
 	color: #888;
 	text-align: right;
+}
+
+.custom_confirm_dialog_modal {
+	display: none; /* Hidden by default */
+	position: fixed; /* Stay in place */
+	z-index: 1; /* Sit on top */
+	left: 0;
+	top: 0;
+	width: 100%; /* Full width */
+	height: 100%; /* Full height */
+	overflow: auto; /* Enable scroll if needed */
+	background-color: rgb(0,0,0); /* Fallback color */
+	background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+
+.custom-confirm-modal-content {
+	background-color: #fefefe;
+	margin: 15% auto; /* 15% from the top and centered */
+	padding: 20px;
+	border: 1px solid #888;
+	width: 300px; /* Width similar to default dialogs */
+	box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+	border-radius: 8px;
+	text-align: center;
+}
+
+.custom-confirm-dialog-modal-button {
+	margin: 10px;
+	padding: 10px 20px;
+	cursor: pointer;
+	border: none;
+	border-radius: 4px;
+	background-color: #f1f1f1;
+	transition: background-color 0.3s ease;
+	font-size: 14px;
+}
+
+.custom-confirm-dialog-modal-button:hover {
+	background-color: #ddd;
+}
+
+.custom-confirm-dialog-modal-button:focus {
+	outline: none;
+	box-shadow: 0 0 5px rgba(81, 203, 238, 1);
+}
+
+.custom-confirm-dialog-modal-button img {
+	margin-right: 8px;
 }

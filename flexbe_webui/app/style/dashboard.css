@@ -23,6 +23,22 @@
 	text-align: justify;
 }
 
+.edit-box {
+	display: inline-block;
+	background-color: #fff;
+	width: calc(33% - 34px);
+	margin: 10px;
+	/*border: 1px solid black;*/
+	box-shadow: 2px 2px 15px #333;
+	vertical-align: top;
+	line-height: 1.4em;
+	text-align: justify;
+	height: 18.2em;
+	padding: 5px;
+	border:  2px solid #717275;
+	overflow: auto;
+}
+
 #dashboard h1 {
 	font-size: 12pt;
 	padding: 0 0 10px 0;

@@ -141,9 +141,8 @@
 	display: inline-block;
 	border: none;
 	border-left: 1px solid black;
-	font: monospace;
+	font: 10pt monospace;
 	color: #333;
-	font-size: 10pt;
 	background-color: #eee;
 	padding: 2px;
 	padding-left: 6px;
