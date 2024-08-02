@@ -43,7 +43,7 @@ class ManifestGenerator:
         content += self.ws + '<date>' + date + '</date>\n'
         content += self.ws + '<description>\n'
         for line in desc.split('\n'):
-            split_lines = break_long_line(line)
+            split_lines = break_long_line(line.rstrip())
             for line2 in split_lines:
                 content += self.ws + self.ws + line2.rstrip() + '\n'
         content += self.ws + '</description>\n'

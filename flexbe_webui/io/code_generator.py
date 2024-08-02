@@ -127,9 +127,13 @@ class CodeGenerator:
         code += self.ws + '"""\n'
         code += self.ws + 'Define ' + behavior_name + '.\n\n'  # pep257 style single line comment
         for line in description.split('\n'):
-            split_lines = break_long_line(line)
+            split_lines = break_long_line(line.rstrip())
             for line2 in split_lines:
-                code += self.ws + line2.rstrip() + '\n'
+                line2 = line2.rstrip()
+                if len(line2) == 0:
+                    code += '\n'
+                else:
+                    code += self.ws + line2.rstrip() + '\n'
 
         code += self.ws + '"""\n'
         return code
@@ -249,9 +253,10 @@ class CodeGenerator:
         # add manual imports
         code += '# Additional imports can be added inside the following tags\n'
         code += '# [MANUAL_IMPORT]\n'
-        code += '\n'.join(self.manual[0])
         if self.manual[0] == '' or len(self.manual[0]) < 2:
-            code += (2 - len(self.manual[0])) * '\n'  # Guarantee at least two lines in section
+            code += '\n'  # Guarantee blank lines
+        else:
+            code += '\n'.join(self.manual[0])
         code += '\n# [/MANUAL_IMPORT]\n'
 
         return code
@@ -264,7 +269,7 @@ class CodeGenerator:
         code += '\n'
 
         for line in desc.split('\n'):
-            split_lines = break_long_line(line)
+            split_lines = break_long_line(line.rstrip())
             for line2 in split_lines:
                 code += line2.rstrip() + '\n'
 
@@ -335,8 +340,9 @@ class CodeGenerator:
             temp = '0'
             if note.is_important:
                 temp = '!'
-            code += self.ws + self.ws + '# ' + temp + ' ' + str(round(note.position_x))
-            code += ' ' + str(round(note.position_y)) + ' ' + note.container_path + '\n'
+            posn_str = '# ' + temp + ' ' + str(round(note.position_x))
+            posn_str += ' ' + str(round(note.position_y)) + ' ' + note.container_path
+            code += self.ws + self.ws + posn_str.rstrip() + '\n'
             for line in note.content.strip().split('\n'):
                 code += self.ws + self.ws + '# ' + line.strip() + '\n'
             code += '\n'
@@ -381,18 +387,14 @@ class CodeGenerator:
         # Look for first comment or self. to set block boundary
         code += left_align_block(self.manual[2], self.ws + self.ws, self.ws)
         code += self.ws + self.ws + '# [/MANUAL_CREATE]\n'
-        code += '\n'
 
         # generate contained state machines
         sub_sms = get_all_sub_state_machines(states)
         sub_sms.sort(key=lambda x: x.state_path)
         for ndx in range(len(sub_sms) - 1, -1, -1):
             code += self.generate_state_machine(sub_sms[ndx], True, states)
-            code += '\n'
         # generate root state machine
-        code += '\n'
         code += self.generate_state_machine(root_sm, False, states)
-        code += '\n'
 
         code += self.ws + self.ws + 'return _state_machine\n'
         return code
