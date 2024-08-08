@@ -31,7 +31,7 @@ RC.PubSub = new (function() {
 	var last_mirror_heartbeat_time = undefined;
 	var last_launcher_heartbeat_time = undefined;
 	var last_mirror_state_path = undefined;
-	var last_onboard_status= undefined;
+	var last_onboard_status= -1; // use -1 for be_status_code_names
 	var last_mirror_status= undefined;
 	var last_launcher_status= undefined;
 	var last_ocs_status = undefined;
@@ -46,11 +46,20 @@ RC.PubSub = new (function() {
 	// -----------------
 	const RUNNING = 30; // Custom use here
 
+	const be_status_code_names = {
+		"-1": 'Undefined',
+		[STARTED]: 'Started',
+		[FINISHED]: 'Finished',
+		[FAILED]: 'Failed',
+		[WARNING]: 'Warning',
+		[ERROR]: 'Error',
+		[READY]: 'Ready',
+		[RUNNING]: 'Running'	};
+
 	var current_state_callback = function (msg) {
 		if (RC.Sync.hasProcess("Transition")) RC.Sync.remove("Transition");
 
-		RC.Controller.setCurrentStatePath(msg.data);
-
+		UI.RuntimeControl.updateCurrentState(msg.data);
 		if (msg.data == "") {
 			RC.Controller.signalFinished();
 			last_onboard_status = FINISHED;
@@ -80,7 +89,12 @@ RC.PubSub = new (function() {
 
 	var behavior_status_callback = function (msg){
 		if (msg.code != last_onboard_status) {
-			console.log(`\x1b[92mBEStatus change to ${msg.code} from ${last_onboard_status}\x1b[0m`);
+			try {
+				console.log(`\x1b[92mBEStatus change to '${be_status_code_names[msg.code]}' (${msg.code}) `
+							+ ` from '${be_status_code_names[last_onboard_status]}' (${last_onboard_status})\x1b[0m`);
+			} catch (err) {
+				console.log(`\x1b[92mBEStatus change to ${msg.code} from ${last_onboard_status}\x1b[0m`);
+			}
 			last_onboard_status = msg.code;
 			updateOCSStatusDisplay(Date.now());
 		}
@@ -142,7 +156,7 @@ RC.PubSub = new (function() {
 
 		onboard_heartbeat_timer = setTimeout(function() {
 			console.log("\x1b[31mOnboard connection timed out.\x1b[0m");
-			last_onboard_status = undefined;
+			last_onboard_status = -1;
 			RC.Controller.signalDisconnected();
 			let now = Date.now();
 		}, RC.Controller.onboardTimeout * 1000);
@@ -223,10 +237,10 @@ RC.PubSub = new (function() {
 
 			// OCS status indicator status may depend on OBE status, as well as mirror and launcher
 			let status = "offline";
-			if (last_onboard_status == undefined) {
+			if (last_onboard_status == -1) {
 				// No onboard available, so we just have OCS
 				if (last_launcher_status != undefined && last_mirror_status != undefined) {
-					status = "online";;
+					status = "online";
 				} else {
 					if (last_launcher_status != undefined || last_mirror_status != undefined) {
 						status = "disconnected";
@@ -309,7 +323,7 @@ RC.PubSub = new (function() {
 	}
 
 	var command_feedback_callback = function (msg) {
-		console.log("\x1b[36mcommand feedback : " + JSON.stringify(msg) + "\x1b[0m");
+		// console.log("\x1b[36mcommand feedback : " + JSON.stringify(msg) + "\x1b[0m");
 		if (msg.command == "transition") {
 			if (msg.args[0] == msg.args[1]) {
 				RC.Sync.setProgress("Transition", 0.8, false);

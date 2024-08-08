@@ -1992,12 +1992,12 @@ UI.Dashboard = new (function() {
 		tab_targets = updateTabTargets("dashboard");
 		if (tab_targets.length > 0) {
 			tab_targets[0].focus({ preventScroll: true });
-			console.log(`set focus to '${ document.activeElement ? document.activeElement.id : 'undefined'}' (${tab_targets[0].id})`)
+			// console.log(`set focus to '${ document.activeElement ? document.activeElement.id : 'undefined'}' (${tab_targets[0].id})`)
 		}
 	}
 
 	this.removeTabHandling = function() {
-		console.log(`\x1b[94mDeactivate TAB handling for dashboard ...\x1b[0m`);
+		// console.log(`\x1b[94mDeactivate TAB handling for dashboard ...\x1b[0m`);
 		tab_targets.length = 0;
 	}
 

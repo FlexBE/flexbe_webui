@@ -38,7 +38,7 @@ UI.Panels.Terminal = new (function() {
 			logTerminal("> " + msg, "yellow");
 			//this.show();
 		}
-		console.log("[WARN] " + msg);
+		console.log("\x1b[93m[WARN] " + msg + "\x1b[0m");
 	}
 
 	this.debugError = function(msg) {
@@ -46,9 +46,9 @@ UI.Panels.Terminal = new (function() {
 			logTerminal("> " + msg, "red");
 			this.show();
 		}
-		console.log("[ERROR] " + msg);
+		console.log("\x1b[91m[ERROR] " + msg + "\x1b[0m");
 	}
-	
+
 	this.clearLog = function() {
 		document.getElementById("terminal").innerHTML += "<br /><br />";
 	}

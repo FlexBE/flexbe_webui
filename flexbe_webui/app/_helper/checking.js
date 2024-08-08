@@ -52,7 +52,7 @@ const Checking = new (function() {
 			}
 
 			if (flagWarning) {
-				T.logWarn(`\n\nCheck warnings - but this did not invalidate the behavior!`);
+				T.logWarn(`Check warnings - but this did not invalidate the behavior!`);
 				flagWarning = false;
 			}
 		} catch (error) {

@@ -341,17 +341,27 @@ RC.Controller = new (function() {
 		return Behavior.getStatemachine().getStateByPath(current_state_path);
 	}
 
-	this.setCurrentStatePath = function(state_path) {
+	this.updateCurrentStatePath = function(state_path) {
 		if (current_state_path != state_path) {
 			if (!current_state_path.startsWith(state_path + '/')) {
 				// only process if change of state on same level or deeper
 				// ignore change if going from deeper to shallower
 				current_state_path = state_path;
 				vis_update_required = true;
+				// Process in timer in case of rapid changes
 				if (vis_update_timer == undefined) vis_update();
 			}
 		}
 	}
+
+	this.setCurrentStatePath = function(state_path) {
+		// Force immediate update to avoid race conditions with outcome requests
+		current_state_path = state_path;
+		clearTimeout(vis_update_timer);
+		vis_update_required = true;
+		vis_update();
+	}
+
 
 	this.setLockedStatePath = function(state_path) {
 		locked_state_path = state_path;

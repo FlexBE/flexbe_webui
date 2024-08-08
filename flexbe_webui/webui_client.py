@@ -128,7 +128,7 @@ class FlexBEMainWindow(QMainWindow):
         """
         print('\x1b[95mStart shutdown listener ...\x1b[0m', flush=True)
         asyncio.set_event_loop(self._async_event_loop)
-        print('Running asyncio event loop for shutdown listener ...', flush=True)
+        # print('Running asyncio event loop for shutdown listener ...', flush=True)
         try:
             self._async_event_loop.run_until_complete(self._listen_for_shutdown())
         except Exception as exc:
@@ -143,9 +143,8 @@ class FlexBEMainWindow(QMainWindow):
 
     async def _listen_for_shutdown(self):
         """Listen for shutdown command verified by server."""
-        print(f'\x1b[95mSet up listener for shutdown command from {self._shutdown_query_url} ...\x1b[0m', flush=True)
         async with websockets.connect(self._shutdown_query_url) as websocket:
-            print(f'Listening for shutdown command from {self._shutdown_query_url} ...', flush=True)
+            print(f'\x1b[95mSet up listener for shutdown command from {self._shutdown_query_url} ...\x1b[0m', flush=True)
             while self._running:
                 try:
                     message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
@@ -201,8 +200,8 @@ class FlexBEMainWindow(QMainWindow):
         self._browser.page().runJavaScript(js_code, 0, handle_js_response)
 
     def handle_sigint(self, signum, frame):
-        # Handle the SIGINT signal
-        print(f"Keyboard interrupt detected {signum} ...", flush=True)
+        """Handle the SIGINT signal."""
+        print(f'Keyboard interrupt detected {signum} ...', flush=True)
         self._shutdown_signal.emit()
         self._running = False
 

@@ -243,7 +243,6 @@ UI.Panels.SelectBehavior = new (function() {
 		});
 	}
 	this.displayBehaviors = function(behaviors, clear) {
-		console.log(`    displayBehaviors for UI.Panels.SelectBehavior ...`);
 		let panel = document.getElementById('panel_select_behavior_selection');
 		if (clear) {
 			that.clearChildElements("panel_select_behavior_selection_behavior_");
@@ -265,7 +264,6 @@ UI.Panels.SelectBehavior = new (function() {
 				+ '<i>' + m.description + '</i>';
 
 			const clickBehaviorHandler = function(event) {
-				console.log(`behavior selected event '${event.target.id}'`);
 				event.preventDefault(); // Prevent default action for Enter key
 				event.stopPropagation(); // Stop the event from propagating to other handlers
 				selection_callback(m);
@@ -287,7 +285,6 @@ UI.Panels.SelectBehavior = new (function() {
 
 			panel.appendChild(behavior_div);
 		});
-		console.log(`    ----------------- displayBehaviors --------------------`);
 	}
 
 
@@ -300,7 +297,6 @@ UI.Panels.SelectBehavior = new (function() {
 
 	this.clickPanel = function(event) {
 		// prevent shifting focus while the panel is active
-		console.log(` Intercept click at panel '${event.target.id}' !`);
 		event.stopPropagation();
 		event.preventDefault();
 	}
@@ -309,7 +305,6 @@ UI.Panels.SelectBehavior = new (function() {
 		if (selection_callback == undefined) {
 			T.debugWarn("No behavior selection callback set!");
 		}
-		console.log(`Show UI.Panel.SelectBehavior ...`);
 		let panel = document.getElementById('panel_select_behavior_selection');
 		panel.focus({preventScroll: true});
 
@@ -319,11 +314,9 @@ UI.Panels.SelectBehavior = new (function() {
 		UI.Settings.createBehaviorPackageSelect(document.getElementById("input_behavior_package_filter"), true);
 		panel.addEventListener("click", that.clickPanel);
 		UI.Panels.setActivePanel(UI.Panels.SELECT_BEHAVIOR_PANEL);
-		console.log(`------------------- show UI.Panel.SelectBehavior -------------------`);
 	}
 
 	this.hide = function() {
-		console.log(`Hide UI.Panel.SelectBehavior ...`);
 		UI.Panels.hidePanelIfActive(UI.Panels.SELECT_BEHAVIOR_PANEL);
 		selection_callback = undefined;
 		document.getElementById("input_behavior_filter").value = "";

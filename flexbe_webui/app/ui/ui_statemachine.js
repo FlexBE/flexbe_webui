@@ -207,12 +207,9 @@ UI.Statemachine = new (function() {
 
 
 	this.initialize = function() {
-		console.log(`ui.Statemachine.initialize ...`);
 		initializeDrawingArea();
 
 		displayed_sm = Behavior.getStatemachine();
-		console.log(` displayed_sm=${displayed_sm}`);
-
 	}
 
 	this.recreateDrawingArea = function() {

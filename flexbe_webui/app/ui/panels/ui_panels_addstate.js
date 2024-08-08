@@ -245,18 +245,15 @@ UI.Panels.AddState = new (function() {
 
 	this.clearChildElements = function(filter='') {
 		try {
-			console.log(`\x1b[94m ----- state properties clearChildElements with '${filter}' (${listeners_to_cleanup})-----\x1b[0m`);
 			const elementsToRemove = new Set();
 			listeners_to_cleanup.forEach(({element, listener_type, handler}) => {
 				if (element.id.startsWith(filter)) {
 					element.removeEventListener(listener_type, handler);
-					//console.log(`\x1b[94m    removing listener '${listener_type}' for '${element.id}'\x1b[0m`);
 					elementsToRemove.add(element);
 				}
 			});
 			listeners_to_cleanup = listeners_to_cleanup.filter(({ element, listener_type, handler}) => {
 				if (!elementsToRemove.has(element)) {
-					//console.log(`   retaining '${element.id}' '${listener_type}'`);
 					return true;
 				}
 				return false;
@@ -265,12 +262,10 @@ UI.Panels.AddState = new (function() {
 			const elementsToRemoveArray = Array.from(elementsToRemove);
 			elementsToRemoveArray.forEach(child => {
 				if (child.parentNode) {
-					console.log(`\x1b[94m    removing element '${child.id}'\x1b[0m`);
 					child.parentNode.removeChild(child);
 				}
 				elementsToRemove.delete(child);
 			});
-			//console.log(`\x1b[94m -------- ^^ clearChildElements ^^ = ${listeners_to_cleanup.length} -----------\x1b[0m`);
 		} catch (err) {
 			console.log(`\x1b[91m Error: ${err} \xb1[93m ${err.stack}]]`)
 		}

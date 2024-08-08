@@ -101,7 +101,7 @@ UI.Panels = new (function() {
 
 	this.hideAllPanels = function() {
 		if (activePanel != that.NO_PANEL) {
-			console.log(`Hiding the active ${activePanel} panel`);
+			console.log(`Hiding the active '${activePanel}' panel`);
 			that.hidePanelIfActive(activePanel);
 		}
 	}
@@ -118,18 +118,18 @@ UI.Panels = new (function() {
 	}
 
 	this.setupTabHandling = function(panel, sub_panel='') {
-		console.log(`\x1b[95m  Set up tab handling for '${panel}' '${sub_panel}' ...\x1b[0m`);
+		// console.log(`\x1b[95m  Set up tab handling for '${panel}' '${sub_panel}' ...\x1b[0m`);
 		if (document.activeElement) {
 			document.activeElement.blur();
 		}
 		that.updatePanelTabTargets(panel, sub_panel);
 
 		if (tab_targets.length > 0) {
-			console.log(`\x1b[95m  Found ${tab_targets.length} TABS found for '${panel}'\x1b[0m`);
+			// console.log(`\x1b[95m  Found ${tab_targets.length} TABS found for '${panel}'\x1b[0m`);
 			// Hold focus for state to allow multiclick
 			if (sub_panel === '') tab_targets[0].focus({ preventScroll: true });
-		} else {
-			console.log(`\x1b[95m  No TABS found for '${panel}' ...\x1b[0m`);
+		//} else {
+		//	console.log(`\x1b[95m  No TABS found for '${panel}' ...\x1b[0m`);
 		}
 	}
 
@@ -168,24 +168,19 @@ UI.Panels = new (function() {
 		}
 		tab_targets = Array.from(panel.querySelectorAll("input, textarea, select, button"
 															+ additional_select_tags)); // Add more selectors if needed
-		console.log(`UI.Panel.updateTabTargets for '${panel.id}' with '${additional_select_tags}' found ${tab_targets.length} tabs selected before filter`);
 		tab_targets = tab_targets.filter(function(el) {
-			//console.log(`    UI.Panels : '${el.id}' (${el.tabIndex}) for '${panel.id}'!`);
 			if (el.tabIndex === -1) return false;
 			if (el.id == '') {
-				//console.log(`    UI.Panels : '${el.id}' - empty ID in panel '${panel.id}'!`);
 				return false;
 			}
 
 			let parentDiv = el.parentElement;
 			while (parentDiv) {
 				if (parentDiv.id == panel.id) {
-					//console.log(` Selected   UI.Panels : '${el.id}' (${el.tabIndex}) for '${panel.id}'!`);
 					return true;
 				}
 				parentDiv = parentDiv.parentElement;
 			}
-			//console.log(` Rejected   UI.Panels : '${el.id}' (${el.tabIndex}) for '${panel.id}'!`);
 			return false; // never matched our panel id
 		});
 		tab_targets.sort(function(a, b) {

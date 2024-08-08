@@ -17,7 +17,7 @@
 import datetime
 import re
 
-from flexbe_webui.tools import left_align_block, format_state_code_string, break_long_line
+from flexbe_webui.tools import break_long_line, format_state_code_string, left_align_block
 
 
 class CodeGenerator:
@@ -534,12 +534,12 @@ class CodeGenerator:
 
             code += f"{state.state_class}, '{state.state_path[1:]}'"
             if defkeys_str != '':
-                code += ",\n" + prepend_beh
+                code += ',\n' + prepend_beh
                 code += f'\n{prepend_beh}'.join(format_state_code_string(defkeys_str,
                                                                          self.target_line_length - len(prepend)
                                                                          - len(prepend_beh), self.ws).split('\n'))
             if params_str != '':
-                code += ",\n" + prepend_beh
+                code += ',\n' + prepend_beh
                 code += f'\n{prepend_beh}'.join(format_state_code_string(params_str,
                                                                          self.target_line_length - len(prepend)
                                                                          - len(prepend_beh), self.ws).split('\n'))
@@ -632,7 +632,7 @@ class CodeGenerator:
         for ndx, out in enumerate(state.outcomes):
             autonomy_strings.append("'" + out + "': " + autonomy_mapping(state.autonomy[ndx]))
 
-        aut_code += ', '.join(autonomy_strings) + "}"
+        aut_code += ', '.join(autonomy_strings) + '}'
         code += format_state_code_string(aut_code, self.target_line_length - len(prepend), self.ws)
 
         # remapping
@@ -648,7 +648,7 @@ class CodeGenerator:
                 remapping_strings.append("'" + out_key + "': '" + state.output_mapping[ndx] + "'")
             if len(remapping_strings) > 0:
                 code += ',\n'
-                input_key_code = 'remapping={' + ', '.join(remapping_strings) + "}"
+                input_key_code = 'remapping={' + ', '.join(remapping_strings) + '}'
                 code += format_state_code_string(input_key_code, self.target_line_length - len(prepend), self.ws)
 
         state_code += prepend + f'\n{prepend}'.join(code.split('\n'))

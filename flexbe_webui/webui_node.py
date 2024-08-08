@@ -24,7 +24,6 @@ from typing import Dict, List
 from action_msgs.msg import GoalStatus
 
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.routing import APIRoute
 
 from pydantic import BaseModel
 
@@ -316,13 +315,16 @@ class WebuiNode(Node):
             return {'success': False, 'reason': 'Invalid goal future!'}
 
         # This block just lists all routes between server and client
-        print('\x1b[95mRegistered routes for the FASTApi app:')
-        for route in app.routes:
-            if isinstance(route, APIRoute):
-                print(f"'{route.path}' ({route.methods})")
-            else:
-                print(f"'{route.path}' (no methods, possibly a Mount or WebSocket)")
-        print('---------------------------------------------\x1b[0m', flush=True)
+        print('\x1b[95mRegistered routes for the FASTApi app.\x1b[0m', flush=True)
+        # ----------------------------------------------------------------------------
+        # from fastapi.routing import APIRoute
+        # for route in app.routes:
+        #     if isinstance(route, APIRoute):
+        #         print(f"'{route.path}' ({route.methods})")
+        #     else:
+        #         print(f"'{route.path}' (no methods, possibly a Mount or WebSocket)")
+        # print('------------------------------------------------\x1b[0m', flush=True)
+        # ----------------------------------------------------------------------------
 
 
 def main(args: List[str] = None):

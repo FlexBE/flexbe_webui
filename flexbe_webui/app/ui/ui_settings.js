@@ -774,7 +774,7 @@ UI.Settings = new (function() {
 	}
 
 	var updateSynthesisInterface = function() {
-		console.log("UI.Settings - updateSynthesisInterface " + synthesis_enabled);
+		// console.log("UI.Settings - updateSynthesisInterface " + synthesis_enabled);
 		if (synthesis_enabled) {
 			document.getElementById('synthesis_display_option').style.display = "inline";
 			if (RC.ROS.isConnected()) {

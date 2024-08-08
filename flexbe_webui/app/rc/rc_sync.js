@@ -65,7 +65,8 @@ RC.Sync = new (function() {
 			return element.key == key;
 		});
 		if (process == undefined) {
-			if (key != 'Delay') {
+			if (key != 'Delay' && key != 'Transition') {
+				// Ignore common unregistered calls for normal operations
 				T.debugWarn("Process '" + key + "' not found for RC.Sync update, can't update progress.");
 			}
 			return;

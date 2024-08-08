@@ -374,7 +374,7 @@ class WebuiServer:
                     print('---------------------')
                     print(json.dumps(json_dict['behavior'], indent=4), flush=True)
                     print('---------------------')
-                    print(f"Failed to extract behavior: {exc}", flush=True)
+                    print(f'Failed to extract behavior: {exc}', flush=True)
                     result_dict.update({'error_msg': 'Failed to extract behavior', 'exception': str(exc)})
                     return result_dict
 

@@ -15,6 +15,8 @@ UI.RuntimeControl = new (function() {
 	var status_label = undefined;
 	var outcome_request = { outcome: "", target: undefined };
 
+	var force_redraw = false;
+
 	var param_keys = [];
 	var param_vals = [];
 
@@ -25,24 +27,21 @@ UI.RuntimeControl = new (function() {
 
 	var tab_targets = [];
 
-	var updateDrawing = function() {
+	this.updateDrawing = function() {
 		drawings.forEach(function(element, i) {
 			element.drawing.remove();
 		});
 		drawings = [];
 
 		if (current_state == undefined) return;
-
 		// Path
 		//------
-
-		drawings.push(new Drawable.ContainerPath(current_state.getContainer(), R, smDisplayHandler));
+		drawings.push(new Drawable.ContainerPath(current_state.getContainer(), R, that.smDisplayHandler));
 
 		// Current
 		//---------
-
 		let is_locked = RC.Controller.isLocked() && RC.Controller.isOnLockedPath(current_state.getStatePath());
-		let current_state_drawing = createDrawing(current_state, Drawable.State.Mode.MAPPING, true, is_locked);
+		let current_state_drawing = that.createDrawing(current_state, Drawable.State.Mode.MAPPING, true, is_locked);
 		let bbox = current_state_drawing.drawing.getBBox()
 		current_state_drawing.drawing.translate(-bbox.x + (R.width - bbox.width) / 2, -bbox.y + (R.height - bbox.height) / 2);
 		drawings.push(current_state_drawing);
@@ -51,7 +50,7 @@ UI.RuntimeControl = new (function() {
 		//----------
 		let previous_state_drawing = undefined;
 		if (previous_state != undefined) {
-			previous_state_drawing = createDrawing(previous_state, Drawable.State.Mode.SIMPLE, false, false);
+			previous_state_drawing = that.createDrawing(previous_state, Drawable.State.Mode.SIMPLE, false, false);
 			let b = previous_state_drawing.drawing.getBBox();
 			previous_state_drawing.drawing.translate(-b.x + 10, -b.y + (R.height - previous_state_drawing.drawing.getBBox().height) / 2);
 			drawings.push(previous_state_drawing);
@@ -59,10 +58,9 @@ UI.RuntimeControl = new (function() {
 
 		// Next
 		//------
-
 		let next_state_drawings = [];
 		next_states.forEach(function(element, i) {
-			next_state_drawings.push(createDrawing(element, Drawable.State.Mode.SIMPLE, false, false));
+			next_state_drawings.push(that.createDrawing(element, Drawable.State.Mode.SIMPLE, false, false));
 		});
 
 		// vertical position
@@ -86,37 +84,50 @@ UI.RuntimeControl = new (function() {
 
 		// Transitions
 		//-------------
-		if (previous_state != undefined)
+		if (previous_state != undefined) {
 			drawings.push(new Drawable.Transition(income_transition, R, true, drawings, false, false, Drawable.Transition.PATH_STRAIGHT, undefined, true));
-
+		}
 		outcome_transitions.forEach(function(element, i) {
-			let highlight = outcome_request.target != undefined && outcome_request.target == current_state.getStatePath() && outcome_request.outcome == element.getOutcome();
-			if (highlight) drawStatusLabel("Onboard requested outcome: " + outcome_request.outcome);
-			let transition = new Drawable.Transition(element, R, true, drawings.filter(function(d) { return d != previous_state_drawing; }),
-													 highlight, false, Drawable.Transition.PATH_CURVE, undefined, true);
-			transition.drawing
-				.attr({'cursor': 'pointer', 'title': "Click to force outcome " + element.getOutcome()})
-				.data("transition", transition.obj)
-				.click(function() {
-					if (RC.Sync.hasProcess("Transition")) return;
-					let t = this.data("transition");
-					RC.PubSub.sendOutcomeRequest(t.getFrom(), t.getOutcome());
-					drawStatusLabel("Forcing outcome: " + t.getOutcome());
-				});
-			drawings.push(transition);
+		let highlight = outcome_request.target != undefined && outcome_request.target == current_state.getStatePath() && outcome_request.outcome == element.getOutcome();
+
+		if (highlight) that.drawStatusLabel("Onboard requested outcome: " + outcome_request.outcome);
+
+		let selected_drawings = drawings.filter(function(d) { return d != previous_state_drawing; });
+			if (selected_drawings.length > 0) {
+				let transition = new Drawable.Transition(element, R, true, selected_drawings,
+														highlight, false, Drawable.Transition.PATH_CURVE, undefined, true);
+				if (transition) {
+					transition.drawing
+						.attr({'cursor': 'pointer', 'title': "Click to force outcome " + element.getOutcome()})
+						.data("transition", transition.obj)
+						.click(function() {
+							if (RC.Sync.hasProcess("Transition")) return;
+							let t = this.data("transition");
+							RC.PubSub.sendOutcomeRequest(t.getFrom(), t.getOutcome());
+							that.drawStatusLabel("Forcing outcome: " + t.getOutcome());
+							outcome_request.target = undefined;
+							console.log(`\x1b[92m Forced outcome '${element.getOutcome()}' for '${current_state.getStatePath()}'\x1b[0m`);
+						});
+					drawings.push(transition);
+				} else {
+					console.log(`skipping null transition!`);
+				}
+			} else {
+				console.log(`skipping with no selected drawings!`);
+			}
 		});
 
 		bgcolor = current_state.isInsideDifferentBehavior()? '#fff3f6' : '#fff';
 		background.attr({fill: bgcolor}).toBack();
 	}
 
-	var drawStatusLabel = function(text) {
+	this.drawStatusLabel = function(text) {
 		if (status_label != undefined) status_label.remove();
 		status_label = R.text(R.width / 2, R.height - 30, text)
 			.attr({'font-size': 16, 'fill': 'gray'});
 	}
 
-	var createDrawing = function(state_obj, mode, active, locked) {
+	this.createDrawing = function(state_obj, mode, active, locked) {
 		if (state_obj instanceof Statemachine) {
 			let drawable = new Drawable.Statemachine(state_obj, R, true, mode, active, locked);
 			if (active) {
@@ -124,7 +135,7 @@ UI.RuntimeControl = new (function() {
 				drawable.drawing.dblclick(function() {
 					let child_state = current_states[current_states.indexOf(current_state) + 1];
 					current_state = child_state;
-					updateStateDisplayDepth(child_state.getStatePath());
+					that.updateStateDisplayDepth(child_state.getStatePath());
 				});
 			}
 			return drawable;
@@ -137,7 +148,7 @@ UI.RuntimeControl = new (function() {
 				drawable.drawing.dblclick(function() {
 					let child_state = current_states[current_states.indexOf(current_state) + 1];
 					current_state = child_state;
-					updateStateDisplayDepth(child_state.getStatePath());
+					that.updateStateDisplayDepth(child_state.getStatePath());
 				});
 			}
 			return drawable;
@@ -149,26 +160,26 @@ UI.RuntimeControl = new (function() {
 		return new Drawable.State(state_obj, R, true, mode, active, locked);
 	}
 
-	var smDisplayHandler = function() {
+	this.smDisplayHandler = function() {
 		let sm = this.data("statemachine");
 		let current_relative_path = current_state.getStatePath().slice(sm.getStatePath().length + 1);
 		let current_lower_name = current_relative_path.split("/")[0];
 		let current_lower_path = sm.getStatePath() + "/" + current_lower_name;
-		updateStateDisplayDepth(current_lower_path);
+		that.updateStateDisplayDepth(current_lower_path);
 	}
 
-	var updateStateDisplayDepth = function(state_path) {
+	this.updateStateDisplayDepth = function(state_path) {
 		let path_segments = state_path.split("/");
 		current_level = path_segments.length - 1;
 		document.getElementById("selection_rc_lock_layer").selectedIndex = document.getElementById("selection_rc_lock_layer").length - current_level;
 
-		updateStateDisplay();
+		that.updateStateDisplay();
 	}
 
-	var updateStateDisplay = function() {
+	this.updateStateDisplay = function() {
 		current_state = current_states[current_level];
 		if (current_state == undefined) {
-			updateDrawing();
+			that.updateDrawing();
 			return;
 		}
 
@@ -191,12 +202,16 @@ UI.RuntimeControl = new (function() {
 		});
 
 		// documentation
-		setDocumentation(current_state);
+		that.setDocumentation(current_state);
 
-		updateDrawing();
+		that.updateDrawing();
+		if (force_redraw) {
+			console.log(`\x1b[93m Clear force redraw after sync request.\x1b[0m`);
+			force_redraw = false;
+		}
 	}
 
-	var setDocumentation = function(state) {
+	this.setDocumentation = function(state) {
 		if (state == undefined) {
 			document.getElementById("runtime_documentation_text").innerHTML = "";
 			return;
@@ -248,7 +263,7 @@ UI.RuntimeControl = new (function() {
 		document.getElementById("runtime_documentation_text").innerHTML = doc;
 	}
 
-	var resetStateDisplay = function() {
+	this.resetStateDisplay = function() {
 		current_level = 0;
 		current_state = undefined
 		current_states = [];
@@ -256,10 +271,10 @@ UI.RuntimeControl = new (function() {
 		income_transition = undefined;
 		next_states = [];
 		outcome_transitions = [];
-		setDocumentation(undefined);
+		that.setDocumentation(undefined);
 	}
 
-	var createParameterTable = function() {
+	this.createParameterTable = function() {
 		let table = document.getElementById("rc_parameter_table");
 		table.innerHTML = "";
 
@@ -387,7 +402,7 @@ UI.RuntimeControl = new (function() {
 		}
 	}
 
-	var parseParameterConfig = function(callback) {
+	this.parseParameterConfig = function(callback) {
 		let children = document.getElementById("rc_parameter_table").children;
 		let tagsToGo = children.length;
 		let result = [];
@@ -433,21 +448,21 @@ UI.RuntimeControl = new (function() {
 		}
 	}
 
-	var initializeStateDisplay = function() {
-		hideDisplays();
+	this.initializeStateDisplay = function() {
+		that.hideDisplays();
 		R = Raphael("runtime_state_display");
 		background = R.rect(0, 0, R.width, R.height)
 			.attr({fill: '#FFF', stroke: '#FFF'}).toBack();
 	}
 
-	var hideDisplays = function() {
+	this.hideDisplays = function() {
 		document.getElementById("runtime_configuration_display").style.display = "none";
 		document.getElementById("runtime_external_display").style.display = "none";
 		document.getElementById("runtime_waiting_display").style.display = "none";
 		document.getElementById("runtime_offline_display").style.display = "none";
 		document.getElementById("runtime_no_behavior_display").style.display = "none";
 		ActivityTracer.setUpdateCallback();
-		setDocumentation(undefined);
+		that.setDocumentation(undefined);
 		if (R != undefined) {
 			R.remove();
 			R = undefined;
@@ -462,7 +477,7 @@ UI.RuntimeControl = new (function() {
 	//  Interface
 	// ===========
 	this.setRosProperties = function(ns) {
-		console.log(`ui.RC.setRosProperties ns='${ns}' `);
+		// console.log(`ui.RC.setRosProperties ns='${ns}' `);
 		let status_disp = document.getElementById('rc_ros_prop_status');
 		let connect_button = document.getElementById('button_rc_connect');
 		if (RC.ROS.isOfflineMode()) {
@@ -518,14 +533,14 @@ UI.RuntimeControl = new (function() {
 		if (R != undefined) {
 			R.remove();
 			drawings = [];
-			initializeStateDisplay();
-			updateStateDisplay();
+			that.initializeStateDisplay();
+			that.updateStateDisplay();
 		}
 	}
 
 	this.refreshView = function() {
 		if (R != undefined) {
-			updateStateDisplay();
+			that.updateStateDisplay();
 		}
 	}
 
@@ -554,11 +569,11 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.resetParameterTableClicked = function() {
-		createParameterTable();
+		that.createParameterTable();
 	}
 
 	this.startBehaviorClicked = function() {
-		parseParameterConfig(function (result) {
+		that.parseParameterConfig(function (result) {
 			param_keys = [];
 			param_vals = [];
 			result.forEach(function (r) {
@@ -676,6 +691,7 @@ UI.RuntimeControl = new (function() {
 	this.syncMirrorClicked = function() {
 		if (!RC.Controller.isConnected()) return;
 
+		force_redraw = true; // Request sync and require redraw on behavior update
 		RC.PubSub.sendSyncRequest();
 		UI.RuntimeControl.displayBehaviorFeedback(4, "Requesting behavior sync...");
 	}
@@ -754,28 +770,28 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.displayBehaviorConfiguration = function() {
-		hideDisplays();
+		that.hideDisplays();
 		document.getElementById("runtime_configuration_display").style.display = "inline";
-		createParameterTable();
+		that.createParameterTable();
 	}
 
 	this.displayWaitingForBehavior = function() {
-		hideDisplays();
+		that.hideDisplays();
 		document.getElementById("runtime_waiting_display").style.display = "inline";
 	}
 
 	this.displayExternalBehavior = function() {
-		hideDisplays();
+		that.hideDisplays();
 		document.getElementById("runtime_external_display").style.display = "inline";
 	}
 
 	this.displayEngineOffline = function() {
-		hideDisplays();
+		that.hideDisplays();
 		document.getElementById("runtime_offline_display").style.display = "inline";
 	}
 
 	this.displayNoBehavior = function() {
-		hideDisplays();
+		that.hideDisplays();
 		document.getElementById("runtime_no_behavior_display").style.display = "inline";
 		let updateHistoryDisplay = function() {
 			let historyHTML = "";
@@ -794,25 +810,42 @@ UI.RuntimeControl = new (function() {
 		ActivityTracer.setUpdateCallback(updateHistoryDisplay);
 	}
 
+	this.updateCurrentState = function(target_path) {
+		if (force_redraw) {
+			console.log(`\x1b[93mBehavior update for '${target_path}' with force redraw. \x1b[0m`);
+			RC.Controller.setCurrentStatePath(target_path);
+			return;
+		} else if (outcome_request.target != undefined) {
+			if (outcome_request.target == target_path) return; // no change
+			console.log(`\x1b[93mIgnore state update message to '${target_path}' with pending `
+						+ `outcome request '${outcome_request.target}'!\x1b[0m`);
+			return;
+		}
+		RC.Controller.updateCurrentStatePath(target_path);
+	}
+
 	this.displayOutcomeRequest = function(outcome, target) {
 		outcome_request.target = undefined;
 		outcome_request.outcome = outcome;
 
 		if (target != undefined) {
+			if (target != RC.Controller.getCurrentState()) {
+				let cur_state = RC.Controller.getCurrentState();
+				console.log(`\x1b[91m Outcome request '${outcome}' for '${target.getStatePath()}' `
+							+ `overrides current state '${cur_state ? cur_state.getStatePath() : undefined}' view.\x1b[0m`);
+			}
 			outcome_request.target = target.getStatePath();
+			// Force immediate redraw to avoid issues with prior updates
+			current_state = undefined; // force full update
 			RC.Controller.setCurrentStatePath(target.getStatePath());
-			let path_segments = target.getStatePath().split("/");
-			current_level = path_segments.length - 1; // go to deepest level of target
-			//console.log(`\x1b[94mSet displayOutcomeRequest '${JSON.stringify(outcome_request)}' level=${current_level}\x1b[0m`);
 			if (R != undefined) {
-				drawStatusLabel("Onboard requested outcome: " + target.getStateName() + " > " + outcome);
-				updateDrawing();
+				that.drawStatusLabel("Onboard requested outcome: " + target.getStateName() + " > " + outcome);
+				that.updateDrawing();
 			}
 		} else {
-			//console.log(`\x1b[94mClear displayOutcomeRequest '${JSON.stringify(outcome_request)}'\x1b[0m`);
 			if (R != undefined) {
-				drawStatusLabel("");
-				updateDrawing();
+				that.drawStatusLabel("");
+				that.updateDrawing();
 			}
 		}
 	}
@@ -919,10 +952,10 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.displayState = function(state_path) {
-		if (R == undefined) initializeStateDisplay();
+		if (R == undefined) that.initializeStateDisplay();
 
 		if (state_path == "") {
-			resetStateDisplay();
+			that.resetStateDisplay();
 			return;
 		}
 
@@ -940,26 +973,28 @@ UI.RuntimeControl = new (function() {
 		current_states = current_states.slice(0, path_segments.length);
 
 		// don't update display if it's only a child update
-		try {
-			if (current_state != undefined && current_level < path_segments.length
-				&& current_states[current_level] != undefined
-				&& current_states[current_level].getStatePath() == current_state.getStatePath()) {
-
-				if (!RC.Controller.isLocked()) {
-					that.displayLockBehavior();
+		if (!force_redraw) {
+			try {
+				if (current_state != undefined && current_level < path_segments.length
+					&& current_states[current_level] != undefined
+					&& current_states[current_level].getStatePath() == current_state.getStatePath()) {
+					// console.log(`\x1b[94m only child update ${current_level} ${current_state.getStatePath()} ${state_path}...\x1b[0m`);
+					if (!RC.Controller.isLocked()) {
+						that.displayLockBehavior();
+					}
+					return;
 				}
-				return;
+			} catch (err) {
+				console.log("\x1b[91m==============================");
+				console.log("===============================");
+				console.log("Caught Error in displayState: " + err);
+				console.log(current_level);
+				console.log("path : " + path_segments.length + " : '" + path_segments + "'");
+				console.log(JSON.stringify(current_state));
+				console.log("currents : " + current_states.length + " : " + current_states.map(obj => obj && obj.state_name ? obj.state_name : "undefined").join(", "));
+				console.log("previous : " + previous_states.length + " : " + previous_states.map(obj => obj && obj.state_name ? obj.state_name : "undefined").join(", "));
+				console.log("===============================\x1b[0m");
 			}
-		} catch (err) {
-			console.log("\x1b[91m==============================");
-			console.log("===============================");
-			console.log("Caught Error in displayState: " + err);
-			console.log(current_level);
-			console.log("path : " + path_segments.length + " : '" + path_segments + "'");
-			console.log(JSON.stringify(current_state));
-			console.log("currents : " + current_states.length + " : " + current_states.map(obj => obj && obj.state_name ? obj.state_name : "undefined").join(", "));
-			console.log("previous : " + previous_states.length + " : " + previous_states.map(obj => obj && obj.state_name ? obj.state_name : "undefined").join(", "));
-			console.log("===============================\x1b[0m");
 		}
 		current_level = path_segments.length - 1;
 		if (current_level < 0) {
@@ -976,11 +1011,11 @@ UI.RuntimeControl = new (function() {
 				status_label.remove();
 				status_label = undefined;
 			} else {
-				//console.log(`\x1b[94mPreserving existing status label '${status_label.attr('text')}' (${JSON.stringify(outcome_request)})\x1b[0m`);
+				console.log(`\x1b[94mPreserving existing status label '${status_label.attr('text')}' (${JSON.stringify(outcome_request)})\x1b[0m`);
 			}
 		}
 
-		updateStateDisplay();
+		that.updateStateDisplay();
 	}
 
 	this.displayBehaviorFeedback = function(level, text) {
@@ -1017,26 +1052,26 @@ UI.RuntimeControl = new (function() {
 
 		let panel = document.getElementById("runtime_feedback_text");
 
-		let entry_time = document.createElement("font");
+		let entry_time = document.createElement("span");
 		entry_time.style.color = "gray";
 		entry_time.innerHTML = "[" + time + "] ";
 
-		let entry_title = document.createElement("font");
+		let entry_title = document.createElement("span"); // changed from deprecated "font"
 		entry_title.style.color = color;
-		entry_title.style.fontWeight = level == 2? "bold" : "";
+		entry_title.style.fontWeight = level == 2 ? "bold" : "";
 		entry_title.style.fontSize = "9pt";
 		entry_title.innerHTML = text_title;
 
 		let entry_body = undefined;
 		let entry_toggle = undefined;
 		if (text_body != "") {
-			entry_body = document.createElement("font");
+			entry_body = document.createElement("span");
 			entry_body.style.color = color;
 			entry_body.style.opacity = "0.8";
 			entry_body.innerHTML = text_body;
 			entry_body.style.display = collapse? "none" : "";
 
-			entry_toggle = document.createElement("font");
+			entry_toggle = document.createElement("span");
 			entry_toggle.style.cursor = "pointer";
 			entry_toggle.innerHTML = collapse? " [+]" : " [-]";
 			entry_toggle.title = collapse? "show details" : "hide details";
@@ -1125,7 +1160,7 @@ UI.RuntimeControl = new (function() {
 			return a.tabIndex - b.tabIndex;
 		});
 
-		console.log(`\x1b[94m   RC - Found ${targets.length} TAB targets for '${panel_id}'!\x1b[0m`);
+		// console.log(`\x1b[94m   RC - Found ${targets.length} TAB targets for '${panel_id}'!\x1b[0m`);
 		return targets;
 	}
 

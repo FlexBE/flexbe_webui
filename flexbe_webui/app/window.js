@@ -23,7 +23,7 @@ window.onload = async () => {
 
 		// Initialize runtime control if not in offline (standalone) mode
 		if (online_mode) {
-			console.log(`Calling RC.ROS.trySetupConnection ...`);
+			// console.log(`Calling RC.ROS.trySetupConnection ...`);
 			RC.ROS.trySetupConnection();
 		} else {
 			RC.ROS.setOfflineMode();
@@ -36,7 +36,6 @@ window.onload = async () => {
 	// Restore local settings (including statelib)
 	UI.Settings.retrieveConfigurationSettings();
 	UI.Settings.retrievePackageData();
-	console.log("  initialize feed ...");
 	UI.Feed.initialize();
 
 	// Initialize dashboard tab handling after set up is complete

@@ -15,6 +15,7 @@
 """Manifest generator."""
 
 import re
+
 from flexbe_webui.tools import break_long_line
 
 

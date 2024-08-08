@@ -1171,7 +1171,6 @@ UI.Panels.StateProperties = new (function() {
 					Tools.viewSource(current_prop_state.getBehaviorName(), file_path, result['text']);
 				} else {
 					T.logError(`Failed to open the behavior code for '${current_prop_state.getStatePath()}'!`);
-					console.log("\x1b[91mFailed to open the behavior code!\x1b[0m");
 				}
 			});
 		} catch (err) {

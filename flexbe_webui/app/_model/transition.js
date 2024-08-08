@@ -22,7 +22,6 @@ const Transition = function(_from_state, _to_state, _outcome, _autonomy,
 	}
 
 	if(end_x != -1 && end_x !== undefined){
-		console.log(`\x1b[95m - end_x, end_y defined fixed\x1b[0m`);
 		end = {x: end_x, y: end_y};
 	}
 
