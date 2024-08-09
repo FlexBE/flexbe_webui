@@ -253,10 +253,10 @@ class CodeGenerator:
         # add manual imports
         code += '# Additional imports can be added inside the following tags\n'
         code += '# [MANUAL_IMPORT]\n'
-        if self.manual[0] == '' or len(self.manual[0]) < 2:
+        print(f"Add manual imports: '{self.manual[0]}'", flush=True)
+        code += '\n'.join(self.manual[0])
+        if len(self.manual[0]) < 2:
             code += '\n'  # Guarantee blank lines
-        else:
-            code += '\n'.join(self.manual[0])
         code += '\n# [/MANUAL_IMPORT]\n'
 
         return code

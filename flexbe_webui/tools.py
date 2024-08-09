@@ -170,7 +170,7 @@ def left_align_block(code_block, blk_indent, ws_indent):
     if len(justified_lines) < 2:
         justified_lines.append('')
 
-    new_block = '\n'.join(justified_lines)
+    new_block = '\n'.join(justified_lines) + '\n'
     return new_block
 
 

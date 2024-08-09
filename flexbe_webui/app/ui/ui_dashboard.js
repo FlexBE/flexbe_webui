@@ -1841,7 +1841,9 @@ UI.Dashboard = new (function() {
 			imports.push(new_value.trim());
 		} catch (err) {
 			console.log(`cannot add item due to ${err}`);
+			return;
 		}
+
 		let tr = document.createElement("tr");
 
 		const removeFunction = function(import_value) {
@@ -1981,7 +1983,7 @@ UI.Dashboard = new (function() {
 			return;
 		}
 
-		UI.Dashboard.addManualImport(new_name);
+		UI.Dashboard.addManualImport(new_value);
 		document.getElementById("input_db_manual_import_value_add").value = "";
 	}
 
