@@ -270,10 +270,10 @@ body, html {
 	text-align: right;
 }
 
-.custom_confirm_dialog_modal {
+.custom_modal_dialog {
 	display: none; /* Hidden by default */
 	position: fixed; /* Stay in place */
-	z-index: 1; /* Sit on top */
+	z-index: 10; /* Sit on top */
 	left: 0;
 	top: 0;
 	width: 100%; /* Full width */
@@ -283,7 +283,7 @@ body, html {
 	background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
 }
 
-.custom-confirm-modal-content {
+.custom_modal_dialog_content {
 	background-color: #fefefe;
 	margin: 15% auto; /* 15% from the top and centered */
 	padding: 20px;
@@ -294,7 +294,7 @@ body, html {
 	text-align: center;
 }
 
-.custom-confirm-dialog-modal-button {
+.custom_modal_dialog_button {
 	margin: 10px;
 	padding: 10px 20px;
 	cursor: pointer;
@@ -305,15 +305,26 @@ body, html {
 	font-size: 14px;
 }
 
-.custom-confirm-dialog-modal-button:hover {
+.custom_modal_dialog_button:hover {
 	background-color: #ddd;
 }
 
-.custom-confirm-dialog-modal-button:focus {
+.custom_modal_dialog_button:focus {
 	outline: none;
 	box-shadow: 0 0 5px rgba(81, 203, 238, 1);
 }
 
-.custom-confirm-dialog-modal-button img {
+.custom_modal_dialog_button img {
 	margin-right: 8px;
+}
+
+.custom_modal_dialog_text {
+	display: inline-block;
+	padding: 2px;
+	padding-left: 5px;
+	color: #900;
+	font-style:normal;
+	font-weight:bold;
+	font-size: 14pt;
+	width: 95%;
 }

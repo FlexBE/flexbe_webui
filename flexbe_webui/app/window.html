@@ -4,6 +4,7 @@
 	<title>FlexBE WebUI</title>
 	<script src="{{ url_for('app', path='ext/raphael.js') }}"></script>
 	<script src="{{ url_for('app', path='ext/mousetrap.min.js') }}"></script>
+	<script src="{{ url_for('app', path='ext/mousetrap-global-bind.min.js') }}"></script>
 	<script src="{{ url_for('app', path='ext/dagre.min.js') }}"></script>
 	<script src="{{ url_for('app', path='ext/d3.min.js') }}"></script>
 	<script src="{{ url_for('app', path='ext/json_parse_raw.js') }}"></script>
@@ -1029,11 +1030,18 @@
 		<input id="cb_note_editor_important" type="checkbox"> important?
 	</div>
 
-	<div id="custom_confirm_dialog" class="custom_confirm_dialog_modal">
-		<div class="custom-confirm-modal-content">
-			<p><span id="custom_confirm_dialog_msg">Are you sure?</span></p>
-			<button id="custom_confirm_dialog_cancel_btn" class="custom-confirm-dialog-modal-button">&#x2716; Cancel</button>
-			<button id="custom_confirm_dialog_confirm_btn" class="custom-confirm-ialog-modal-button">&#x2714; Confirm</button>
+	<div id="custom_confirm_dialog" class="custom_modal_dialog" tabindex="-1">
+		<div class="custom_modal_dialog_content">
+			<p><span id="custom_confirm_dialog_msg" class="custom_modal_dialog_text">Are you sure?</span></p>
+			<button id="custom_confirm_dialog_cancel_btn" class="custom_modal_dialog_button" tabindex="-1" >&#x2716; Cancel</button>
+			<button id="custom_confirm_dialog_confirm_btn" class="custom_modal_dialog_button" tabindex="-1" >&#x2714; Confirm</button>
+		</div>
+	</div>
+
+	<div id="custom_acknowledge_dialog" class="custom_modal_dialog" tabindex="-1">
+		<div class="custom_modal_dialog_content">
+			<p><span id="custom_acknowledge_dialog_msg" class="custom_modal_dialog_text">Acknowledge</span></p>
+			<button id="custom_acknowledge_dialog_confirm_btn" class="custom_modal_dialog_button" tabindex="-1" >&#x2714; OK</button>
 		</div>
 	</div>
 
