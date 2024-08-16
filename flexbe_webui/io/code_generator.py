@@ -23,11 +23,13 @@ from flexbe_webui.tools import break_long_line, format_state_code_string, left_a
 class CodeGenerator:
     """Behavior Code Generator."""
 
-    def __init__(self, ws='    ', target_line_length=100):
+    def __init__(self, ws='    ', target_line_length=100, initialize_flexbe_core=False):
         """Initialize behavior generator."""
         self.manual = ['', '', '', '']  # [manual_code_import, manual_code_init, manual_code_create, manual_code_func]
         self.ws = ws
         self.target_line_length = target_line_length
+        self.initialize_flexbe_core = initialize_flexbe_core
+
         self.state_init_list = []
         self.sm_counter = 0
         self.sm_names = []
@@ -211,7 +213,8 @@ class CodeGenerator:
         import_list.append('from flexbe_core import Logger')
         import_list.append('from flexbe_core import OperatableStateMachine')
         import_list.append('from flexbe_core import PriorityContainer')
-        # @TODO fix this after OBE update --> import_list.append('from flexbe_core import initialize_flexbe_core')
+        if self.initialize_flexbe_core:
+            import_list.append('from flexbe_core import initialize_flexbe_core')
 
         for imp_state in imported_states:
             try:
@@ -226,7 +229,8 @@ class CodeGenerator:
                 if imp_state.behavior_state or not use_explicit_package:
                     import_list.append('from ' + imp_state.state_import
                                        + ' import ' + imp_state.state_class)
-                    init_statement = self.ws + self.ws + imp_state.state_class + '.initialize_ros(node)'
+                    if not self.initialize_flexbe_core:
+                        init_statement = self.ws + self.ws + imp_state.state_class + '.initialize_ros(node)'
                 else:
                     print('Using explict package name for '
                           f'{imp_state.state_class} ({self.explicit_package}, '
@@ -234,15 +238,16 @@ class CodeGenerator:
                     import_list.append('from ' + imp_state.state_import
                                        + ' import ' + imp_state.state_class + ' as '
                                        + imp_state.state_pkg + '__' + imp_state.state_class)
-                    init_statement = (self.ws + self.ws + imp_state.state_pkg + '__'
-                                      + imp_state.state_class + '.initialize_ros(node)')
+                    if not self.initialize_flexbe_core:
+                        init_statement = (self.ws + self.ws + imp_state.state_pkg + '__'
+                                          + imp_state.state_class + '.initialize_ros(node)')
             except Exception as exc:
                 print(f'CodeGenerator: {exc}', flush=True)
                 print(imp_state, flush=True)
                 print(30 * '=', flush=True)
                 raise exc
 
-            if 'SM' not in imp_state.state_class and init_statement not in self.state_init_list:
+            if not self.initialize_flexbe_core and 'SM' not in imp_state.state_class and init_statement not in self.state_init_list:
                 self.state_init_list.append(init_statement)
 
         import_list = list(set(import_list))  # eliminate any duplicates
@@ -300,19 +305,25 @@ class CodeGenerator:
             code += self.ws + self.ws + "self.add_parameter('" + param['name'] + "', " + default_value + ')\n'
 
         code += '\n'
-        # contains
-        code += self.ws + self.ws + '# references to used behaviors\n'
-        code += self.ws + self.ws + 'ConcurrencyContainer' + '.initialize_ros(node)' + '\n'
-        code += self.ws + self.ws + 'Logger' + '.initialize(node)' + '\n'
-        code += self.ws + self.ws + 'OperatableStateMachine' + '.initialize_ros(node)' + '\n'
-        code += self.ws + self.ws + 'PriorityContainer' + '.initialize_ros(node)' + '\n'
-        self.state_init_list.sort()
-        code += '\n'.join(self.state_init_list)
-        # Updated common ROS initialization code - @TODO fix this after OBE update
-        # code += self.ws + self.ws + '# Initialize ROS node information\n'
-        # code += self.ws + self.ws + 'initialize_flexbe_core(node)\n'
+        if self.initialize_flexbe_core:
+            code += self.ws + self.ws + '# Initialize ROS node information\n'
+            code += self.ws + self.ws + 'initialize_flexbe_core(node)\n'
+        else:
+            # initialize node
+            code += self.ws + self.ws + '# initialize ROS node information\n'
+            code += self.ws + self.ws + 'ConcurrencyContainer' + '.initialize_ros(node)' + '\n'
+            code += self.ws + self.ws + 'Logger' + '.initialize(node)' + '\n'
+            code += self.ws + self.ws + 'StateLogger' + '.initialize_ros(node)' + '\n'
+            code += self.ws + self.ws + 'OperatableStateMachine' + '.initialize_ros(node)' + '\n'
+            code += self.ws + self.ws + 'PriorityContainer' + '.initialize_ros(node)' + '\n'
+            code += self.ws + self.ws + 'initialize_proxies(node)' + '\n'
+
+            self.state_init_list.sort()
+            code += '\n'.join(self.state_init_list)
         code += '\n'
 
+        # contains
+        code += self.ws + self.ws + '# references to used behaviors\n'
         contained_behaviors = []
         for state in states:
             if not state.behavior_state:
@@ -353,12 +364,16 @@ class CodeGenerator:
         """Generate behavior creation block."""
         code = ''
         code += self.ws + 'def create(self):\n'
-
+        code += self.ws + self.ws + '"""Create state machine."""\n'
         # private vars
-        for _, val in enumerate(private_vars):
-            code += self.ws + self.ws + val['key'] + ' = ' + val['value'].strip() + '\n'
+        if len(private_vars) > 0:
+            code += self.ws + self.ws + '# Private variables\n'
+            for _, val in enumerate(private_vars):
+                code += self.ws + self.ws + val['key'] + ' = ' + val['value'].strip() + '\n'
+            code += '\n'
 
         # root declaration
+        code += self.ws + self.ws + '# Root state machine\n'
         pos = []
         for out in outcomes:
             pos.append('x:' + str(round(out.position_x)) + ' y:' + str(round(out.position_y)))
@@ -386,7 +401,7 @@ class CodeGenerator:
         code += self.ws + self.ws + '# [MANUAL_CREATE]\n'
         # Look for first comment or self. to set block boundary
         code += left_align_block(self.manual[2], self.ws + self.ws, self.ws)
-        code += self.ws + self.ws + '# [/MANUAL_CREATE]\n'
+        code += self.ws + self.ws + '# [/MANUAL_CREATE]\n\n'
 
         # generate contained state machines
         sub_sms = get_all_sub_state_machines(states)

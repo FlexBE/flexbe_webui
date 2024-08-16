@@ -183,19 +183,19 @@ class WebuiNode(Node):
                 while self._running:
                     data = await websocket.receive()
                     if 'type' in data and data['type'] == 'websocket.disconnect':
-                        print(f"Websocket disconnect received for '{topic}'")
+                        # print(f"Websocket disconnect received for '{topic}'")
                         break
-                    print(f"Received data from websocket for '{topic}' - {data}")
+                    # print(f"Received data from websocket for '{topic}' - {data}")
             except WebSocketDisconnect as exc:
-                print(f"flexbe_webui_node: '{topic}' - WebSocket disconnected!\n    {exc}", flush=True)
+                print(f"flexbe_webui_node: '{topic}' - WebSocket disconnected! ({exc})", flush=True)
             except RuntimeError as exc:
                 print(f"flexbe_webui_node: '{topic}' - {exc}", flush=True)
 
             if topic in self._websockets:
-                print(f"Remove websocket for '{topic}' !", flush=True)
+                # print(f"Remove websocket for '{topic}' !", flush=True)
                 del self._websockets[topic]
 
-            print(f"finished with websocket for '{topic}' !", flush=True)
+            # print(f"finished with websocket for '{topic}' !", flush=True)
 
         @app.get('/api/v1/ros/params/{key}')
         async def params(key: str):

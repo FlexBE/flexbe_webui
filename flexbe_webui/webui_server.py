@@ -402,9 +402,10 @@ class WebuiServer:
                 print(f" Generate code to '{file_name}' at '{package.path}' using ws='{ws}' "
                       f'and explicit package={explicit_package} ...', flush=True)
 
-                cg = CodeGenerator(ws)
+                cg = CodeGenerator(ws=ws,
+                                   target_line_length=self._settings['target_line_length'],
+                                   initialize_flexbe_core=self._settings['initialize_flexbe_core'])
                 cg.set_explicit_package(explicit_package)
-                # @TODO REMOVE cg.update_manual_sections(python_path, file_name, self._settings['text_encoding'])
 
                 code = cg.generate_behavior_code(behavior)
                 # Validate the code
@@ -417,7 +418,6 @@ class WebuiServer:
                     print(30 * '=')
                     print('\n'.join([f'{i:4d} {line}' for i, line in
                                      enumerate(code.split('\n'))]))
-                    print(code)
                     print(30 * '-')
                     print(exc, flush=True)
                     print(30 * '=')

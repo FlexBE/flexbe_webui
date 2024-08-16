@@ -34,6 +34,7 @@ def load_settings(json_dict=None):
         'editor_command': 'gedit --new-window $FILE +$LINE',
         'explicit_states': False,
         'gridsize': 50,
+        'initialize_flexbe_core': True,  # Use latest initialization code
         'pkg_cache_enabled': False,
         'runtime_timeout': 10,
         'save_in_source': True,   # Save behaviors in install and source code folders
@@ -43,6 +44,7 @@ def load_settings(json_dict=None):
         'synthesis_topic': '/behavior_synthesis',
         'synthesis_type': 'synthesis_msgs/BehaviorSynthesisAction',
         'synthesis_system': 'system_wide',
+        'target_line_length': 100,
         'text_encoding': 'UTF-8',
         'transition_mode': 1,
         'visualize_whitespace': True,
