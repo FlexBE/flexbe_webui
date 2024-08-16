@@ -10,38 +10,103 @@ UI.Dashboard = new (function() {
 	//
 	//  Private Configuration
 	// =======================
+	this.removePrivateVariable = function(var_key) {
+		let entry = Behavior.getPrivateVariables().findElement(function (el) { return el.key == var_key; });
+		let childRow = document.getElementById("db_field_variable_table_row_" + var_key);
+		if (entry == undefined || childRow == undefined) {
+			console.log(`\x1b[93mPrivateVariable.removePrivateVariable - unknown entry (${entry}) or child row (${childRow}) for '${var_key}'\x1b[0m`);
+			return false;
+		}
+		console.log(`\x1b[93mCalling removePrivateVariable with '${entry.key}': ${entry.value} ...\x1b[0m`);
+
+		Behavior.getPrivateVariables().remove(entry);
+
+		// clear using exact match
+		that.clearChildElements("db_field_variable_table_remove_button_" + var_key);
+		that.clearChildElements("db_field_variable_table_key_input_" + var_key);
+		that.clearChildElements("db_field_variable_table_value_input_" + var_key);
+		document.getElementById("db_variable_table").removeChild(childRow);
+		tab_targets = that.updateTabTargets("dashboard");
+		document.getElementById("input_db_variable_key_add").focus({ preventScroll: true });
+		return true;
+	};
+
+	this.changePrivateVariableKeyFunction = async function(new_key, old_key) {
+		console.log(`\x1b[92mCalling changePrivateVariableKeyFunction with '${new_key}' from old '${old_key}' (active='${document.activeElement.id}')\x1b[0m`);
+		if (new_key == old_key) {
+			console.log(`Ignoring changePrivateVariableKeyFunction for '${old_key}' with no change`);
+			return false;
+		}
+
+		let privateVars = Behavior.getPrivateVariables();
+		console.log(`Existing private vars: ${JSON.stringify(privateVars)}`);
+		let entry = privateVars.findElement((el) => { return el.key == old_key; });
+		let keyElement = document.getElementById('db_field_variable_table_key_input_' + old_key);
+		if (entry == undefined || keyElement == undefined) {
+			console.log(`\x1b[93mPrivateVariable.changePrivateVariableKey - unknown entry (${entry}) or key element (${keyElement}) for '${old_key}'\x1b[0m`);
+			if (keyElement != undefined) keyElement.focus({ preventScroll: true });
+			return false;
+		}
+
+		let match = privateVars.findElement((el) => {return el.key === new_key && el != entry;});
+		if (match != undefined) {
+			// - causes recursion error! keyElement.focus({preventScroll: true});  // hold focus here and interrupt the transition
+			console.log(`Cannot not use a duplicate key in private variables! ('${new_key}' in '${keyElement.id}')  (active='${document.activeElement.id}')`);
+			let ack = await UI.Tools.customAcknowledge("Duplicate keys in private variables are not allowed.<br><br>Select button to continue.")
+			console.log(`acknowledged - reset focus to '${keyElement.id}'  (active='${document.activeElement.id}')`);
+			keyElement.focus({ preventScroll: true });
+			return false;
+		}
+
+		// new key is acceptable
+		entry.key = new_key;
+		keyElement.setAttribute("key", new_key);
+		keyElement.style.backgroundColor = Checking.isValidPythonVarname(new_key)? "initial" : "#fca";
+		keyElement.value = new_key;
+		keyElement.id = "db_field_variable_table_key_input_" + new_key
+
+		// Update the other element ids with new key value
+		let variableRow = document.getElementById("db_field_variable_table_row_" + old_key);
+		variableRow.id = "db_field_variable_table_row_" + new_key;
+		let removeElement = document.getElementById("db_field_variable_table_remove_button_" + old_key);
+		removeElement.id = "db_field_variable_table_remove_button_" + new_key
+		let valueElement = document.getElementById("db_field_variable_table_value_input_" + old_key);
+		valueElement.id = "db_field_variable_table_value_input_" + new_key;
+
+		console.log(`changed key so add activity tracer for '${new_key}' from '${old_key}'`);
+		ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
+			"Renamed private variable " + old_key + " to " + new_key,
+			function() { that.changePrivateVariableKeyFunction(old_key, new_key); },
+			function() { that.changePrivateVariableKeyFunction(new_key, old_key); }
+		);
+
+		return true;
+	};
+
+	this.changePrivateVariableValueFunction = function(new_value, key) {
+		let entry = Behavior.getPrivateVariables().findElement(function (el) { return el.key == key; });
+		if (entry == undefined) {
+			console.log(`Failed to find a valid entry to changeValue for private variable '${key}'`);
+			return false;
+		}
+		let element = document.getElementById('db_field_variable_table_value_input_' + key);
+		element.setAttribute("old_value", entry.value);
+		element.style.backgroundColor = Checking.setColorByEntryType(new_value);
+		element.value = new_value;
+		entry.value = new_value;
+		console.log(`change '${key}' value to ${new_value}!`);
+		return true;
+	};
+
 	this._addPrivateVariable = function(new_key, new_value) {
-		Behavior.getPrivateVariables().push({key: new_key, value: new_value});
+		console.log(`\x1b[93mCalling addPrivateVariable with '${new_key}': ${new_value} ...\x1b[0m`);
+		let privateVariables = Behavior.getPrivateVariables();
+		let match = privateVariables.find((element) => {return element.key === new_key;});
 
-		let tr = document.createElement("tr");
-
-		const removeFunction = function(var_key) {
-			console.log(`Removing _addPrivateVariable '${var_key}' ...`);
-			tr.parentNode.removeChild(tr);
-			let element = Behavior.getPrivateVariables().findElement(function (element) { return element.key == var_key; });
-			if (element != undefined) Behavior.getPrivateVariables().remove(element);
-			that.clearChildElements("db_field_variable_table_remove_button_" + new_key);
-			that.clearChildElements("db_field_variable_table_key_input_" + new_key);
-			that.clearChildElements("db_field_variable_table_value_input_" + new_key);
-		};
-		const addFunction = function(var_key, var_value) {
-			document.getElementById("db_variable_table").appendChild(tr);
-			Behavior.getPrivateVariables().push({key: var_key, value: var_value});
-		};
-		const changeKeyFunction = function(new_key, old_key, element) {
-			let entry = Behavior.getPrivateVariables().findElement(function (el) { return el.key == old_key; });
-			if (entry != undefined) entry.key = new_key;
-			element.setAttribute("key", new_key);
-			element.style.backgroundColor = Checking.isValidPythonVarname(new_key)? "initial" : "#fca";
-			element.value = new_key;
-		};
-		const changeValueFunction = function(new_value, key, element) {
-			let entry = Behavior.getPrivateVariables().findElement(function (el) { return el.key == key; });
-			if (entry != undefined) entry.value = new_value;
-			element.setAttribute("old_value", new_value);
-			element.style.backgroundColor = Checking.setColorByEntryType(new_value);
-			element.value = new_value;
-		};
+		if  (match != undefined) {
+			T.logError(`Attempted to add duplicate key '${new_key}' to private variables! (fix bad code)`);
+			return false;
+		}
 
 		let remove_button = document.createElement("img");
 		remove_button.setAttribute("id", "db_field_variable_table_remove_button_" + new_key);
@@ -55,20 +120,21 @@ UI.Dashboard = new (function() {
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 			let key = key_input_field.getAttribute("key");
 			let value = value_input_field.getAttribute("old_value");
-			console.log(`\x1b[93m Dashboard remove private variable '${key}'\x1b[0m`);
-			removeFunction(key);
-			ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_REMOVE,
-				"Removed private variable " + key,
-				function() { addFunction(key, value); },
-				function() { removeFunction(key); }
-			);
+			console.log(`\x1b[93m Dashboard remove private variable '${key}' : ${value}\x1b[0m`);
+			if (that.removePrivateVariable(key)) {
+				ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_REMOVE,
+					"Removed private variable " + key,
+					function() { that.addPrivateVariable(key, value); },
+					function() { that.removePrivateVariable(key); }
+				);
+			}
 		};
 		remove_button.addEventListener("click", removeHandler);
 		listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'click', 'handler': removeHandler});
 
 		const onEnterRemove = function(event) {
 			if (event.key === 'Enter' || event.key === ' ') {
-				console.log(`\x1b[94monEnterRemove button ...\x1b[0m`);
+				console.log(`\x1b[94monEnterRemove button for private variable '${event.target.id}' (active='${document.activeElement.id}')...\x1b[0m`);
 				removeHandler(event);
 			}
 		}
@@ -83,17 +149,14 @@ UI.Dashboard = new (function() {
 		key_input_field.setAttribute("type", "text");
 		key_input_field.setAttribute("tabindex", "0");
 		key_input_field.style.backgroundColor = Checking.isValidPythonVarname(new_key)? "initial" : "#fca";
-		const keyInputBlurHandler = function(event) {
+		const keyInputBlurHandler = async function(event) {
 			let old_key = key_input_field.getAttribute("key");
 			let new_key = key_input_field.value;
+			console.log(`keyInputBlurHandler for private variable ${JSON.stringify(event)} old='${old_key}' new='${new_key}' (${document.activeElement.id})`);
 			if (old_key == new_key) return;
-			changeKeyFunction(new_key, old_key, key_input_field);
 
-			ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
-				"Renamed private variable " + old_key + " to " + new_key,
-				function() { changeKeyFunction(old_key, new_key, key_input_field); },
-				function() { changeKeyFunction(new_key, old_key, key_input_field); }
-			);
+			setTimeout(() => {that.changePrivateVariableKeyFunction(new_key, old_key)}, 0);
+
 		};
 		key_input_field.addEventListener("blur", keyInputBlurHandler);
 		listeners_to_cleanup.push({'element': key_input_field, 'listener_type': 'blur', 'handler': keyInputBlurHandler});
@@ -111,13 +174,16 @@ UI.Dashboard = new (function() {
 			let old_value = value_input_field.getAttribute("old_value");
 			let new_value = value_input_field.value;
 			if (old_value == new_value) return;
-			changeValueFunction(new_value, key, value_input_field);
-
-			ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
-				"Changed private variable " + key + " to " + new_value,
-				function() { changeValueFunction(old_value, key, value_input_field); },
-				function() { changeValueFunction(new_value, key, value_input_field); }
-			);
+			let rc = that.changePrivateVariableValueFunction(new_value, key);
+			if (rc) {
+				ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
+					"Changed private variable " + key + " to " + new_value,
+					function() { that.changePrivateVariableValueFunction(old_value, key); },
+					function() { that.changePrivateVariableValueFunction(new_value, key); }
+				);
+			} else {
+				console.log(`failed to set value for '${key}' in '${value_input_field.id}'`);
+			}
 		};
 		value_input_field.addEventListener("blur", valueInputBlurHandler);
 		listeners_to_cleanup.push({'element': value_input_field, 'listener_type': 'blur', 'handler': valueInputBlurHandler});
@@ -132,19 +198,25 @@ UI.Dashboard = new (function() {
 		td_value_input_field.appendChild(value_input_field);
 		td_value_input_field.setAttribute("width", "62%");
 		td_remove_button.appendChild(remove_button);
+
+		let tr = document.createElement("tr");
+		tr.id = "db_field_variable_table_row_" + new_key
 		tr.appendChild(td_key_input_field);
 		tr.appendChild(td_label);
 		tr.appendChild(td_value_input_field);
 		tr.appendChild(td_remove_button);
 		document.getElementById("db_variable_table").appendChild(tr);
+		privateVariables.push({key: new_key, value: new_value});
 
 		ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_ADD,
 			"Added private variable " + new_key + " = " + new_value,
-			function() { removeFunction(new_key); },
-			function() { addFunction(new_key, new_value); }
+			function() { that.removePrivateVariable(new_key); },
+			function() { that.addPrivateVariable(new_key, new_value); }
 		);
 
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
+		console.log(`Done with add private variable for '${new_key}'!`);
+		return true;
 	}
 
 	//
@@ -152,7 +224,15 @@ UI.Dashboard = new (function() {
 	// ========================
 
 	this._addDefaultUserdata = function(new_key, new_value) {
-		Behavior.getDefaultUserdata().push({key: new_key, value: new_value});
+		let userData = Behavior.getDefaultUserdata();
+		let match = userData.find((element) => {
+			return element.key === new_key;});
+
+		if  (match != undefined) {
+			T.logError(`Added duplicate key '${new_key}' to userdata! (fix bad code)`);
+		}
+
+		userData.push({key: new_key, value: new_value});
 
 		let tr = document.createElement("tr");
 
@@ -169,9 +249,23 @@ UI.Dashboard = new (function() {
 			document.getElementById("db_userdata_table").appendChild(tr);
 			Behavior.getDefaultUserdata().push({key: var_key, value: var_value});
 		};
-		const changeKeyFunction = function(new_key, old_key, element) {
-			let entry = Behavior.getDefaultUserdata().findElement(function (el) { return el.key == old_key; });
-			if (entry != undefined) entry.key = new_key;
+		const changeKeyFunction = async function(new_key, old_key, element) {
+			let userData = Behavior.getDefaultUserdata();
+			let entry = userData.findElement(function (el) { return el.key == old_key; });
+			if (entry == undefined) {
+				console.log(`\x1b[91mFailed to find matching entry for '${old_key}' (ignore '${new_key}')\x1b[0m`);
+				return;
+			}
+			let match = userData.find((element) => {return element.key === new_key && element != entry;});
+			if (match != undefined) {
+				console.log(`Cannot not use a duplicate key in user data!`);
+				let ack = await UI.Tools.customAcknowledge("Duplicate keys in userdata are not allowed.<br><br>Select button to continue.")
+				document.getElementById(element.id).focus({ preventScroll: true });
+				return;
+			}
+
+			// new key is acceptable
+			entry.key = new_key;
 			element.setAttribute("key", new_key);
 			element.style.backgroundColor = Checking.isValidPythonVarname(new_key)? "initial" : "#fca";
 			element.value = new_key;
@@ -275,15 +369,23 @@ UI.Dashboard = new (function() {
 			function() { removeFunction(new_key); },
 			function() { addFunction(new_key, new_value); }
 		);
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
 	}
 
 	//
 	//  Behavior Parameters
 	// ===================
 
-	this._addBehaviorParameter = function(new_type, new_name) {
+	this._addBehaviorParameter = async function(new_type, new_name) {
 		let daa = getDefaultAndAdditional(new_type);
+
+		let existing = Behavior.getBehaviorParameterElement(new_name);
+		if (existing != undefined) {
+			console.log(`Parameter name '${new_name}' already exists!`);
+			let ack = await UI.Tools.customAcknowledge(`Parameter name '${new_name}' already exists!.<br><br>Select button to continue.`)
+			document.getElementById("input_db_parameter_name_add").focus({ preventScroll: true });
+			return;
+		}
 		Behavior.getBehaviorParameters().push({
 			type: new_type,
 			name: new_name,
@@ -332,7 +434,6 @@ UI.Dashboard = new (function() {
 		remove_button.setAttribute("tabindex", "0");
 		remove_button.setAttribute("name", new_name);
 		const removeHandler = function(event) {
-			console.log(`\x1b[94m removeHandler button ...\x1b[0m`);
 			event.preventDefault(); // Prevent default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 
@@ -352,7 +453,6 @@ UI.Dashboard = new (function() {
 
 		const onEnterRemove = function(event) {
 			if (event.key === 'Enter' || event.key === ' ') {
-				console.log(`\x1b[94monEnterRemove button ...\x1b[0m`);
 				removeHandler(event);
 			}
 		}
@@ -387,13 +487,14 @@ UI.Dashboard = new (function() {
 		name_input_field.setAttribute("class", "inline_text_edit");
 		name_input_field.setAttribute("type", "text");
 		const nameBlurHandler = function(event) {
-			let name = name_input_field.getAttribute("name");
+			let name = name_input_field.getAttribute("name"); // prior name
 			let entry = Behavior.getBehaviorParameters().findElement(function(element) {
 				return element.name == name;
 			});
 
 			if (entry != undefined) {
 				Behavior.updateBehaviorParameter(name, name_input_field.value, "name");
+				// Update existing hint and label if based only on the old name
 				if (entry.label == name) Behavior.updateBehaviorParameter(name, name_input_field.value, "label");
 				if (entry.hint == "Sets the " + name) Behavior.updateBehaviorParameter(name, "Sets the " + name, "hint");
 			}
@@ -421,7 +522,7 @@ UI.Dashboard = new (function() {
 		tr.appendChild(td_edit_button);
 		tr.appendChild(td_remove_button);
 		document.getElementById("db_parameter_table").appendChild(tr);
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
 	}
 
 	//
@@ -812,7 +913,7 @@ UI.Dashboard = new (function() {
 			function() { removeFunction(new_outcome); },
 			function() { addFunction(new_outcome); }
 		);
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
 	}
 
 	this._addBehaviorInputKey = function(new_key) {
@@ -905,7 +1006,7 @@ UI.Dashboard = new (function() {
 			function() { removeFunction(new_key); },
 			function() { addFunction(new_key); }
 		);
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
 	}
 
 	this._addBehaviorOutputKey = function(new_key) {
@@ -1003,7 +1104,7 @@ UI.Dashboard = new (function() {
 			function() { removeFunction(new_key); },
 			function() { addFunction(new_key); }
 		);
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
 	}
 
 	this.createBehaviorParameterEdit = function(param_name) {
@@ -1077,12 +1178,13 @@ UI.Dashboard = new (function() {
 		label_input_field.setAttribute("name", param_name);
 		label_input_field.setAttribute("class", "input_field");
 		label_input_field.setAttribute("type", "text");
-		const blurHandler = function(event) {
+		const labelBlurHandler = function(event) {
 			let name = label_input_field.getAttribute("name");
+			console.log(`Setting  parameter label for '${name}' to '${label_input_field.value}' ...`);
 			Behavior.updateBehaviorParameter(name, label_input_field.value, "label");
 		};
-		type_input_field.addEventListener("blur", blurHandler);
-		listeners_to_cleanup.push({'element': type_input_field, 'listener_type': 'change', 'handler': blurHandler});
+		label_input_field.addEventListener("blur", labelBlurHandler);
+		listeners_to_cleanup.push({'element': label_input_field, 'listener_type': 'blur', 'handler': labelBlurHandler});
 
 		let hint_label = document.createElement("label");
 		hint_label.innerHTML = "Advice for the operator: ";
@@ -1097,7 +1199,7 @@ UI.Dashboard = new (function() {
 			Behavior.updateBehaviorParameter(name, hint_input_field.value, "hint");
 		};
 		hint_input_field.addEventListener("blur", hintBlurHandler);
-		listeners_to_cleanup.push({'element': hint_input_field, 'listener_type': 'change', 'handler': hintBlurHandler});
+		listeners_to_cleanup.push({'element': hint_input_field, 'listener_type': 'blur', 'handler': hintBlurHandler});
 
 		let name_input_field = document.createElement("input");
 		name_input_field.setAttribute("id", "db_field_parameter_edit_table_name_input");
@@ -1142,7 +1244,7 @@ UI.Dashboard = new (function() {
 			}
 		};
 		name_input_field.addEventListener("blur", nameBlurHandler);
-		listeners_to_cleanup.push({'element': hint_input_field, 'listener_type': 'change', 'handler': nameBlurHandler});
+		listeners_to_cleanup.push({'element': hint_input_field, 'listener_type': 'blur', 'handler': nameBlurHandler});
 
 		let value_input_field = document.createElement("input");
 		value_input_field.setAttribute("id", "db_field_parameter_edit_table_value_input");
@@ -1200,7 +1302,7 @@ UI.Dashboard = new (function() {
 			Behavior.updateBehaviorParameter(name, value_input_field.value, "default");
 		};
 		value_input_field.addEventListener("blur", valueBlurHandler);
-		listeners_to_cleanup.push({'element': value_input_field, 'listener_type': 'change', 'handler': valueBlurHandler});
+		listeners_to_cleanup.push({'element': value_input_field, 'listener_type': 'blur', 'handler': valueBlurHandler});
 
 		document.getElementById("db_parameter_edit_table").innerHTML = "";
 		let type_td = document.createElement("td");
@@ -1251,7 +1353,7 @@ UI.Dashboard = new (function() {
 		document.getElementById("db_parameter_edit_table").appendChild(bot_tr);
 		document.getElementById("db_parameter_edit_table").appendChild(sep_below_tr);
 		document.getElementById("db_parameter_edit_table").appendChild(add_tr);
-		parameter_tab_targets = updateTabTargets("db_parameter_edit_table");
+		parameter_tab_targets = that.updateTabTargets("db_parameter_edit_table");
 		parameter_tab_targets.unshift(document.getElementById("db_parameter_edit_table_turn_button")); // first item
 	}
 
@@ -1352,7 +1454,7 @@ UI.Dashboard = new (function() {
 					Behavior.updateBehaviorParameter(name, additional[0], "default");
 				}
 
-				that.clearChildElements("db_field_parameter_edit_table_");
+				that.clearChildElements("db_field_parameter_edit_table_", false);
 			};
 			remove_button.addEventListener("click", removeHandler);
 			listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'click', 'handler': removeHandler});
@@ -1648,53 +1750,101 @@ UI.Dashboard = new (function() {
 		that.behaviorDateChanged();
 	}
 
+	this.addPrivateVariable = async function(new_key, new_value) {
+		let privateVariables = Behavior.getPrivateVariables();
+		let match = privateVariables.find((element) => {return element.key === new_key;});
 
-	this.addPrivateVariable = function(new_key, new_value) {
-		that._addPrivateVariable(new_key, new_value);
+		if  (match != undefined) {
+			console.log(`Cannot not add duplicate key to private variables!`);
+			let ack = await UI.Tools.customAcknowledge("Duplicate keys are not allowed.<br><br>Select button to continue.")
+			document.getElementById("input_db_variable_key_add").focus({ preventScroll: true });
+			return;
+		}
+
+		if (new_key == '') {
+			console.log(`Must define both key and value before adding private variable!`);
+			let ack = await UI.Tools.customAcknowledge("Must define both key and value before adding!<br><br>"
+										+"Select button to continue.");
+			document.getElementById("input_db_variable_key_add").focus({ preventScroll: true });
+			return;
+		}
+
+		if (new_value === '') {
+			console.log(`Must define both key and value before adding private variable!`);
+			let ack = await UI.Tools.customAcknowledge("Must define both key and value before adding!<br><br>"
+										+"Select any button to continue.");
+			document.getElementById("input_db_variable_value_add").focus({ preventScroll: true });
+			return;
+		}
+
+		document.getElementById("input_db_variable_key_add").value = "";
+		document.getElementById("input_db_variable_value_add").value = "";
+		document.getElementById("input_db_variable_key_add").focus({ preventScroll: true });
+		return that._addPrivateVariable(new_key, new_value)
 	}
-	this.addPrivateVariableClicked = function(event) {
+
+	this.addPrivateVariableClicked = async function(event) {
 		event.stopPropagation();
 		event.preventDefault();
 		let new_key = document.getElementById("input_db_variable_key_add").value.trim();
 		let new_value = document.getElementById("input_db_variable_value_add").value.trim();
-		if (new_key == '' || new_value === '') {
-			T.logError("Must define both key and value before adding!");
-			return;
-		}
-		UI.Dashboard.addPrivateVariable(new_key, new_value);
-		document.getElementById("input_db_variable_key_add").value = "";
-		document.getElementById("input_db_variable_value_add").value = "";
+		await that.addPrivateVariable(new_key, new_value);
 	}
 
-	this.addDefaultUserdata = function(new_key, new_value) {
-		that._addDefaultUserdata(new_key, new_value);
+	this.addDefaultUserdata = async function(new_key, new_value) {
+
+		let userData = Behavior.getDefaultUserdata();
+		let match = userData.find((element) => {
+			return element.key === new_key;});
+
+		if  (match != undefined) {
+			console.log(`Cannot not add duplicate key to user data!`);
+			let ack = await UI.Tools.customAcknowledge("Duplicate keys in userdata are not allowed.<br><br>Select button to continue.")
+			document.getElementById("input_db_userdata_key_add").focus({ preventScroll: true });
+			return false;
+		}
+
+		if (new_key == '') {
+			console.log(`Must define both key and value for userdata before adding!`);
+			let ack = await UI.Tools.customAcknowledge("Must define both key and value for userdata before adding!<br><br>"
+										+"Select any button to continue.");
+			document.getElementById("input_db_userdata_key_add").focus({ preventScroll: true });
+			return false;
+		}
+
+		if (new_value === '') {
+			console.log(`Must define both key and value for userdata before adding!`);
+			let ack = await UI.Tools.customAcknowledge("Must define both key and value for userdata before adding!<br><br>"
+										+"Select any button to continue.");
+			document.getElementById("input_db_userdata_value_add").focus({ preventScroll: true });
+			return false;
+		}
+
+		document.getElementById("input_db_userdata_key_add").value = "";
+		document.getElementById("input_db_userdata_value_add").value = "";
+		return that._addDefaultUserdata(new_key, new_value);
 	}
-	this.addDefaultUserdataClicked = function(event) {
+
+	this.addDefaultUserdataClicked = async function(event) {
 		event.stopPropagation();
 		event.preventDefault();
 		let new_key = document.getElementById("input_db_userdata_key_add").value.trim();
 		let new_value = document.getElementById("input_db_userdata_value_add").value.trim();
-		if (new_key == '' || new_value === '') {
-			T.logError("Must define both key and value before adding!");
-			return;
-		}
-
-		UI.Dashboard.addDefaultUserdata(new_key, new_value);
-
-		document.getElementById("input_db_userdata_key_add").value = "";
-		document.getElementById("input_db_userdata_value_add").value = "";
+		await that.addDefaultUserdata(new_key, new_value);
 	}
 
 	this.addParameter = function(new_type, new_name) {
 		that._addBehaviorParameter(new_type, new_name);
 	}
-	this.addParameterClicked = function(event) {
+	this.addParameterClicked = async function(event) {
 		event.stopPropagation();
 		event.preventDefault();
 		let type_select = document.getElementById("input_db_parameter_type_add");
 		let new_name = document.getElementById("input_db_parameter_name_add").value.trim();
 		if (type_select == undefined || new_name === '') {
-			T.logError("Must define both type and parameter name before adding!");
+			console.log("Must define both type and parameter name before adding!");
+			let ack = await UI.Tools.customAcknowledge("Must define both type and parameter name before adding!<br><br>Select button to continue.");
+			document.getElementById("input_db_parameter_name_add").focus({ preventScroll: true });
 			return;
 		}
 
@@ -1711,7 +1861,7 @@ UI.Dashboard = new (function() {
 		document.getElementById("parameter_flipper").classList.toggle("flip");
 		if (show_param_edit) {
 			// currently editing, remove listeners and flip back to listing
-			that.clearChildElements('db_field_parameter_edit_table_');
+			that.clearChildElements('db_field_parameter_edit_table_', false);
 			listeners_to_cleanup = listeners_to_cleanup.filter(({ element, listener_type, handler}) => {
 				if (element.id === 'db_parameter_edit_table_turn_button') {
 					element.removeEventListener(listener_type, handler);
@@ -1733,18 +1883,6 @@ UI.Dashboard = new (function() {
 	this.addPrivateFunction = function(new_name, new_params) {
 		that._addPrivateFunction(new_name, new_params);
 	}
-
-	// deprecated and no longer used
-	// this.addPrivateFunctionClicked = function(event) {
-	// 	event.stopPropagation();
-	// 	event.preventDefault();
-	// 	UI.Dashboard.addPrivateFunction(
-	// 		document.getElementById("input_db_function_name_add").value,
-	// 		document.getElementById("input_db_function_params_add").value
-	// 	);
-	// 	document.getElementById("input_db_function_name_add").value = "";
-	// 	document.getElementById("input_db_function_params_add").value = "";
-	// }
 
 	this.addBehaviorOutcome = function(new_outcome) {
 		that._addBehaviorOutcome(new_outcome);
@@ -1822,8 +1960,8 @@ UI.Dashboard = new (function() {
 
 		document.getElementById('db_function_edit_modal_text').value = "";
 
-		that.clearChildElements();
-		tab_targets = updateTabTargets("dashboard");
+		that.clearChildElements('', false); // clear all
+		tab_targets = that.updateTabTargets("dashboard");
 
 		// also reset input fields?
 		// currently not
@@ -1967,7 +2105,7 @@ UI.Dashboard = new (function() {
 			function() { removeFunction(new_value); },
 			function() { addFunction(new_value); }
 		);
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
 	}
 
 	this.addManualImport = function(new_value) {
@@ -1991,7 +2129,7 @@ UI.Dashboard = new (function() {
 		if (document.activeElement) {
 			document.activeElement.blur();
 		}
-		tab_targets = updateTabTargets("dashboard");
+		tab_targets = that.updateTabTargets("dashboard");
 		if (tab_targets.length > 0) {
 			tab_targets[0].focus({ preventScroll: true });
 			// console.log(`set focus to '${ document.activeElement ? document.activeElement.id : 'undefined'}' (${tab_targets[0].id})`)
@@ -2003,11 +2141,12 @@ UI.Dashboard = new (function() {
 		tab_targets.length = 0;
 	}
 
-	this.clearChildElements = function(filter='') {
+	this.clearChildElements = function(filter='', exact=true) {
 		try {
 			const elementsToRemove = new Set();
 			listeners_to_cleanup.forEach(({element, listener_type, handler}) => {
-				if (element.id.startsWith(filter)) {
+				// filter='' and exact=false catches all elements
+				if (exact ? (element.id === filter) : element.id.startsWith(filter)) {
 					element.removeEventListener(listener_type, handler);
 					elementsToRemove.add(element);
 				}
@@ -2031,7 +2170,7 @@ UI.Dashboard = new (function() {
 		}
 	}
 
-	var updateTabTargets = function(panel_id) {
+	this.updateTabTargets = function(panel_id) {
 		let select_tags = 'input, textarea, select, button, .img_button, .edit-box';
 
 		let panel = document.getElementById(panel_id);
@@ -2080,8 +2219,6 @@ UI.Dashboard = new (function() {
 
 			if (show_param_edit) {
 				// special handling for parameter edit flipper
-				console.log(`handling tab for dashboard with show_param_edit `);
-				console.log(`   from '${event.target.id}' ${parameter_tab_targets.length} ${document.activeElement}...`);
 				if (document.activeElement) {
 					for (let i = 0; i < parameter_tab_targets.length; i++) {
 						if (document.activeElement.id === parameter_tab_targets[i].id) {
@@ -2132,15 +2269,11 @@ UI.Dashboard = new (function() {
 	}
 
 	this.handleKeyUp = function(event) {
-		// Dashboard is active so capture all key up events
 		if (event.key === "Tab") {
-			// Statemachine editor is active so capture all the TABS
+			// Dashboard editor is active so capture all the TABS
 			event.preventDefault(); // Prevent the default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 		}
-		// event.preventDefault(); // Prevent the default action
-		// event.stopPropagation(); // Stop the event from propagating to other handlers
-		// console.log(`Dashboard capturing key up event '${event.key}' from target='${event.target.id}'`);
 	}
 
 }) ();

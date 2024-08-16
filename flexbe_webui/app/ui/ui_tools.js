@@ -19,12 +19,7 @@ UI.Tools = new (function() {
 		evt.stopPropagation();
 		UI.Tools.evaluate();
 	}, 'keyup');
-	// Mousetrap.bind("enter", function() { that.displayCommandInput(); }, 'keydown');
-	// Mousetrap.bind("enter", function(evt) {
-	// 	console.log(`mousetrap keyup at top level document '${evt.key}'`);
-	// 	console.log(`    '${evt.target.id}'`);
-	// 	evt.preventDefault();
-	// }, 'keyup'); // avoid default click handling of buttons
+
 	var mouse = {x: 0, y: 0};
 	document.addEventListener('mousemove', function(e){
 		mouse.x = e.clientX || e.pageX;
@@ -200,8 +195,6 @@ UI.Tools = new (function() {
 			}
 			if (will_stay) {
 				// display panels
-
-
 				document.getElementById("history_overlay").style.left = "-15px";
 				ActivityTracer.setUpdateCallback(createHistoryContent);
 				createHistoryContent();
@@ -405,7 +398,7 @@ UI.Tools = new (function() {
 			return false;
 		} else if (ActivityTracer.hasUnsavedChanges()) {
 			console.log('request confirmation with unsaved changes.');
-			let userConfirmed = await UI.Tools.customConfirm("Current behavior has changes.\nPress Confirm if you want to exit the UI\n and throw changes away?");
+			let userConfirmed = await UI.Tools.customConfirm("Current behavior has changes.<br>Press Confirm if you want to exit the UI<br> and throw changes away?");
 
 			// Check the user's response
 			if (userConfirmed) {
@@ -446,17 +439,15 @@ UI.Tools = new (function() {
 			const cancelBtn = document.getElementById('custom_confirm_dialog_cancel_btn');
 			const confirmBtn = document.getElementById('custom_confirm_dialog_confirm_btn');
 
-			msgSpan.textContent = confirmMsg;
+			msgSpan.innerHTML = confirmMsg;
 			modal.style.display = "block";
-			cancelBtn.focus({preventScroll: true}); // Focus on the Cancel button by default
 
 			function closeModalClicked(event) {
 				event.stopImmediatePropagation(); // this modal is in control for now
 				event.preventDefault();
 				modal.style.display = "none";
 				modal.removeEventListener('click', closeModalClicked, true);
-				cancelBtn.removeEventListener('keydown', closeModalKeyPress, true);
-				confirmBtn.removeEventListener('keydown', closeModalKeyPress, true);
+				modal.removeEventListener('keydown', closeModalKeyPress, true);
 				let result = false;
 				if (event.target === confirmBtn) {
 					// otherwise we click outside, which counts as cancel
@@ -466,27 +457,70 @@ UI.Tools = new (function() {
 			}
 
 			function closeModalKeyPress(event) {
-				if (!modal.contains(event.target)) return;
+				event.stopImmediatePropagation(); // this modal is in control for now
+				event.preventDefault();
+				if (!modal.contains(event.target)) {
+					return;
+				}
 
 				if (event.key === 'Tab') {
 					// Move focus between confirmation buttons
 					document.activeElement == cancelBtn ? confirmBtn.focus({preventScroll: true}) : cancelBtn.focus({preventScroll: true});
-					event.stopImmediatePropagation(); // this modal is in control for now
-					event.preventDefault();
 					return; // no resolution yet
 				} else if (event.key === 'Esc') {
 					event.target = cancelBtn; // Escape always cancels
 					closeModalClicked(event);
 				} else if (event.key === 'Enter' || event.key === ' ') {
 					closeModalClicked(event);
-				} else {
-					event.stopImmediatePropagation(); // this modal is in control for now
-					event.preventDefault();
 				}
 			}
-			cancelBtn.addEventListener('keydown', closeModalKeyPress, true); // keydown to match default Tab
-			confirmBtn.addEventListener('keydown', closeModalKeyPress, true); // keydown to match default Tab
+			modal.addEventListener('keydown', closeModalKeyPress, true); // keydown to match default Tab
 			modal.addEventListener('click', closeModalClicked, true);
+			cancelBtn.focus({preventScroll: true}); // Focus on the Cancel button by default
+		});
+	}
+
+	this.customAcknowledge = async function(confirmMsg) {
+		return new Promise((resolve) => {
+			const modal = document.getElementById('custom_acknowledge_dialog');
+			const msgSpan = document.getElementById('custom_acknowledge_dialog_msg');
+			const confirmBtn = document.getElementById('custom_acknowledge_dialog_confirm_btn');
+
+			msgSpan.innerHTML = confirmMsg;
+			modal.style.display = "block";
+
+			function closeModalClicked(event) {
+				event.stopImmediatePropagation(); // this modal is in control for now
+				event.preventDefault();
+				modal.style.display = "none";
+				modal.removeEventListener('click', closeModalClicked, true);
+				modal.removeEventListener('keydown', closeModalKeyPress, true);
+				resolve(true);
+			}
+
+			function closeModalKeyPress(event) {
+				event.stopImmediatePropagation(); // this modal is in control for now
+				event.preventDefault();
+				console.log(`closeModalKeyPress '${event.target.id}' (${document.activeElement.id})`)
+
+				if (!modal.contains(event.target)) {
+					return;
+				}
+				if (event.key === 'Tab') {
+					// Keep focus on confirmation buttons
+					confirmBtn.focus({preventScroll: true}); // the button by default after event listeners defined
+					return; // no resolution yet
+				} else if (event.key === 'Esc') {
+					event.target = confirmBtn; // Escape always cancels
+					closeModalClicked(event);
+				} else if (event.key === 'Enter' || event.key === ' ') {
+					closeModalClicked(event);
+				}
+			}
+			modal.addEventListener('keydown', closeModalKeyPress, true); // keydown to match default Tab
+			modal.addEventListener('click', closeModalClicked, true);
+			confirmBtn.focus({preventScroll: true}); // the button by default after event listeners defined
+			console.log(`defined acknowledge dialog with focus '${confirmBtn.id}' (${document.activeElement.id})`)
 		});
 	}
 
@@ -494,7 +528,7 @@ UI.Tools = new (function() {
 		if (event.key === "Tab") {
 			// No other panel is handling tabs, so move to main panel
 			if (event.target.id === '') {
-				console.log(`Tab keydown captured from target '${event.target.id}' at top level (focus='${document.activeElement.id}') - set focus to toolbar!`);
+				//console.log(`Tab keydown captured from target '${event.target.id}' at top level (focus='${document.activeElement.id}') - set focus to toolbar!`);
 				UI.Menu.updateFocus();
 				event.preventDefault(); // Prevent the default action
 				event.stopPropagation(); // Stop the event from propagating to other handlers
@@ -504,7 +538,7 @@ UI.Tools = new (function() {
 			return;
 		} else if (event.key === "Enter") {
 			if (event.target.id === 'dashboard' || event.target.id === 'statemachine' || event.target.id === 'runtimecontrol') {
-				console.log(`top level saw '${event.key}' keydown from target '${event.target.id}' - open command entry!`);
+				//console.log(`top level saw '${event.key}' keydown from target '${event.target.id}' - open command entry!`);
 				event.preventDefault(); // Prevent the default action
 				event.stopPropagation(); // Stop the event from propagating to other handlers
 				document.getElementById('tool_input_command').addEventListener('keydown', UI.Tools.commandListener);

@@ -76,11 +76,7 @@ RC.PubSub = new (function() {
 
 	var outcome_request_callback = function(msg) {
 		var target_state = Behavior.getStatemachine().getStateByPath(msg.target);
-		if (msg.outcome == 255) {
-			UI.RuntimeControl.displayOutcomeRequest('', undefined);  // clear previous request
-		} else {
-			UI.RuntimeControl.displayOutcomeRequest(target_state.getOutcomes()[msg.outcome], target_state);
-		}
+		UI.RuntimeControl.displayOutcomeRequest(msg.outcome, target_state);
 	}
 
 	var behavior_feedback_callback = function (msg){
@@ -330,6 +326,7 @@ RC.PubSub = new (function() {
 			} else {
 				RC.Sync.setStatus("Transition", RC.Sync.STATUS_WARN);
 			}
+			UI.RuntimeControl.transitionFeedback(msg.args);
 		}
 		if (msg.command == "autonomy") {
 			RC.Sync.remove("Autonomy");
@@ -761,6 +758,7 @@ RC.PubSub = new (function() {
 	this.sendOutcomeRequest = function(state, outcome) {
 		if (transition_command_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
 		var target_name = state.getStateName();
+		// console.log(` send outcome request '${outcome}' for '${target_name}' and register transition status ...`);
 		RC.Sync.register("Transition", 50);
 		transition_command_publisher.publish({
 			target: target_name,
@@ -853,6 +851,7 @@ RC.PubSub = new (function() {
 	this.sendSyncRequest = function() {
 		if (sync_mirror_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
 		if (RC.Controller.isRunning() || RC.Controller.isReadonly()) {
+			RC.Sync.remove("Transition"); // clear any prior transition requests
 			RC.Sync.register("Sync", 60);
 		}
 		sync_mirror_publisher.publish();

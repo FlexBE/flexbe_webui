@@ -102,8 +102,8 @@ UI.Panels.StateProperties = new (function() {
 				div.setAttribute("fill", s.fill);
 				div.setAttribute('id', ac.id + "_suggestion_" + i);
 				const clickHandler = function(event) {
-					el.value = el.getAttribute("fill");
-					ac.setAttribute("style", "display: none;");
+					el.value = div.getAttribute("fill");
+ 					ac.setAttribute("style", "display: none;");
 				};
 				div.addEventListener('click', clickHandler);
 				listeners_to_cleanup.push({'element': div, 'listener_type': 'click', 'handler': clickHandler});

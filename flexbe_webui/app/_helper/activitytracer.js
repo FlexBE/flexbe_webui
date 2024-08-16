@@ -55,10 +55,14 @@ const ActivityTracer = new (function() {
 	}
 
 	this.undo = function() {
-		if (current_index == 0) return;
+		if (current_index == 0) {
+			console.log(`Undo : Nothing left to undo!`);
+			return;
+		}
 		if (RC.Controller.isRunning() && current_index == onboard_index) return;
 		logging_enabled = false;
 
+		console.log(`Undo: ${activity_list[current_index].description}`);
 		activity_list[current_index].undo();
 
 		current_index -= 1;
@@ -75,10 +79,14 @@ const ActivityTracer = new (function() {
 	}
 
 	this.redo = function() {
-		if (current_index == activity_list.length - 1) return;
+		if (current_index == activity_list.length - 1) {
+			console.log(`Redo : Nothing left to redo!`);
+			return;
+		}
 		logging_enabled = false;
 		current_index += 1;
 
+		console.log(`Redo: ${activity_list[current_index].description}`);
 		activity_list[current_index].redo();
 
 		logging_enabled = true;

@@ -27,6 +27,21 @@ UI.Menu = new (function() {
 		}
 	}
 
+	this.resize = function() {
+		if (current_page === 'db') {
+			that.toDashboardClicked();
+		} else if (current_page === 'sm') {
+			that.toStatemachineClicked();
+		} else if (current_page === 'rc') {
+			that.toControlClicked();
+		} else if (current_page === 'se') {
+			that.toSettingsClicked();
+		} else {
+			console.log(`\x1b[91m UI.Menu - unknown page '${current_page}' - cannot resize!\x1b[0m`);
+		}
+	}
+
+
 	this.setFocus = function(target) {
 		for (let i=0; i<keys.length; ++i) {
 			key = keys[i];
@@ -40,58 +55,60 @@ UI.Menu = new (function() {
 	}
 
 	var button_config_db = [
-		[
-			["New Behavior", "file_new", function() { UI.Menu.newBehaviorClicked(); }],
-			["Load Behavior", "file_load", function() { UI.Menu.loadBehaviorClicked(); }],
-			["Save Behavior", "file_save", function() { UI.Menu.saveBehaviorClicked(); }]
+		[	//  for global key bindings only define once (set others to undefined)
+			//  key bindings must be unique across all pages
+			//  name,   image, function, key binding, global (vs. tied to single page)
+			["New Behavior", "file_new", function() { UI.Menu.newBehaviorClicked(); }, "ctrl+n", false],
+			["Load Behavior", "file_load", function() { UI.Menu.loadBehaviorClicked(); }, "ctrl+l", false],
+			["Save Behavior", "file_save", function() { UI.Menu.saveBehaviorClicked(); }, "ctrl+s", true]
 		],
 		[
-			["Edit Behavior Code", "page_edit", function() { UI.Menu.scEditClicked(); }, "ctrl+e"],
-			["View Behavior Code", "page_view", function() { UI.Menu.scViewClicked(); }, "ctrl+v"]
+			["Edit Behavior Code", "page_edit", function() { UI.Menu.scEditClicked(); }, "ctrl+e", true],
+			["View Behavior Code", "page_view", function() { UI.Menu.scViewClicked(); }, "ctrl+b", true]
 		],
 		[
-			["Check Behavior", "check", function() { UI.Menu.checkBehaviorClicked(); }]
+			["Check Behavior", "check", function() { UI.Menu.checkBehaviorClicked(); }, "ctrl+k", true]
 		]
 	];
 	var button_config_sm = [
 		[
-			["Add State", "add", function() { UI.Menu.addStateClicked(); }, "ctrl+1"],
-			["Add Behavior", "add", function() { UI.Menu.addBehaviorClicked(); }, "ctrl+2"],
-			["Add Container", "add", function() { UI.Menu.addStatemachineClicked(); }, "ctrl+3"]
+			["Add State", "add", function() { UI.Menu.addStateClicked(); }, "ctrl+1", false],
+			["Add Behavior", "add", function() { UI.Menu.addBehaviorClicked(); }, "ctrl+2", false],
+			["Add Container", "add", function() { UI.Menu.addStatemachineClicked(); }, "ctrl+3", false]
 		],
 		[
-			["Data Flow Graph", "dataflow", function() { UI.Statemachine.toggleDataflow(); }, "ctrl+d"],
-			["Check Behavior", "check", function() { UI.Menu.checkBehaviorClicked(); }],
-			["Save Behavior", "file_save", function() { UI.Menu.saveBehaviorClicked(); }]
+			["Data Flow Graph", "dataflow", function() { UI.Statemachine.toggleDataflow(); }, "ctrl+d", false],
+			["Check Behavior", "check", function() { UI.Menu.checkBehaviorClicked(); }, undefined, true],
+			["Save Behavior", "file_save", function() { UI.Menu.saveBehaviorClicked(); }, undefined, true]
 		],
 		[
-			["Undo", "undo", function(event) { ActivityTracer.undo(); }, undefined],
-			["Redo", "redo", function(event) { ActivityTracer.redo(); }, undefined],
-			["Reset", "cross", function(event) { ActivityTracer.resetToSave(); }]
+			["Undo", "undo", function(event) { ActivityTracer.undo(); }, "ctrl+z", true],
+			["Redo", "redo", function(event) { ActivityTracer.redo(); }, "ctrl+shift+z", true],
+			["Reset", "cross", function(event) { ActivityTracer.resetToSave(); }, undefined, false]
 		],
 		[
-			["Hide Comments", "note", function() { UI.Statemachine.toggleComments(); }, "ctrl+h"],
-			["Write Comment", "note_add", function() { UI.Menu.addCommentClicked(); }, "ctrl+4"]
+			["Hide Comments", "note", function() { UI.Statemachine.toggleComments(); }, "ctrl+h", false],
+			["Write Comment", "note_add", function() { UI.Menu.addCommentClicked(); }, "ctrl+4", false]
 		],
 		[
-			["Fade Outcomes", "outcome", function() { UI.Statemachine.toggleOutcomes(); }, "ctrl+f"],
-			["Auto-Connect", "autoconnect", function(event) { Tools.autoconnect(); }, "ctrl+a"],
-			["Group Selection", "group_selection", function(event) { Tools.groupSelection(); }, "ctrl+g"]
+			["Fade Outcomes", "outcome", function() { UI.Statemachine.toggleOutcomes(); }, "ctrl+f", false],
+			["Auto-Connect", "autoconnect", function(event) { Tools.autoconnect(); }, "ctrl+a", false],
+			["Group Selection", "group_selection", function(event) { Tools.groupSelection(); }, "ctrl+g", false]
 		]
 	];
 	var button_config_rc = [
 		[
-			["Show Terminal", "title_terminal", function() { UI.Menu.terminalClicked(); }, undefined],
+			["Toggle Terminal", "title_terminal", function() { UI.Menu.terminalClicked(); }, "ctrl+t", true],
 			//["Test", "title_terminal", function(event) { ROS.test(); }, undefined]
 		]
 	];
 	var button_config_se = [
 		[
-			["Show Terminal", "title_terminal", function() { UI.Menu.terminalClicked(); }, undefined]
+			["Toggle Terminal", "title_terminal", function() { UI.Menu.terminalClicked(); }, undefined, true]
 		],
 		[
-			["Import Configuration", "settings_import", function() { UI.Settings.importConfiguration(); }],
-			["Export Configuration", "settings_export", function() { UI.Settings.exportConfiguration(); }]
+			["Import Configuration", "settings_import", function() { UI.Settings.importConfiguration(); }, undefined, false],
+			["Export Configuration", "settings_export", function() { UI.Settings.exportConfiguration(); }, undefined, false]
 		]
 	];
 
@@ -148,11 +165,16 @@ UI.Menu = new (function() {
 			element[0].forEach(function(column) {
 				column.forEach(function(button) {
 					if (button[3] == undefined) return;
-					Mousetrap.bind(button[3], function() {
-						if (!element[1]()) return;
+					Mousetrap.bindGlobal(button[3], function(evt) {
+						evt.preventDefault();
+						if (!button[4] && !element[1]()) {
+							console.log(`\x1b[93mIgnoring ${button[3]} on this page!\x1b[0m`);
+							return;
+						}
+						console.log(`Invoking ${button[3]} to ${button[0]}`);
 						button[2]();
 					});
-					console.log(` binding '${button[3]}' to '${button[0]}' action`)
+					console.log(` binding '${button[3]}' to '${button[0]}' action (global=${button[4]})`);
 				});
 			});
 		});
@@ -164,12 +186,19 @@ UI.Menu = new (function() {
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 		}
 		UI.Panels.hideAllPanels();
+		T.hide();
+		const containerWidth = document.getElementById("dashboard").parentElement.offsetWidth;
 		document.getElementById("dashboard").style.left = "0px";
-		document.getElementById("statemachine").style.left = "calc(100% + 50px)";
-		document.getElementById("runtimecontrol").style.left = "calc((100% + 50px)*2)";
-		document.getElementById("settings").style.left = "calc((100% + 50px)*3)";
+		document.getElementById("statemachine").style.left = `${containerWidth + 50}px`;
+		document.getElementById("runtimecontrol").style.left = `${(containerWidth + 50) * 2}px`;
+		document.getElementById("settings").style.left = `${(containerWidth + 50) * 3}px`;
 		that.setFocus("db");
 		setMenuButtons(button_config_db);
+		console.log(`db=${document.getElementById("dashboard").style.left} `
+					+ `sm=${document.getElementById("statemachine").style.left}`
+					+ `rc=${document.getElementById("runtimecontrol").style.left}`
+					+ `se=${document.getElementById("settings").style.left}`
+					)
 	}
 
 	this.toStatemachineClicked = function(event=undefined) {
@@ -178,13 +207,20 @@ UI.Menu = new (function() {
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 		}
 		UI.Panels.hideAllPanels();
-		document.getElementById("dashboard").style.left = "calc(-100% - 50px)";
+		T.hide();
+		const containerWidth = document.getElementById("statemachine").parentElement.offsetWidth;
+		document.getElementById("dashboard").style.left = `${-containerWidth - 50}px`;
 		document.getElementById("statemachine").style.left = "0px";
-		document.getElementById("runtimecontrol").style.left = "calc(100% + 50px)";
-		document.getElementById("settings").style.left = "calc((100% + 50px)*2)";
+		document.getElementById("runtimecontrol").style.left = `${containerWidth + 50}px`;
+		document.getElementById("settings").style.left = `${(containerWidth + 50) * 2}px`;
 		that.setFocus("sm");
 		setMenuButtons(button_config_sm);
 		UI.Statemachine.refreshView();
+		console.log(`db=${document.getElementById("dashboard").style.left} `
+					+ `sm=${document.getElementById("statemachine").style.left}`
+					+ `rc=${document.getElementById("runtimecontrol").style.left}`
+					+ `se=${document.getElementById("settings").style.left}`
+					)
 	}
 
 	this.toControlClicked = function(event=undefined) {
@@ -193,12 +229,20 @@ UI.Menu = new (function() {
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 		}
 		UI.Panels.hideAllPanels();
-		document.getElementById("dashboard").style.left = "calc((-100% - 50px)*2)";
-		document.getElementById("statemachine").style.left = "calc(-100% - 50px)";
+		T.hide();
+		const containerWidth = document.getElementById("runtimecontrol").parentElement.offsetWidth;
+		document.getElementById("dashboard").style.left = `${(-containerWidth - 50) * 2}px`;
+		document.getElementById("statemachine").style.left = `${-containerWidth - 50}px`;
 		document.getElementById("runtimecontrol").style.left = "0px";
-		document.getElementById("settings").style.left = "calc(100% + 50px)";
+		document.getElementById("settings").style.left = `${containerWidth + 50}px`;;
 		that.setFocus("rc");
 		setMenuButtons(button_config_rc);
+
+		console.log(`db=${document.getElementById("dashboard").style.left} `
+					+ `sm=${document.getElementById("statemachine").style.left}`
+					+ `rc=${document.getElementById("runtimecontrol").style.left}`
+					+ `se=${document.getElementById("settings").style.left}`
+					)
 	}
 
 	this.toSettingsClicked = function(event=undefined) {
@@ -207,12 +251,19 @@ UI.Menu = new (function() {
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 		}
 		UI.Panels.hideAllPanels();
-		document.getElementById("dashboard").style.left = "calc((-100% - 50px)*3)";
-		document.getElementById("statemachine").style.left = "calc((-100% - 50px)*2)";
-		document.getElementById("runtimecontrol").style.left = "calc(-100% - 50px)";
+		T.hide();
+		const containerWidth = document.getElementById("settings").parentElement.offsetWidth;
+		document.getElementById("dashboard").style.left = `${(-containerWidth - 50) * 3}px`;
+		document.getElementById("statemachine").style.left = `${(-containerWidth - 50) * 2}px`;
+		document.getElementById("runtimecontrol").style.left = `${-containerWidth - 50}px`;
 		document.getElementById("settings").style.left = "0px";
 		that.setFocus("se");
 		setMenuButtons(button_config_se);
+		console.log(`db=${document.getElementById("dashboard").style.left} `
+					+ `sm=${document.getElementById("statemachine").style.left}`
+					+ `rc=${document.getElementById("runtimecontrol").style.left}`
+					+ `se=${document.getElementById("settings").style.left}`
+					)
 	}
 
 	this.displayRuntimeStatus = function(status) {
@@ -392,7 +443,7 @@ UI.Menu = new (function() {
 	}
 
 	this.terminalClicked = function() {
-		UI.Panels.Terminal.show();
+		UI.Panels.Terminal.toggle();
 	}
 
 	this.saveBehaviorClicked = function() {
@@ -423,7 +474,7 @@ UI.Menu = new (function() {
 		// abort behavior execution if running
 		if (ActivityTracer.hasUnsavedChanges()) {
 			// Display the confirmation dialog
-			let userConfirmed = await UI.Tools.customConfirm("Current behavior has changes.\nPress Confirm if you want to proceed\nand throw changes away.");
+			let userConfirmed = await UI.Tools.customConfirm("Current behavior has changes.<br><br>Press Confirm if you want to proceed\nand throw changes away.");
 
 			// Check the user's response
 			if (userConfirmed) {
@@ -456,7 +507,7 @@ UI.Menu = new (function() {
 		if (RC.Controller.isReadonly()) return;
 		if (ActivityTracer.hasUnsavedChanges()) {
 			// Display the confirmation dialog
-			let userConfirmed = await UI.Tools.customConfirm("Current behavior has changes.\nPress Confirm if you want to proceed\nand throw changes away.");
+			let userConfirmed = await UI.Tools.customConfirm("Current behavior has changes.<br><br>Press Confirm if you want to proceed\nand throw changes away.");
 
 			// Check the user's response
 			if (userConfirmed) {
@@ -587,7 +638,7 @@ UI.Menu = new (function() {
 	this.handleKeyDown = function(event) {
 		//Tools.validateUniqueIDs(); // for debugging html changes
 		if (event.key === "Tab") {
-			console.log(`handling tab for top-level-toolbar from '${event.target.id}' ...`);
+			// console.log(`handling tab for top-level-toolbar from '${event.target.id}' ...`);
 			// Panel is active so capture all the TABS
 			event.preventDefault(); // Prevent the default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
@@ -606,7 +657,7 @@ UI.Menu = new (function() {
 					}
 				}
 			}
-			console.log(`regular tabbing from ${match_ndx} of ${tab_targets.length}`);
+			// console.log(`regular tabbing from ${match_ndx} of ${tab_targets.length}`);
 			if (match) {
 				match_ndx = event.shiftKey
 									? (match_ndx - 1 + tab_targets.length) % tab_targets.length
@@ -630,15 +681,11 @@ UI.Menu = new (function() {
 		//console.log(`Top-level-toolbar saw key down event '${event.key}' from '${event.target.id}' but did not capture`);
 	}
 	this.handleKeyUp = function(event) {
-		// Menu is active so capture all key up events
 		if (event.key === "Tab") {
-			// Statemachine editor is active so capture all the TABS
+			// top-level menu is active so capture all the TABS
 			event.preventDefault(); // Prevent the default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 		}
-		// event.preventDefault(); // Prevent the default action
-		// event.stopPropagation(); // Stop the event from propagating to other handlers
-		// console.log(`Top-level-toolbar saw key up event '${event.key}' from '${event.target.id}' and captured`);
 	}
 
 }) ();

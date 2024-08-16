@@ -84,7 +84,6 @@ UI.Panels = new (function() {
 
 		that.hidePanelIfActive(activePanel);
 
-		console.log(`setActivePanel '${panel}' - '${sub_panel}' ...`);
 		if (panel == that.ADD_STATE_PANEL) that.displayAddState();
 		else if (panel == that.SELECT_BEHAVIOR_PANEL) that.displaySelectBehavior();
 		else if (panel == that.STATE_PROPERTIES_PANEL) that.displayProperties(sub_panel);
@@ -100,10 +99,11 @@ UI.Panels = new (function() {
 	}
 
 	this.hideAllPanels = function() {
-		if (activePanel != that.NO_PANEL) {
-			console.log(`Hiding the active '${activePanel}' panel`);
-			that.hidePanelIfActive(activePanel);
-		}
+		that.hideAddState();
+		that.hideSelectBehavior();
+		that.hideProperties();
+		T.hide();
+		activePanel = that.NO_PANEL;
 	}
 
 	this.hidePanelIfActive = function(panel) {

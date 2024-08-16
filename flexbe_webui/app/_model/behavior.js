@@ -151,6 +151,7 @@ const Behavior = new (function() {
 	this.updateBehaviorParameter = function(old_name, new_value, key) {
 		for (let i = behavior_parameters.length - 1; i >= 0; i--) {
 			if (behavior_parameters[i].name == old_name) {
+				// console.log(`Updating behavior parameter '${old_name} at [${i}] key='${key}' with '${new_value}'!`)
 				if (key == "name")
 					behavior_parameters[i].name = new_value;
 				else if (key == "type")
@@ -166,6 +167,16 @@ const Behavior = new (function() {
 			}
 		};
 	}
+
+	this.getBehaviorParameterElement = function(new_name) {
+		for (let i = behavior_parameters.length - 1; i >= 0; i--) {
+			if (behavior_parameters[i].name == new_name) {
+				return behavior_parameter[i];
+			}
+		}
+		return undefined;
+	}
+
 	this.removeBehaviorParameter = function(target_name) {
 		let to_remove = behavior_parameters.findElement(function(element) {
 			return element.name == target_name;

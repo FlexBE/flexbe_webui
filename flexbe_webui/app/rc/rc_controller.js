@@ -79,12 +79,13 @@ RC.Controller = new (function() {
 			if (RC.Sync.hasProcess("Repeat")) RC.Sync.remove("Repeat");
 
 			document.getElementById("button_ros_connect").removeAttribute("disabled", "disabled");
+			document.getElementById('button_behavior_start').disabled = false; // enable start button
 
 			current_state_path = "";
 			locked_state_path = "";
 		},
 		onExit: function() {
-			UI.RuntimeControl.displayOutcomeRequest("", undefined);
+			UI.RuntimeControl.displayOutcomeRequest(255, undefined);
 		},
 		isActive: false,
 		label: "STATE_CONFIGURATION"
@@ -130,6 +131,7 @@ RC.Controller = new (function() {
 			UI.Panels.AddState.hide();
 			UI.Panels.StateProperties.hide();
 			document.getElementById("button_ros_connect").setAttribute("disabled", "disabled");
+			document.getElementById('button_behavior_start').disabled = true;
 
 			RC.Sync.register("State", 30);
 		},
@@ -274,6 +276,7 @@ RC.Controller = new (function() {
 		hasTransition(STATE_CONFIGURATION,	STATE_EXTERNAL);
 	}
 	this.signalStarted = function() {
+		document.getElementById('button_behavior_start').disabled = true;
 		hasTransition(STATE_CONFIGURATION,	STATE_STARTING);
 	}
 	this.signalRunning = function() {

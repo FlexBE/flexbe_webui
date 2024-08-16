@@ -117,12 +117,12 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('button_db_variable_add').addEventListener('click', UI.Dashboard.addPrivateVariableClicked);
 	document.getElementById('button_db_variable_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addPrivateVariableClicked));
 	document.getElementById('input_db_variable_key_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addPrivateVariableClicked));
-	document.getElementById('input_db_variable_value_add').addEventListener('keydown', onEnterFocusChange(UI.Dashboard.addPrivateVariableClicked, 'input_db_variable_key_add'));
+	document.getElementById('input_db_variable_value_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addPrivateVariableClicked));
 
 	document.getElementById('button_db_userdata_add').addEventListener('click', UI.Dashboard.addDefaultUserdataClicked);
 	document.getElementById('button_db_userdata_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addDefaultUserdataClicked));
 	document.getElementById('input_db_userdata_key_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addDefaultUserdataClicked));
-	document.getElementById('input_db_userdata_value_add').addEventListener('keydown', onEnterFocusChange(UI.Dashboard.addDefaultUserdataClicked, 'input_db_userdata_key_add'));
+	document.getElementById('input_db_userdata_value_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addDefaultUserdataClicked));
 
 	document.getElementById('button_db_parameter_add').addEventListener('click', UI.Dashboard.addParameterClicked);
 	document.getElementById('button_db_parameter_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addParameterClicked));
@@ -361,6 +361,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 	window.addEventListener('resize', function() {
 		console.log(`\x1b[93m Resize drawing areas\x1b[0m`);
+		UI.Menu.resize();
 		UI.Statemachine.recreateDrawingArea();
 		UI.RuntimeControl.recreateDrawingArea();
 	});

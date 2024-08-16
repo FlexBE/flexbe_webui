@@ -9,11 +9,13 @@ UI.RuntimeControl = new (function() {
 	var income_transition = undefined;
 	var current_state = undefined;
 	var current_level = 0;
-	var next_states = [];
+	var next_states = {};
 	var outcome_transitions = [];
 	var drawings = [];
 	var status_label = undefined;
-	var outcome_request = { outcome: "", target: undefined };
+	var outcome_request = { outcome: undefined, target: undefined };
+
+	var pending_outcome_requests = new Map();
 
 	var force_redraw = false;
 
@@ -33,7 +35,13 @@ UI.RuntimeControl = new (function() {
 		});
 		drawings = [];
 
-		if (current_state == undefined) return;
+		if (current_state == undefined) {
+			//console.log(`UI.RuntimeControl.updateDrawing - current state is undefined`);
+			return;
+		// } else {
+		// 	console.log(`UI.RC.updateDrawing - Updating '${current_state.getStatePath()}'`)
+		}
+
 		// Path
 		//------
 		drawings.push(new Drawable.ContainerPath(current_state.getContainer(), R, that.smDisplayHandler));
@@ -59,8 +67,9 @@ UI.RuntimeControl = new (function() {
 		// Next
 		//------
 		let next_state_drawings = [];
-		next_states.forEach(function(element, i) {
-			next_state_drawings.push(that.createDrawing(element, Drawable.State.Mode.SIMPLE, false, false));
+		let next_states_list = Object.keys(next_states);
+		next_states_list.forEach(function(key) {
+			next_state_drawings.push(that.createDrawing(next_states[key].state, Drawable.State.Mode.SIMPLE, false, false));
 		});
 
 		// vertical position
@@ -87,34 +96,50 @@ UI.RuntimeControl = new (function() {
 		if (previous_state != undefined) {
 			drawings.push(new Drawable.Transition(income_transition, R, true, drawings, false, false, Drawable.Transition.PATH_STRAIGHT, undefined, true));
 		}
-		outcome_transitions.forEach(function(element, i) {
-		let highlight = outcome_request.target != undefined && outcome_request.target == current_state.getStatePath() && outcome_request.outcome == element.getOutcome();
-
-		if (highlight) that.drawStatusLabel("Onboard requested outcome: " + outcome_request.outcome);
 
 		let selected_drawings = drawings.filter(function(d) { return d != previous_state_drawing; });
-			if (selected_drawings.length > 0) {
-				let transition = new Drawable.Transition(element, R, true, selected_drawings,
-														highlight, false, Drawable.Transition.PATH_CURVE, undefined, true);
-				if (transition) {
-					transition.drawing
+		next_states_list.forEach(function(key) {
+			new_transitions = []
+			next_states[key].incoming.forEach(function(element) {
+				let highlight = outcome_request.target != undefined && outcome_request.target == current_state.getStatePath() && outcome_request.outcome == element.getOutcome();
+
+				if (highlight) that.drawStatusLabel("Onboard requested outcome: " + outcome_request.outcome);
+				let dt = new Drawable.Transition(element, R, true, selected_drawings,
+												highlight, false, Drawable.Transition.PATH_CURVE,
+												undefined, true);
+				new_transitions.forEach(function(ot) {
+					if (!(dt.obj.getFrom().getStateName() == ot.obj.getFrom().getStateName() && dt.obj.getTo().getStateName() == ot.obj.getTo().getStateName())) {
+						console.logError(` dt and ot are not from and to the same states! (?)`);
+					}
+					dt.merge(ot); // merge with prior for bubble offset calculations
+				});
+				new_transitions.push(dt);
+
+				if (dt) {
+					function handleOutcomeSelection(event) {
+						if (RC.Sync.hasProcess("Transition")) {
+							UI.Panels.Terminal.logWarn(`There is an unacknowledged transition still pending (resync to clear if required)!`);
+							return;
+						}
+						dt.drawing.unclick(); // disable this transition from future requests
+						dt.drawing.attr({cursor: 'default'}); //, fill: '#b994'});
+						// //dt.drawing.line.attr({stroke: '#b994'});
+						// console.log(`setting set_obj ...`);
+						// dt.drawing.set_obj.forEach((el) => el.attr({stroke: '#b994'}));
+						let t = this.data("transition");
+						RC.PubSub.sendOutcomeRequest(t.getFrom(), t.getOutcome());
+						that.drawStatusLabel("Forcing outcome: " + t.getOutcome());
+						outcome_request.target = undefined;
+						console.log(`\x1b[92m Forced outcome '${element.getOutcome()}' for '${current_state.getStatePath()}'\x1b[0m`);
+					}
+					dt.drawing
 						.attr({'cursor': 'pointer', 'title': "Click to force outcome " + element.getOutcome()})
-						.data("transition", transition.obj)
-						.click(function() {
-							if (RC.Sync.hasProcess("Transition")) return;
-							let t = this.data("transition");
-							RC.PubSub.sendOutcomeRequest(t.getFrom(), t.getOutcome());
-							that.drawStatusLabel("Forcing outcome: " + t.getOutcome());
-							outcome_request.target = undefined;
-							console.log(`\x1b[92m Forced outcome '${element.getOutcome()}' for '${current_state.getStatePath()}'\x1b[0m`);
-						});
-					drawings.push(transition);
-				} else {
-					console.log(`skipping null transition!`);
+						.data("transition", dt.obj)
+						.click(handleOutcomeSelection);
+					new_transitions.push(dt);
 				}
-			} else {
-				console.log(`skipping with no selected drawings!`);
-			}
+			})
+			drawings.push(...new_transitions); // add grouped transitions to drawings list
 		});
 
 		bgcolor = current_state.isInsideDifferentBehavior()? '#fff3f6' : '#fff';
@@ -128,11 +153,22 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.createDrawing = function(state_obj, mode, active, locked) {
+
+		if (current_state == undefined) {
+			console.log(`UI.RuntimeControl.createDrawing - current_state is undefined! (${current_level})`);
+			return;
+		}
+
 		if (state_obj instanceof Statemachine) {
 			let drawable = new Drawable.Statemachine(state_obj, R, true, mode, active, locked);
 			if (active) {
 				drawable.drawing.data("sm_path", state_obj.getStatePath());
 				drawable.drawing.dblclick(function() {
+					if (current_state.state_path == undefined) {
+						console.log(`undefined state path: ${JSON.stringify(current_state)}`);
+					}
+					let child_ndx = current_states.indexOf(current_state);
+
 					let child_state = current_states[current_states.indexOf(current_state) + 1];
 					current_state = child_state;
 					that.updateStateDisplayDepth(child_state.getStatePath());
@@ -146,6 +182,8 @@ UI.RuntimeControl = new (function() {
 			if (active) {
 				drawable.drawing.data("new_path", state_obj.getStatePath());
 				drawable.drawing.dblclick(function() {
+					let child_ndx = current_states.indexOf(current_state);
+
 					let child_state = current_states[current_states.indexOf(current_state) + 1];
 					current_state = child_state;
 					that.updateStateDisplayDepth(child_state.getStatePath());
@@ -161,6 +199,10 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.smDisplayHandler = function() {
+		if (current_state == undefined) {
+			console.log(`UI.RuntimeControl.smDisplayHandler - current state is undefined! (${current_level})`);
+			return;
+		}
 		let sm = this.data("statemachine");
 		let current_relative_path = current_state.getStatePath().slice(sm.getStatePath().length + 1);
 		let current_lower_name = current_relative_path.split("/")[0];
@@ -179,6 +221,7 @@ UI.RuntimeControl = new (function() {
 	this.updateStateDisplay = function() {
 		current_state = current_states[current_level];
 		if (current_state == undefined) {
+			console.log(`UI.RuntimeControl.updateStateDisplay - current state is undefined! (${current_level})`);
 			that.updateDrawing();
 			return;
 		}
@@ -195,10 +238,16 @@ UI.RuntimeControl = new (function() {
 		outcome_transitions = current_state.getContainer().getTransitions().filter(function(element) {
 			return element.getFrom().getStateName() == current_state.getStateName();
 		});
-		next_states = [];
+
+		// Get target states and corresponding transitions
+		next_states = {};
 		outcome_transitions.forEach(function(element, i) {
-			if (!next_states.contains(element.getTo()))
-				next_states.push(element.getTo());
+			let toState = element.getTo();
+			let key = toState.getStatePath();
+			if (!next_states[key]) {
+				next_states[key] = {state: element.getTo(), incoming: []};
+			}
+			next_states[key].incoming.push(element);
 		});
 
 		// documentation
@@ -206,7 +255,7 @@ UI.RuntimeControl = new (function() {
 
 		that.updateDrawing();
 		if (force_redraw) {
-			console.log(`\x1b[93m Clear force redraw after sync request.\x1b[0m`);
+			// console.log(`\x1b[93m Clear force redraw after sync request.\x1b[0m`);
 			force_redraw = false;
 		}
 	}
@@ -269,7 +318,7 @@ UI.RuntimeControl = new (function() {
 		current_states = [];
 		previous_state = undefined;
 		income_transition = undefined;
-		next_states = [];
+		next_states = {};
 		outcome_transitions = [];
 		that.setDocumentation(undefined);
 	}
@@ -573,6 +622,13 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.startBehaviorClicked = function() {
+		if (document.getElementById('button_behavior_start').disabled) {
+			T.logWarn(`Waiting for prior start request to have chance to complete!`);
+			return;
+		}
+		document.getElementById('button_behavior_start').disabled = true;
+		// Start button is reenabled in RC.Controller when state changes to Configuration
+
 		that.parseParameterConfig(function (result) {
 			param_keys = [];
 			param_vals = [];
@@ -580,11 +636,13 @@ UI.RuntimeControl = new (function() {
 				param_keys.push("/" + r.name);
 				param_vals.push("" + r.value);
 			});
-			console.log("Got parameter values, starting behavior...");
+			console.log("Got parameter values, starting behavior ...");
 			let selection_box = document.getElementById("selection_rc_autonomy");
 			let autonomy_value = parseInt(selection_box.options[selection_box.selectedIndex].value);
 			RC.PubSub.sendBehaviorStart(param_keys, param_vals, autonomy_value);
 		});
+
+
 	}
 
 	this.attachExternalClicked = function() {
@@ -812,41 +870,133 @@ UI.RuntimeControl = new (function() {
 
 	this.updateCurrentState = function(target_path) {
 		if (force_redraw) {
-			console.log(`\x1b[93mBehavior update for '${target_path}' with force redraw. \x1b[0m`);
+			console.log(`\x1b[93mUI.RC.updateCurrentState - update for '${target_path}' with force redraw. \x1b[0m`);
 			RC.Controller.setCurrentStatePath(target_path);
 			return;
 		} else if (outcome_request.target != undefined) {
 			if (outcome_request.target == target_path) return; // no change
-			console.log(`\x1b[93mIgnore state update message to '${target_path}' with pending `
+			console.log(`\x1b[93mUI.RC.updateCurrentState - Ignore state update message to '${target_path}' with pending `
 						+ `outcome request '${outcome_request.target}'!\x1b[0m`);
 			return;
+		} else {
+			console.log(`\x1b[93mUI.RC.updateCurrentState - process request for '${target_path}' !\x1b[0m`);
 		}
 		RC.Controller.updateCurrentStatePath(target_path);
 	}
 
 	this.displayOutcomeRequest = function(outcome, target) {
-		outcome_request.target = undefined;
-		outcome_request.outcome = outcome;
 
-		if (target != undefined) {
-			if (target != RC.Controller.getCurrentState()) {
-				let cur_state = RC.Controller.getCurrentState();
-				console.log(`\x1b[91m Outcome request '${outcome}' for '${target.getStatePath()}' `
-							+ `overrides current state '${cur_state ? cur_state.getStatePath() : undefined}' view.\x1b[0m`);
-			}
-			outcome_request.target = target.getStatePath();
-			// Force immediate redraw to avoid issues with prior updates
-			current_state = undefined; // force full update
-			RC.Controller.setCurrentStatePath(target.getStatePath());
-			if (R != undefined) {
-				that.drawStatusLabel("Onboard requested outcome: " + target.getStateName() + " > " + outcome);
-				that.updateDrawing();
-			}
-		} else {
+		if (target == undefined) {
+			// clear all prior requests on start up
+			console.log(`clear all pending outcome requests (${outcome}, ${target}) ...`);
+			pending_outcome_requests.clear();
+			outcome_request.target = undefined;
+			outcome_request.outcome = undefined;
 			if (R != undefined) {
 				that.drawStatusLabel("");
 				that.updateDrawing();
 			}
+			return;
+		}
+
+		let targetPath = target.getStatePath();
+
+		if (outcome == 255) {
+			if (pending_outcome_requests.has(targetPath)) {
+				if (outcome_request.target === targetPath) {
+					console.log(`remove pending outcome request for '${targetPath}'`);
+					if (R != undefined) {
+						that.drawStatusLabel("");
+						that.updateDrawing();
+					}
+					outcome_request.target = undefined;
+					outcome_request.outcome = undefined;
+				}
+				pending_outcome_requests.delete(targetPath);
+			} else {
+				console.log(`outcome request was never registered for '${targetPath}'!`);
+			}
+		} else {
+			pending_outcome_requests.set(targetPath, outcome);
+		}
+
+		if (outcome_request.target != undefined) {
+			console.log(`There is a pending request for '${outcome_request.outcome}' for '${outcome_request.target}'.`);
+			return;
+		}
+
+		setTimeout(that.processNextOutcomeRequest(), 0);
+	}
+
+	this.transitionFeedback = function(args) {
+		let transitionTarget = args[1];
+		console.log(`transitionFeedback '${transitionTarget}' ...`);
+		let matchRequest = null;
+		for (const [key, value] of pending_outcome_requests.entries()) {
+			const parts = key.split('/'); // Split the string by "/"
+			const lastSegment = parts[parts.length - 1]; // Get the last segment
+
+			if (lastSegment === transitionTarget) {
+				// @todo - may change this to full path in future
+				matchRequest = key;
+				if (value < 0) {
+					// request was already dispatched, so this is confirmation
+					console.log(`confirmed transition request '${transitionTarget}' for outcome ${value + 1} and post processNextRequest`);
+					pending_outcome_requests.delete(key); // we are done with this request
+				} else {
+					console.log(`Feedback '${transitionTarget}' matches '${key}' but outcome request ${value} is still pending!`);
+				}
+				return;
+			}
+		}
+		if (matchRequest === null) {
+			console.log(`Transition '${transitionTarget}' was not previously requested, must have been operator decision!`);
+		}
+
+		setTimeout(RC.Sync.remove("Transition"), 0);
+		setTimeout(that.processNextOutcomeRequest(), 0); // post callback to process next pending outcome request
+	}
+
+	this.processNextOutcomeRequest = function() {
+		let nextRequest = null;
+		if (pending_outcome_requests.size === 0) {
+			console.log(`ProcessNextOutcomeRequest with ${pending_outcome_requests.size} entries `);
+			return;
+		}
+
+		for (const [key, value] of pending_outcome_requests.entries()) {
+			if (value !== 255 && value >= 0) {
+				nextRequest = key;
+				outcome_request.target = key;
+				const target_state = Behavior.getStatemachine().getStateByPath(key);
+				outcome_request.outcome = target_state.getOutcomes()[value];
+				pending_outcome_requests.set(key, -1 - value); // negate and subtract -1 (for 0) to show we have sent the request
+				break; // Exit the loop once the first non-255 value is found
+			}
+		}
+
+		if (nextRequest == null) {
+			console.log(`No pending outcome requests with ${pending_outcome_requests.size} entries `);
+			return;
+		}
+
+		console.log(`ProcessNextOutcomeRequest for '${nextRequest}' with outcome `
+					+ ` '${outcome_request.outcome}' (${pending_outcome_requests.size} pending entries) ... `);
+
+		let cur_state = RC.Controller.getCurrentState();
+
+		if (cur_state != undefined && outcome_request.target != cur_state.getStatePath()) {
+			console.log(`\x1b[91m Outcome request '${outcome_request.outcome}' for '${outcome_request.target}' overrides \n`
+						+ `   current state '${cur_state ? cur_state.getStatePath() : undefined}'`
+						+ ` ('${current_state ? current_state.getStatePath() : undefined}') view.\x1b[0m`);
+		}
+
+		// Force immediate redraw to avoid issues with prior updates
+		current_state = undefined; // force full update
+		RC.Controller.setCurrentStatePath(outcome_request.target);
+		if (R != undefined) {
+			that.drawStatusLabel(`Onboard requested outcome: ${RC.Controller.getCurrentState().getStateName()} > ${outcome_request.outcome}`);
+			that.updateDrawing();
 		}
 	}
 

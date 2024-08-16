@@ -23,7 +23,7 @@ IO.ModelGenerator = new (function() {
 		});
 
 		data.private_variables.forEach(function(element, i) {
-			UI.Dashboard.addPrivateVariable(element.key, element.value);
+			UI.Dashboard._addPrivateVariable(element.key, element.value);
 		});
 		data.default_userdata.forEach(function(element, i) {
 			UI.Dashboard.addDefaultUserdata(element.key, element.value);
@@ -142,7 +142,7 @@ IO.ModelGenerator = new (function() {
 				T.logInfo("[+] " + s.getStateName());
 			}
 
-			// In SMACH, initial state is always the first one defined
+			// The initial state is always the first one defined
 			if (container_sm_def.initial == undefined && i == 0
 				|| container_sm_def.initial == s_def.state_name)
 			{
@@ -189,6 +189,11 @@ IO.ModelGenerator = new (function() {
 					}
 					var autonomy_idx = state_from.getOutcomes().indexOf(trans_def.outcome);
 					var autonomy = state_from.getAutonomy()[autonomy_idx];
+					if (autonomy == undefined) {
+						T.logWarn(`Unknown outcome '${trans_def.outcome}' of state '${s_def.state_name}' - not loading; `
+									+ `this is possibly due to a state implementation change.`);
+						continue;
+					}
 					var trans;
 					if('x' in trans_def){
 						trans = new Transition(state_from, state_to, trans_def.outcome, autonomy, parseInt(trans_def.x), parseInt(trans_def.y),
@@ -201,6 +206,7 @@ IO.ModelGenerator = new (function() {
 				}
 			}
 		}
+
 		var oc_objs = container_sm.getSMOutcomes();
 		var oc_pos_len = Math.min(oc_objs.length, container_sm_def.oc_positions.length);
 		for (var i = 0; i < oc_pos_len; i++) {
