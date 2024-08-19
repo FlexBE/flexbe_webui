@@ -461,10 +461,10 @@ UI.Dashboard = new (function() {
 		}
 
 		Behavior.removeBehaviorParameter(param_name);
-		that.clearChildElements("db_field_parameter_table_type_input_" + new_name.replace(' ', '_'));
-		that.clearChildElements("db_field_parameter_table_name_input_" + new_name.replace(' ', '_'));
-		that.clearChildElements("db_field_parameter_table_edit_button_" + new_name.replace(' ', '_'));
-		that.clearChildElements("db_field_parameter_table_remove_button_" + new_name.replace(' ', '_'));
+		that.clearChildElements("db_field_parameter_table_type_input_" + param_name.replace(' ', '_'));
+		that.clearChildElements("db_field_parameter_table_name_input_" + param_name.replace(' ', '_'));
+		that.clearChildElements("db_field_parameter_table_edit_button_" + param_name.replace(' ', '_'));
+		that.clearChildElements("db_field_parameter_table_remove_button_" + param_name.replace(' ', '_'));
 
 		document.getElementById("db_parameter_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");

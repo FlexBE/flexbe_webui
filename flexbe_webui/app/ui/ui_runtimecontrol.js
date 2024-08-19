@@ -375,7 +375,15 @@ UI.RuntimeControl = new (function() {
 				input.setAttribute("value", params[i].default);
 				input.setAttribute("min", params[i].additional.min);
 				input.setAttribute("max", params[i].additional.max);
-				input.setAttribute("step", (params[i].default.indexOf(".") != -1)? "0.1" : "1");
+				const isFloat = (params[i].default.indexOf(".") != -1) ||
+								(params[i].additional.min.indexOf(".") != -1) ||
+								(params[i].additional.max.indexOf(".") != -1); // value or limit has decimal.
+				let step = "1"; // default for integers
+				if (isFloat) {
+					const range =  parseFloat(params[i].additional.max) - parseFloat(params[i].additional.min);
+					step = (range*0.025).toPrecision(3).toString();
+				}
+				input.setAttribute("step", step);
 				value_td.appendChild(input);
 			} else if (params[i].type == "boolean") {
 				let input = document.createElement("input");
