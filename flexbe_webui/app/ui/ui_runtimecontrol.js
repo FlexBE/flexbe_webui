@@ -36,10 +36,7 @@ UI.RuntimeControl = new (function() {
 		drawings = [];
 
 		if (current_state == undefined) {
-			//console.log(`UI.RuntimeControl.updateDrawing - current state is undefined`);
 			return;
-		// } else {
-		// 	console.log(`UI.RC.updateDrawing - Updating '${current_state.getStatePath()}'`)
 		}
 
 		// Path
@@ -155,7 +152,6 @@ UI.RuntimeControl = new (function() {
 	this.createDrawing = function(state_obj, mode, active, locked) {
 
 		if (current_state == undefined) {
-			console.log(`UI.RuntimeControl.createDrawing - current_state is undefined! (${current_level})`);
 			return;
 		}
 
@@ -200,7 +196,6 @@ UI.RuntimeControl = new (function() {
 
 	this.smDisplayHandler = function() {
 		if (current_state == undefined) {
-			console.log(`UI.RuntimeControl.smDisplayHandler - current state is undefined! (${current_level})`);
 			return;
 		}
 		let sm = this.data("statemachine");
@@ -221,7 +216,6 @@ UI.RuntimeControl = new (function() {
 	this.updateStateDisplay = function() {
 		current_state = current_states[current_level];
 		if (current_state == undefined) {
-			console.log(`UI.RuntimeControl.updateStateDisplay - current state is undefined! (${current_level})`);
 			that.updateDrawing();
 			return;
 		}
@@ -255,7 +249,7 @@ UI.RuntimeControl = new (function() {
 
 		that.updateDrawing();
 		if (force_redraw) {
-			// console.log(`\x1b[93m Clear force redraw after sync request.\x1b[0m`);
+			// Clear force redraw after sync request is processed
 			force_redraw = false;
 		}
 	}
@@ -526,7 +520,6 @@ UI.RuntimeControl = new (function() {
 	//  Interface
 	// ===========
 	this.setRosProperties = function(ns) {
-		// console.log(`ui.RC.setRosProperties ns='${ns}' `);
 		let status_disp = document.getElementById('rc_ros_prop_status');
 		let connect_button = document.getElementById('button_rc_connect');
 		if (RC.ROS.isOfflineMode()) {
@@ -870,7 +863,6 @@ UI.RuntimeControl = new (function() {
 
 	this.updateCurrentState = function(target_path) {
 		if (force_redraw) {
-			console.log(`\x1b[93mUI.RC.updateCurrentState - update for '${target_path}' with force redraw. \x1b[0m`);
 			RC.Controller.setCurrentStatePath(target_path);
 			return;
 		} else if (outcome_request.target != undefined) {
@@ -878,8 +870,6 @@ UI.RuntimeControl = new (function() {
 			console.log(`\x1b[93mUI.RC.updateCurrentState - Ignore state update message to '${target_path}' with pending `
 						+ `outcome request '${outcome_request.target}'!\x1b[0m`);
 			return;
-		} else {
-			console.log(`\x1b[93mUI.RC.updateCurrentState - process request for '${target_path}' !\x1b[0m`);
 		}
 		RC.Controller.updateCurrentStatePath(target_path);
 	}
@@ -887,8 +877,7 @@ UI.RuntimeControl = new (function() {
 	this.displayOutcomeRequest = function(outcome, target) {
 
 		if (target == undefined) {
-			// clear all prior requests on start up
-			console.log(`clear all pending outcome requests (${outcome}, ${target}) ...`);
+			// clear all prior outcome requests on start up
 			pending_outcome_requests.clear();
 			outcome_request.target = undefined;
 			outcome_request.outcome = undefined;
@@ -904,7 +893,6 @@ UI.RuntimeControl = new (function() {
 		if (outcome == 255) {
 			if (pending_outcome_requests.has(targetPath)) {
 				if (outcome_request.target === targetPath) {
-					console.log(`remove pending outcome request for '${targetPath}'`);
 					if (R != undefined) {
 						that.drawStatusLabel("");
 						that.updateDrawing();
@@ -921,7 +909,7 @@ UI.RuntimeControl = new (function() {
 		}
 
 		if (outcome_request.target != undefined) {
-			console.log(`There is a pending request for '${outcome_request.outcome}' for '${outcome_request.target}'.`);
+			// There is a pending request
 			return;
 		}
 
@@ -930,7 +918,6 @@ UI.RuntimeControl = new (function() {
 
 	this.transitionFeedback = function(args) {
 		let transitionTarget = args[1];
-		console.log(`transitionFeedback '${transitionTarget}' ...`);
 		let matchRequest = null;
 		for (const [key, value] of pending_outcome_requests.entries()) {
 			const parts = key.split('/'); // Split the string by "/"
@@ -943,12 +930,13 @@ UI.RuntimeControl = new (function() {
 					// request was already dispatched, so this is confirmation
 					console.log(`confirmed transition request '${transitionTarget}' for outcome ${value + 1} and post processNextRequest`);
 					pending_outcome_requests.delete(key); // we are done with this request
-				} else {
-					console.log(`Feedback '${transitionTarget}' matches '${key}' but outcome request ${value} is still pending!`);
+				// } else {
+				//	console.log(`Feedback '${transitionTarget}' matches '${key}' but outcome request ${value} is still pending!`);
 				}
 				return;
 			}
 		}
+
 		if (matchRequest === null) {
 			console.log(`Transition '${transitionTarget}' was not previously requested, must have been operator decision!`);
 		}
@@ -959,10 +947,7 @@ UI.RuntimeControl = new (function() {
 
 	this.processNextOutcomeRequest = function() {
 		let nextRequest = null;
-		if (pending_outcome_requests.size === 0) {
-			console.log(`ProcessNextOutcomeRequest with ${pending_outcome_requests.size} entries `);
-			return;
-		}
+		if (pending_outcome_requests.size === 0) return;
 
 		for (const [key, value] of pending_outcome_requests.entries()) {
 			if (value !== 255 && value >= 0) {
@@ -976,20 +961,11 @@ UI.RuntimeControl = new (function() {
 		}
 
 		if (nextRequest == null) {
-			console.log(`No pending outcome requests with ${pending_outcome_requests.size} entries `);
+			// No pending outcome requests
 			return;
 		}
 
-		console.log(`ProcessNextOutcomeRequest for '${nextRequest}' with outcome `
-					+ ` '${outcome_request.outcome}' (${pending_outcome_requests.size} pending entries) ... `);
-
 		let cur_state = RC.Controller.getCurrentState();
-
-		if (cur_state != undefined && outcome_request.target != cur_state.getStatePath()) {
-			console.log(`\x1b[91m Outcome request '${outcome_request.outcome}' for '${outcome_request.target}' overrides \n`
-						+ `   current state '${cur_state ? cur_state.getStatePath() : undefined}'`
-						+ ` ('${current_state ? current_state.getStatePath() : undefined}') view.\x1b[0m`);
-		}
 
 		// Force immediate redraw to avoid issues with prior updates
 		current_state = undefined; // force full update
@@ -1016,7 +992,7 @@ UI.RuntimeControl = new (function() {
 			let options = [];
 			for(let i=current_states.length-1; i>0; i--) {
 				if (current_states[i] == undefined) {
-					//console.log("\x1b[34muiRuntimeControl.displayLockBehavior : Skipping undefined current_state[" + i + "] ...\x1b[0m");
+					// Skipping undefined current_state
 					continue;
 				}
 				let option = document.createElement("option");
@@ -1122,13 +1098,12 @@ UI.RuntimeControl = new (function() {
 		}
 		current_states = current_states.slice(0, path_segments.length);
 
-		// don't update display if it's only a child update
 		if (!force_redraw) {
 			try {
 				if (current_state != undefined && current_level < path_segments.length
 					&& current_states[current_level] != undefined
 					&& current_states[current_level].getStatePath() == current_state.getStatePath()) {
-					// console.log(`\x1b[94m only child update ${current_level} ${current_state.getStatePath()} ${state_path}...\x1b[0m`);
+					// don't update display if it's only a child update
 					if (!RC.Controller.isLocked()) {
 						that.displayLockBehavior();
 					}
@@ -1160,8 +1135,6 @@ UI.RuntimeControl = new (function() {
 				// Preserve existing status label if it includes text from the deepest state
 				status_label.remove();
 				status_label = undefined;
-			} else {
-				console.log(`\x1b[94mPreserving existing status label '${status_label.attr('text')}' (${JSON.stringify(outcome_request)})\x1b[0m`);
 			}
 		}
 
@@ -1310,7 +1283,6 @@ UI.RuntimeControl = new (function() {
 			return a.tabIndex - b.tabIndex;
 		});
 
-		// console.log(`\x1b[94m   RC - Found ${targets.length} TAB targets for '${panel_id}'!\x1b[0m`);
 		return targets;
 	}
 
@@ -1346,12 +1318,11 @@ UI.RuntimeControl = new (function() {
 					try_match_ndx = new_match_ndx; // Continue to look for next valid target
 				}
 			} else {
-				console.log(`Activate initial tab focus in runtimecontrol!`);
+				// console.log(`Activate initial tab focus in runtimecontrol!`);
 				tab_targets[0].focus({ preventScroll: true }); // Move focus to the first input
 			}
 		} else if (event.target.id === 'runtimecontrol') {
 			// RC is active so capture all keys
-			//console.log(`\x1b[93mRuntime control view capture keydown for other keys ('${event.target.id}')!\x1b[0m`);
 			event.preventDefault(); // Prevent the default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 		}

@@ -630,7 +630,6 @@ UI.Menu = new (function() {
 			return a.tabIndex - b.tabIndex;
 		});
 
-		console.log(`\x1b[94m    Found ${targets.length} TAB targets for '${panel_id}'!\x1b[0m`);
 		return targets;
 	}
 
@@ -657,7 +656,6 @@ UI.Menu = new (function() {
 					}
 				}
 			}
-			// console.log(`regular tabbing from ${match_ndx} of ${tab_targets.length}`);
 			if (match) {
 				match_ndx = event.shiftKey
 									? (match_ndx - 1 + tab_targets.length) % tab_targets.length
@@ -673,7 +671,6 @@ UI.Menu = new (function() {
 				// Select this element on keydown (before something shifts focus)
 				event.preventDefault(); // Prevent the default action
 				event.stopPropagation(); // Stop the event from propagating to other handlers
-				console.log(`Top-level-toolbar saw keydown event '${event.key}' from '${event.target.id}' calling click!`);
 				document.getElementById(event.target.id).click();
 				return;
 			}

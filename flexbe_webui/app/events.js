@@ -43,13 +43,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		}
 	};
 
-
-	var onEnterFocusChange = function (cb, id) { return onEnterInput(function(event) {
-			cb(event);
-			document.getElementById(id).focus({ preventScroll: true });
-		});
-	};
-
 	function onCheckboxChange(event) {
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault(); // Prevent default action (scrolling for Space)
@@ -132,17 +125,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
 	document.getElementById('button_db_outcome_add').addEventListener('click', UI.Dashboard.addBehaviorOutcomeClicked);
 	document.getElementById('button_db_outcome_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addBehaviorOutcomeClicked));
-	document.getElementById('button_db_input_key_add').addEventListener('click', UI.Dashboard.addBehaviorInputKeyClicked);
-	document.getElementById('button_db_input_key_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addBehaviorInputKeyClicked));
 	document.getElementById('input_db_outcome_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addBehaviorOutcomeClicked));
-	document.getElementById('input_db_input_key_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addBehaviorInputKeyClicked));
-	document.getElementById('button_db_output_key_add').addEventListener('click', UI.Dashboard.addBehaviorOutputKeyClicked);
-	document.getElementById('button_db_output_key_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addBehaviorOutputKeyClicked));
-	document.getElementById('input_db_output_key_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addBehaviorOutputKeyClicked));
+
+	document.getElementById('button_db_input_key_add').addEventListener('click', UI.Dashboard.addInterfaceInputKeyClicked);
+	document.getElementById('button_db_input_key_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addInterfaceInputKeyClicked));
+	document.getElementById('input_db_input_key_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addInterfaceInputKeyClicked));
+
+	document.getElementById('button_db_output_key_add').addEventListener('click', UI.Dashboard.addInterfaceOutputKeyClicked);
+	document.getElementById('button_db_output_key_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addInterfaceOutputKeyClicked));
+	document.getElementById('input_db_output_key_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addInterfaceOutputKeyClicked));
 
 	document.getElementById('button_db_manual_import_add').addEventListener('click', UI.Dashboard.addManualImportClicked);
 	document.getElementById('button_db_manual_import_add').addEventListener('keydown', onEnterButton(UI.Dashboard.addManualImportClicked));
-	document.getElementById('input_db_manual_import_value_add').addEventListener('keydown', onEnterFocusChange(UI.Dashboard.addManualImportClicked, 'input_db_manual_import_value_add'));
+	document.getElementById('input_db_manual_import_value_add').addEventListener('keydown', onEnterInput(UI.Dashboard.addManualImportClicked));
 
 	document.getElementById("db_function_box").addEventListener("click", UI.Dashboard.editPrivateFunctionClicked);
 	document.getElementById("db_manual_init_box").addEventListener("click", UI.Dashboard.editManualInitClicked);

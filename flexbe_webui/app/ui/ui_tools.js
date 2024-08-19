@@ -532,8 +532,8 @@ UI.Tools = new (function() {
 				UI.Menu.updateFocus();
 				event.preventDefault(); // Prevent the default action
 				event.stopPropagation(); // Stop the event from propagating to other handlers
-			} else {
-				console.log(`Tab keydown seen at top-level from target '${event.target.id}' but did not capture!`);
+				// } else {
+				// 	console.log(`Tab keydown seen at top-level from target '${event.target.id}' but did not capture!`);
 			}
 			return;
 		} else if (event.key === "Enter") {

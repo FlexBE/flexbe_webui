@@ -247,8 +247,9 @@ class CodeGenerator:
                 print(30 * '=', flush=True)
                 raise exc
 
-            if not self.initialize_flexbe_core and 'SM' not in imp_state.state_class and init_statement not in self.state_init_list:
-                self.state_init_list.append(init_statement)
+            if not self.initialize_flexbe_core:
+                if 'SM' not in imp_state.state_class and init_statement not in self.state_init_list:
+                    self.state_init_list.append(init_statement)
 
         import_list = list(set(import_list))  # eliminate any duplicates
         import_list.sort()

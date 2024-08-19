@@ -171,7 +171,7 @@ const Behavior = new (function() {
 	this.getBehaviorParameterElement = function(new_name) {
 		for (let i = behavior_parameters.length - 1; i >= 0; i--) {
 			if (behavior_parameters[i].name == new_name) {
-				return behavior_parameter[i];
+				return behavior_parameters[i];
 			}
 		}
 		return undefined;
