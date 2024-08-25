@@ -47,7 +47,8 @@ The system has currently been tested on Ubuntu 22.04 with the following Python p
 On Ubuntu 24.04 (i.e., for ROS 2 Jazzy), the system installs for `sudo apt install python3-websockets python3-pydantic python3-fastapi`
 are sufficient and can be installed via `rosdep` from the `package.xml` dependencies.
 
-Unfortunately, `PySide6` is not in the current Ubuntu 24.04 binaries. In 24.04 you are required to set up a virtual environment and cannot do a local install.
+Unfortunately, `PySide6` is not in the current Ubuntu 24.04 binaries.
+In 24.04 you are required to set up a virtual environment and cannot do a local install.
 
 The following has been tested under 24.04.  First go to your `WORKSPACE_ROOT` (e.g. `ros2_ws`) and run the following commands.
 ```
@@ -79,6 +80,7 @@ You do *NOT* need to activate the virtual environment to run this in the future,
 
 To execute the runtime Operator Control Station (OCS) on one machine, you may choose one of either:
   * `ros2 launch flexbe_webui flexbe_ocs.launch.py`
+  This runs all of the OCS including the PySide6-based UI client.
 
 To assist in debugging development, or to run the UI on seperate machine, we can start the `webui_client` separately
   * `ros2 launch flexbe_webui flexbe_ocs.launch.py headless:=true`
@@ -115,6 +117,7 @@ To run the full OCS nodes individually use
  * `ros2 run flexbe_widget be_launcher --ros-args --remap name:="behavior_launcher" -p use_sim_time:=False`
     * This node listens to the UI and sends behavior structures and start requests to onboard
     * This can also be used separately from UI to launch behavior either on start up or by sending requests
+
  * `ros2 run flexbe_webui webui_node`
    * Operates the web server that coordinates communication with UI
 
@@ -166,11 +169,13 @@ A behavior package is expected to provide a `manifest` folder which contains the
 
 ## Publications
 
-Please use the following publications for reference when using FlexBE:
+Please use the following publications for reference when using FlexBE and the FlexBE WebUI
 
 - Philipp Schillinger, Stefan Kohlbrecher, and Oskar von Stryk, ["Human-Robot Collaborative High-Level Control with Application to Rescue Robotics"](http://dx.doi.org/10.1109/ICRA.2016.7487442), IEEE International Conference on Robotics and Automation (ICRA), Stockholm, Sweden, May 2016.
 
-- Joshua Zutell, David C. Conner and Philipp Schillinger, ["ROS 2-Based Flexible Behavior Engine for Flexible Navigation ,"](http://dx.doi.org/10.1109/SoutheastCon48659.2022.9764047), IEEE SouthEastCon, April 2022.
+- Joshua Zutell, David C. Conner, and Philipp Schillinger, ["ROS 2-Based Flexible Behavior Engine for Flexible Navigation ,"](http://dx.doi.org/10.1109/SoutheastCon48659.2022.9764047), IEEE SouthEastCon, April 2022.
+
+- Samuel Raymond, Grace Walters, Joshua Luzier, and David C. Conner, "Design and Development of the FlexBE WebUI with Introductory Tutorials", CCSC Eastern, 2024, to appear.
 
 ----
 
