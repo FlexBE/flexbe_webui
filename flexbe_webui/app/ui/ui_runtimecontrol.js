@@ -114,20 +114,19 @@ UI.RuntimeControl = new (function() {
 
 				if (dt) {
 					function handleOutcomeSelection(event) {
+						let t = this.data("transition");
 						if (RC.Sync.hasProcess("Transition")) {
 							UI.Panels.Terminal.logWarn(`There is an unacknowledged transition still pending (resync to clear if required)!`);
+							console.log(`pending requests: ${JSON.stringify(Array.from(pending_outcome_requests))}`);
+							console.log(`returning before sending from '${t.getFrom().getStatePath()}' --> '${t.getOutcome()}'`);
 							return;
 						}
 						dt.drawing.unclick(); // disable this transition from future requests
 						dt.drawing.attr({cursor: 'default'}); //, fill: '#b994'});
-						// //dt.drawing.line.attr({stroke: '#b994'});
-						// console.log(`setting set_obj ...`);
-						// dt.drawing.set_obj.forEach((el) => el.attr({stroke: '#b994'}));
-						let t = this.data("transition");
-						RC.PubSub.sendOutcomeRequest(t.getFrom(), t.getOutcome());
+						RC.PubSub.sendOutcomeCommand(t.getFrom(), t.getOutcome());
 						that.drawStatusLabel("Forcing outcome: " + t.getOutcome());
 						outcome_request.target = undefined;
-						console.log(`\x1b[92m Forced outcome '${element.getOutcome()}' for '${current_state.getStatePath()}'\x1b[0m`);
+						console.log(`\x1b[94m Forced outcome '${element.getOutcome()}' for '${current_state.getStatePath()}'\x1b[0m`);
 					}
 					dt.drawing
 						.attr({'cursor': 'pointer', 'title': "Click to force outcome " + element.getOutcome()})
@@ -160,12 +159,16 @@ UI.RuntimeControl = new (function() {
 			if (active) {
 				drawable.drawing.data("sm_path", state_obj.getStatePath());
 				drawable.drawing.dblclick(function() {
-					if (current_state.state_path == undefined) {
-						console.log(`undefined state path: ${JSON.stringify(current_state)}`);
+					if (current_state == undefined) {
+						console.log(`RC.RuntimeControl.createDrawing - invalid current state`);
+						return;
+					}
+					if (current_state.getStatePath() == undefined) {
+						console.log(`undefined state path '${current_state.getStatePath()}' for '${current_state.getStateName()}'`);
 					}
 					let child_ndx = current_states.indexOf(current_state);
 
-					let child_state = current_states[current_states.indexOf(current_state) + 1];
+					let child_state = current_states[child_ndx + 1];
 					current_state = child_state;
 					that.updateStateDisplayDepth(child_state.getStatePath());
 				});
@@ -179,8 +182,7 @@ UI.RuntimeControl = new (function() {
 				drawable.drawing.data("new_path", state_obj.getStatePath());
 				drawable.drawing.dblclick(function() {
 					let child_ndx = current_states.indexOf(current_state);
-
-					let child_state = current_states[current_states.indexOf(current_state) + 1];
+					let child_state = current_states[child_ndx + 1];
 					current_state = child_state;
 					that.updateStateDisplayDepth(child_state.getStatePath());
 				});
@@ -752,6 +754,9 @@ UI.RuntimeControl = new (function() {
 
 		force_redraw = true; // Request sync and require redraw on behavior update
 		RC.PubSub.sendSyncRequest();
+		pending_outcome_requests.clear();
+		outcome_request.outcome = undefined;
+		outcome_request.target = undefined;
 		UI.RuntimeControl.displayBehaviorFeedback(4, "Requesting behavior sync...");
 	}
 
@@ -869,24 +874,70 @@ UI.RuntimeControl = new (function() {
 		ActivityTracer.setUpdateCallback(updateHistoryDisplay);
 	}
 
-	this.updateCurrentState = function(target_path) {
-		if (force_redraw) {
-			RC.Controller.setCurrentStatePath(target_path);
-			return;
-		} else if (outcome_request.target != undefined) {
-			if (outcome_request.target == target_path) return; // no change
-			console.log(`\x1b[93mUI.RC.updateCurrentState - Ignore state update message to '${target_path}' with pending `
-						+ `outcome request '${outcome_request.target}'!\x1b[0m`);
+	this.updateCurrentState = function(targetHash) {
+		const targetId = targetHash & 0xFFFFFF00; // Hash defined in flexbe_core/core/state_map.py
+		let output   = targetHash & 0x000000FF;   // Mask the output
+
+		const targetEntry  = Behavior.getStateMap().get(targetId);
+		if (targetEntry == undefined) {
+			console.log(`\x1b[93mCannot find '${targetId}' (${output}) in `
+						+ `state map with ${Behavior.getStateMap().size} entries\x1b[0m`);
 			return;
 		}
-		RC.Controller.updateCurrentStatePath(target_path);
+		const targetPath = targetEntry.path;
+		const exitUpdate = output == 255;
+		if (exitUpdate) {
+			output = 0;
+		}
+
+		if (force_redraw) {
+			RC.Controller.setCurrentStatePath(targetPath);
+			return;
+		} else if (outcome_request.target != undefined) {
+
+			if (exitUpdate) {
+				for (const [key, value] of Array.from(pending_outcome_requests.entries())) {
+					const stateEntry = Behavior.getStateMap().get(key);
+					if (stateEntry == undefined) {
+						console.log(`\xb1[93m Cannot find ${key} in state map with ${Behavior.getStateMap().size} entries.\x1b[0m`);
+					}
+					const path = stateEntry.path;
+					if (path.startsWith(targetPath)) {
+						// console.log(`  remove pending outcome '${path}' (${key}) request from inside container '${targetPath}'`);
+						pending_outcome_requests.delete(key);
+					}
+				}
+				if (outcome_request.target.startsWith(targetPath)) {
+					// Exit update from the container of this request
+					if (outcome_request.target === targetPath) {
+						// wait for transition confirmation
+						// should only occur in a race between transition feedback and outcome messages
+						console.log(`  container return '${targetPath}' matches outcome request '${outcome_request.target}' - wait for transition confirmation!`);
+						return;
+					} else {
+						console.log(`  container return '${targetPath}' preempted outcome request '${outcome_request.target}' - clear request!`);
+						if (RC.Sync.hasProcess("Transition")) RC.Sync.remove("Transition");
+						if (R != undefined) {
+							that.drawStatusLabel("");
+							that.updateDrawing();
+						}
+						outcome_request.target = undefined;
+						outcome_request.outcome = undefined;
+						RC.Controller.updateCurrentStatePath(targetPath); // update if cleared the prior request
+					}
+				}
+			}
+			return; // not updating curent state path if pending outcome request
+		}
+		RC.Controller.updateCurrentStatePath(targetPath);
 	}
 
-	this.displayOutcomeRequest = function(outcome, target) {
+	this.displayOutcomeRequest = function(outcome, targetState) {
 
-		if (target == undefined) {
+		if (targetState == undefined) {
 			// clear all prior outcome requests on start up
 			pending_outcome_requests.clear();
+			RC.Sync.remove("Transition");
 			outcome_request.target = undefined;
 			outcome_request.outcome = undefined;
 			if (R != undefined) {
@@ -896,11 +947,13 @@ UI.RuntimeControl = new (function() {
 			return;
 		}
 
-		let targetPath = target.getStatePath();
+		const targetPath = targetState.getStatePath();
+		const targetId = targetState.getStateId();
 
 		if (outcome == 255) {
-			if (pending_outcome_requests.has(targetPath)) {
+			if (pending_outcome_requests.has(targetState.getStateId())) {
 				if (outcome_request.target === targetPath) {
+					// clear prior request
 					if (R != undefined) {
 						that.drawStatusLabel("");
 						that.updateDrawing();
@@ -908,16 +961,35 @@ UI.RuntimeControl = new (function() {
 					outcome_request.target = undefined;
 					outcome_request.outcome = undefined;
 				}
-				pending_outcome_requests.delete(targetPath);
-			} else {
-				console.log(`outcome request was never registered for '${targetPath}'!`);
+				pending_outcome_requests.delete(targetId);
 			}
 		} else {
-			pending_outcome_requests.set(targetPath, outcome);
+			for (const [key, value] of Array.from(pending_outcome_requests.entries())) {
+				// Check if this outcome request is from a container that has other pending requests
+				if (Behavior.getStateMap().has(key)) {
+					const path = Behavior.getStateMap().get(key).path;
+					if (path.startsWith(targetPath)) {
+						// clear prior request from sub state within this container that now has priority
+						if (outcome_request.target === path) {
+							if (R != undefined) {
+								that.drawStatusLabel("");
+								that.updateDrawing();
+							}
+							outcome_request.target = undefined;
+							outcome_request.outcome = undefined;
+						}
+						console.log(`  remove pending outcome '${path}' (${key}) given container '${targetPath}' outcome request '${outcome}'`);
+						pending_outcome_requests.delete(key);
+					}
+				} else {
+					console.log(`\x1b[93mdisplayOutcomeRequest: Invalid key '${key}' is not in state map with ${Behavior.getStateMap().size} entries.\x1b[0m`);
+				}
+			}
+			pending_outcome_requests.set(targetId, outcome);
 		}
 
 		if (outcome_request.target != undefined) {
-			// There is a pending request
+			// There is already a pending request
 			return;
 		}
 
@@ -925,31 +997,24 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.transitionFeedback = function(args) {
-		let transitionTarget = args[1];
-		let matchRequest = null;
+		const transitionId = parseInt(args[1]);
+		const stateEntry = Behavior.getStateMap().get(transitionId);
+		if (stateEntry == undefined) {
+			console.log(`\x1b[91m Failed to find matching state for ${transitionId}\x1b[0m`);
+			return;
+		}
 		for (const [key, value] of pending_outcome_requests.entries()) {
-			const parts = key.split('/'); // Split the string by "/"
-			const lastSegment = parts[parts.length - 1]; // Get the last segment
-
-			if (lastSegment === transitionTarget) {
-				// @todo - may change this to full path in future
-				matchRequest = key;
+			if (key === transitionId) {
+				// full path match
 				if (value < 0) {
 					// request was already dispatched, so this is confirmation
-					console.log(`confirmed transition request '${transitionTarget}' for outcome ${value + 1} and post processNextRequest`);
 					pending_outcome_requests.delete(key); // we are done with this request
-				// } else {
-				//	console.log(`Feedback '${transitionTarget}' matches '${key}' but outcome request ${value} is still pending!`);
 				}
-				return;
+				break;
 			}
 		}
 
-		if (matchRequest === null) {
-			console.log(`Transition '${transitionTarget}' was not previously requested, must have been operator decision!`);
-		}
-
-		setTimeout(RC.Sync.remove("Transition"), 0);
+		RC.Sync.remove("Transition");
 		setTimeout(that.processNextOutcomeRequest(), 0); // post callback to process next pending outcome request
 	}
 
@@ -958,10 +1023,12 @@ UI.RuntimeControl = new (function() {
 		if (pending_outcome_requests.size === 0) return;
 
 		for (const [key, value] of pending_outcome_requests.entries()) {
+			const entry = Behavior.getStateMap().get(key);
+			const path = entry.path;
+			const target_state = entry.state;
 			if (value !== 255 && value >= 0) {
 				nextRequest = key;
-				outcome_request.target = key;
-				const target_state = Behavior.getStatemachine().getStateByPath(key);
+				outcome_request.target = path;
 				outcome_request.outcome = target_state.getOutcomes()[value];
 				pending_outcome_requests.set(key, -1 - value); // negate and subtract -1 (for 0) to show we have sent the request
 				break; // Exit the loop once the first non-255 value is found
@@ -972,8 +1039,6 @@ UI.RuntimeControl = new (function() {
 			// No pending outcome requests
 			return;
 		}
-
-		let cur_state = RC.Controller.getCurrentState();
 
 		// Force immediate redraw to avoid issues with prior updates
 		current_state = undefined; // force full update

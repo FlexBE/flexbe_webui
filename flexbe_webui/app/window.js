@@ -1,7 +1,9 @@
 window.onload = async () => {
+	console.log(`Loading UI window ...`);
 	Behavior.resetBehavior();
 
 	// Initialize gui panel
+	console.log(`Initialize UI panels ...`);
 	UI.Statemachine.initialize();
 	UI.Menu.toDashboardClicked();
 	UI.Dashboard.resetAllFields();
@@ -10,6 +12,7 @@ window.onload = async () => {
 	ActivityTracer.resetActivities();
 	UI.RuntimeControl.displayLockBehavior();
 
+	console.log(`Initialize controller ...`);
 	RC.Controller.initialize();
 
 	API.get("ready", ready_result => {
@@ -34,6 +37,7 @@ window.onload = async () => {
 	});
 
 	// Restore local settings (including statelib)
+	console.log(`Connected to server - update settings ...`);
 	UI.Settings.retrieveConfigurationSettings();
 	UI.Settings.retrievePackageData();
 	UI.Feed.initialize();

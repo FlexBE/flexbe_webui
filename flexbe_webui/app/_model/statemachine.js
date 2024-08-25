@@ -52,6 +52,16 @@ const Statemachine = function(sm_name, sm_definition) {
 		}
 		//T.debugWarn("State '" + name + "' not found in " + that.getStateName());
 	}
+
+	this.getStateById = function(id) {
+		for(var i=0; i<states.length; ++i) {
+			if (states[i].getStateId() === id || String(states[i].getStateId()) === id)
+				// allow numeric or string version of id parameter
+				return states[i];
+		}
+		return undefined;
+	}
+
 	this.getStateByPath = function(path) {
 		var path_elements = path.split("/");
 
@@ -74,6 +84,7 @@ const Statemachine = function(sm_name, sm_definition) {
 		}
 		return child.getStateByPath(path.slice(that.getStateName().length + 1));
 	}
+
 	this.traverseStates = function(_filter) {
 		var result = [];
 		for(var i=0; i<states.length; ++i) {

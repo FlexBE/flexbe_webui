@@ -9,11 +9,13 @@ RC.PubSub = new (function() {
 	var onboard_heartbeat_listener;
 	var mirror_heartbeat_listener;
 	var launcher_heartbeat_listener;
+	var state_map_listener;
 
 	var ros_command_listener;
 
 	var behavior_start_publisher;
 	var transition_command_publisher;
+	var transition_requests_pending = 0;
 	var autonomy_level_publisher;
 	var preempt_behavior_publisher;
 	var lock_behavior_publisher;
@@ -30,7 +32,7 @@ RC.PubSub = new (function() {
 	var last_onboard_heartbeat_time = undefined;
 	var last_mirror_heartbeat_time = undefined;
 	var last_launcher_heartbeat_time = undefined;
-	var last_mirror_state_path = undefined;
+	var last_mirror_state_id = undefined;
 	var last_onboard_status= -1; // use -1 for be_status_code_names
 	var last_mirror_status= undefined;
 	var last_launcher_status= undefined;
@@ -59,24 +61,33 @@ RC.PubSub = new (function() {
 	var current_state_callback = function (msg) {
 		if (RC.Sync.hasProcess("Transition")) RC.Sync.remove("Transition");
 
-		UI.RuntimeControl.updateCurrentState(msg.data);
-		if (msg.data == "") {
+		if (msg.data == -1) {
+			console.log(`\x1b[93mReceived behavior is not active status from mirror\x1b[0m`);
 			RC.Controller.signalFinished();
 			last_onboard_status = FINISHED;
-		} else if (!RC.Controller.isExternal()) {
+			last_mirror_state_id = msg.data;
+			updateOCSStatusDisplay(Date.now());
+			return;
+		}
+
+		UI.RuntimeControl.updateCurrentState(msg.data);
+		if (!RC.Controller.isExternal()) {
 			RC.Controller.signalRunning();
 			last_onboard_status = RUNNING;
 		}
 
-		if (last_mirror_state_path != msg.data) {
-			last_mirror_state_path = msg.data;
+		if (last_mirror_state_id != msg.data) {
+			last_mirror_state_id = msg.data;
 			updateOCSStatusDisplay(Date.now());
 		}
 	}
 
 	var outcome_request_callback = function(msg) {
-		var target_state = Behavior.getStatemachine().getStateByPath(msg.target);
-		UI.RuntimeControl.displayOutcomeRequest(msg.outcome, target_state);
+		var targetEntry = Behavior.getStateMap().get(msg.target);
+		if (targetEntry == undefined) {
+			console.log(`\x1b[93m Error : cannot find state for '${msg.target}'!\x1b[0m`);
+		}
+		UI.RuntimeControl.displayOutcomeRequest(msg.outcome, targetEntry.state);
 	}
 
 	var behavior_feedback_callback = function (msg){
@@ -113,7 +124,7 @@ RC.PubSub = new (function() {
 			RC.Sync.remove("Switch");
 			that.sendBehaviorUnlock(msg.args[0]);
 		} else if (msg.code == FINISHED || msg.code == FAILED) {
-			last_mirror_state_path = undefined; // clear prior SM status
+			last_mirror_state_id = undefined; // clear prior SM status
 			RC.Controller.signalFinished();
 			UI.RuntimeControl.displayBehaviorFeedback(4, "No behavior active.");
 		} else if (msg.code == STARTED) {
@@ -132,7 +143,7 @@ RC.PubSub = new (function() {
 				UI.RuntimeControl.displayBehaviorFeedback(4, "No behavior active.");
 			}
 		} else if (msg.code == READY) {
-			last_mirror_state_path = undefined; // clear prior SM status
+			last_mirror_state_id = undefined; // clear prior SM status
 			RC.Controller.signalFinished();
 			UI.RuntimeControl.displayBehaviorFeedback(4, "Onboard engine is ready.");
 		}
@@ -147,6 +158,12 @@ RC.PubSub = new (function() {
 		if (last_onboard_heartbeat_time == undefined) {
 			RC.Sync.setProgress("Delay", 1, false);
 			console.log(`\x1b[32mOnboard heartbeat received ${JSON.stringify(msg)}!\x1b[0m`);
+		}
+
+		const behId = Behavior.getBehaviorId();
+		if (msg.behavior_id != 0 && behId != undefined && behId != msg.behavior_id) {
+			console.log(`\x1b[93mOnboard heartbeat received ${JSON.stringify(msg)} with inconsistent behavior id ${behId}!\x1b[0m`);
+			RC.Sync.setProgress("Delay", 0.5, false);
 		}
 		last_onboard_heartbeat_time = now;
 
@@ -175,7 +192,7 @@ RC.PubSub = new (function() {
 		mirror_heartbeat_timer = setTimeout(function() {
 			console.log("\x1b[91mMirror connection timed out.\x1b[0m");
 			last_mirror_status = undefined;
-			last_mirror_state_path = undefined;
+			last_mirror_state_id = undefined;
 			updateOCSStatusDisplay(Date.now());
 		}, RC.Controller.onboardTimeout * 1000);
 	}
@@ -200,6 +217,57 @@ RC.PubSub = new (function() {
 			last_launcher_status = undefined;
 			updateOCSStatusDisplay(Date.now());
 		}, RC.Controller.onboardTimeout * 1000);
+	}
+
+	var state_map_callback = function (msg){
+		let state_map = Behavior.getStateMap();
+		if (Behavior.getBehaviorId() != msg.behavior_id) {
+			if (Behavior.getBehaviorId() != undefined) {
+				console.log(`\x1b[93m Updating behavior ID to ${msg.behavior_id} from ${Behavior.getBehaviorId()} and clear existing state map\x1b[0m`);
+			}
+			Behavior.setBehaviorId(msg.behavior_id); // presume state map message is the latest requestd behavior
+			state_map.clear();
+			state_map.set(0, {path: '', state: Behavior.getStatemachine()}); // always add root
+		}
+		let stateMapValidationError = false;
+		for (let i=0; i < msg.state_ids.length; i++) {
+			if (msg.state_ids[i] == 0 && msg.state_paths[i] === '') continue; // skip root
+
+			const state = Behavior.getStatemachine().getStateByPath(msg.state_paths[i]);
+			if (state != undefined) {
+				if (state_map.has(msg.state_ids[i])) {
+					const entry = state_map.get(msg.state_ids[i]);
+					// Already in existing state map, so we just need to validate
+					if (entry.path != msg.state_paths[i]) {
+						console.log(`\x1b[93mReceived updated state id(${msg.state_ids[i]}) with different path:\n`
+									+ `    existing: '${entry.path}'`
+									+ `         new: '${msg.state_paths[i]}'\x1b[0m`);
+						stateMapValidationError = true;
+					}
+				} else {
+					// New entry for state map
+					if (state.getStateId() != undefined || state.getStateId() == -1) {
+						state.setStateId(msg.state_ids[i]);
+					} else if (state.getStateId() != msg.state_ids[i]) {
+						console.log(`Unexpected state ID '${state.getStateId()}' vs '${msg.state_ids[i]}' for '${msg.state_paths[i]}'`);
+						stateMapValidationError = true;
+					}
+					state_map.set(msg.state_ids[i], {path: msg.state_paths[i], state: state});
+				}
+			} else {
+				console.log(`Unknown state path '${msg.state_paths[i]}' for id=${msg.state_ids[i]}  (${Behavior.getStatemachine().getStatePath()})`);
+				stateMapValidationError = true;
+			}
+
+		}
+		if (stateMapValidationError || state_map.size != msg.state_ids.length) {
+			T.logError(`Received state map with inconsistent state IDs! (check terminal)`);
+			console.log(`\x1b[94mReceived unvalidated state map for '${Behavior.getBehaviorName()}' (${Behavior.getBehaviorId()}):\n`
+						+ ` state map size = ${state_map.size} vs. ${msg.state_ids.length} entries in message\n`
+						+ `${JSON.stringify(Array.from(state_map))}]`);
+		} else {
+			console.log(`\x1b[94mReceived valid state map for '${Behavior.getBehaviorName()}' (${Behavior.getBehaviorId()}) with ${state_map.size} entries\x1b[0m`);
+		}
 	}
 
 	var updateOCSStatusDisplay = function (time) {
@@ -248,7 +316,7 @@ RC.PubSub = new (function() {
 				if (last_mirror_status == undefined) {
 					status = "disconnected"; // no mirror heartbeat
 				} else {
-					if (last_mirror_state_path == undefined) {
+					if (last_mirror_state_id == undefined) {
 						status = "error"; // not getting update from mirror SM
 					} else if (last_mirror_status > 0 ) {
 						status = "running";
@@ -319,14 +387,21 @@ RC.PubSub = new (function() {
 	}
 
 	var command_feedback_callback = function (msg) {
-		// console.log("\x1b[36mcommand feedback : " + JSON.stringify(msg) + "\x1b[0m");
 		if (msg.command == "transition") {
+			transition_requests_pending -= 1;
 			if (msg.args[0] == msg.args[1]) {
 				RC.Sync.setProgress("Transition", 0.8, false);
 			} else {
 				RC.Sync.setStatus("Transition", RC.Sync.STATUS_WARN);
 			}
 			UI.RuntimeControl.transitionFeedback(msg.args);
+			if (transition_requests_pending == 0) {
+				if (RC.Sync.hasProcess("Transition")) RC.Sync.remove("Transition");
+			} else if (transition_requests_pending < 0) {
+				console.log("\x1b[36mcommand feedback : " + JSON.stringify(msg) + "\x1b[0m");
+				console.log(`  transition response with ${transition_requests_pending} now pending`);
+				transition_requests_pending = 0;
+			}
 		}
 		if (msg.command == "autonomy") {
 			RC.Sync.remove("Autonomy");
@@ -508,7 +583,7 @@ RC.PubSub = new (function() {
 
 		current_state_listener = new ROS.Subscriber(
 			ns + 'flexbe/behavior_update',
-			'std_msgs/String',
+			'std_msgs/Int32',
 			current_state_callback);
 
 		outcome_request_listener = new ROS.Subscriber(
@@ -552,6 +627,11 @@ RC.PubSub = new (function() {
 			'flexbe_msgs/UICommand',
 			ros_command_callback);
 
+		state_map_listener = new ROS.Subscriber(
+			ns + 'flexbe/mirror/state_map',
+			'flexbe_msgs/StateMapMsg',
+			state_map_callback);
+
 
 		// Publisher
 
@@ -573,11 +653,11 @@ RC.PubSub = new (function() {
 
 		lock_behavior_publisher = new ROS.Publisher(
 			ns + 'flexbe/command/lock',
-			'std_msgs/String');
+			'std_msgs/Int32');
 
 		unlock_behavior_publisher = new ROS.Publisher(
 			ns + 'flexbe/command/unlock',
-			'std_msgs/String');
+			'std_msgs/Int32');
 
 		sync_mirror_publisher = new ROS.Publisher(
 			ns + 'flexbe/command/sync',
@@ -755,13 +835,12 @@ RC.PubSub = new (function() {
 		RC.Sync.setProgress("Switch", 0.2, false);
 	}
 
-	this.sendOutcomeRequest = function(state, outcome) {
+	this.sendOutcomeCommand = function(state, outcome) {
 		if (transition_command_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
-		var target_name = state.getStateName();
-		// console.log(` send outcome request '${outcome}' for '${target_name}' and register transition status ...`);
 		RC.Sync.register("Transition", 50);
+		transition_requests_pending += 1;
 		transition_command_publisher.publish({
-			target: target_name,
+			target: state.getStateId(),
 			outcome: state.getOutcomes().indexOf(outcome)
 		});
 		RC.Sync.setProgress("Transition", 0.2, false);
@@ -824,26 +903,54 @@ RC.PubSub = new (function() {
 			RC.Sync.register("Preempt", 60);
 			RC.Sync.setProgress("Preempt", 0.2, false);
 		}
+		console.log(`Send preempt behavior command ...`);
 		preempt_behavior_publisher.publish();
 	}
 
 	this.sendBehaviorLock = function(path) {
+		console.log(`sendBehaviorLock '${path}' ...`);
+		let stateId = parseInt(path);
+		if (isNaN(stateId)) {
+			// Probably a path string
+			const state = Behavior.getStatemachine().getStateByPath(path);
+			if (state == undefined) {
+				T.logError(`\x1b[93m Unknown state for '${path}' - cannot lock!\x1b[0m`);
+				return
+			}
+			stateId = state.getStateId();
+		}
+		console.log(`   lock state id='${stateId}' ...`);
+
 		if (lock_behavior_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
 		if (!RC.Controller.isActive()) return;
 
 		RC.Sync.register("Lock", 50);
 		lock_behavior_publisher.publish({
-			data: path
+			data: stateId
 		});
 		RC.Sync.setProgress("Lock", 0.2, false);
 	}
+
 	this.sendBehaviorUnlock = function(path) {
+		console.log(`sendBehaviorUnlock '${path}' ...`);
+		let stateId = parseInt(path);
+		if (isNaN(stateId)) {
+			// Probably a path string
+			const state = Behavior.getStatemachine().getStateByPath(path);
+			if (state == undefined) {
+				T.logError(`\x1b[93m Unknown state for '${path}' - cannot unlock!\x1b[0m`);
+				return
+			}
+			stateId = state.getStateId();
+		}
+		console.log(`   lock state id='${stateId}' ...`);
+
 		if (unlock_behavior_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
 		if (!RC.Controller.isLocked()) return;
 
 		RC.Sync.register("Unlock", 50);
 		unlock_behavior_publisher.publish({
-			data: path
+			data: stateId
 		});
 		RC.Sync.setProgress("Unlock", 0.2, false);
 	}

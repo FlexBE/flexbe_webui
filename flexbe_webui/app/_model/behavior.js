@@ -32,6 +32,8 @@ const Behavior = new (function() {
 
 	var readonly = false;
 
+	var behavior_id = undefined;
+	var state_map = undefined;
 
 	this.getBehaviorName = function() {
 		return behavior_name;
@@ -72,11 +74,23 @@ const Behavior = new (function() {
 		behavior_description = _behavior_description;
 	}
 
+	this.getBehaviorId = function() {
+		return behavior_id;
+	}
+
+	this.setBehaviorId = function(id) {
+		behavior_id = id;
+	}
+
 	this.getTags = function() {
 		return tags;
 	}
 	this.setTags = function(_tags) {
 		tags = _tags;
+	}
+
+	this.getStateMap = function() {
+		return state_map;
 	}
 
 	this.getAuthor = function() {
@@ -322,6 +336,9 @@ const Behavior = new (function() {
 		behavior_name = "";
 		behavior_package = "";
 		behavior_description = "";
+		behavior_id = undefined;
+		state_map = new Map();
+		state_map.set(0, {path: '', state: undefined}); // always add root
 		tags = "";
 		author = "";
 		creation_date = "";
@@ -387,15 +404,16 @@ const Behavior = new (function() {
 	var createStateStructure = function(s, info) {
 		let result = {};
 		result.path = s.getStatePath();
-		result.state_id = -1;  // not calculated or used in UI (@TODO - later)
+		result.state_id = s.getStateId();
 		result.outcomes = s.getOutcomes();
 		result.transitions = [];
-		result.type = 0; // basic state
+		result.type = 0; // is basic state (unless container)
 		try {
 			if (s.getContainer() != undefined) {
 				if (s instanceof Statemachine) {
+					// type is container
 					if (s.isConcurrent()) {
-						result.type = 3;  // @todo - define using enums
+						result.type = 3;  // match usage of Container.msg
 					} else if (s.isPriority()) {
 						result.type = 2;
 					} else {

@@ -134,6 +134,7 @@ const State = function(_state_name, state_def) {
 	var metaFilter = function(element) { return element[0] == '$'; };
 
 	var state_name = _state_name;
+	var state_id = -1; // set by state map message
 	var state_class = state_def.getStateClass();
 	var state_import = state_def.getStatePath();
 	var state_pkg = state_def.getStatePackage();
@@ -201,6 +202,13 @@ const State = function(_state_name, state_def) {
 	this.getStatePath = function() {
 		return ((container != undefined || behavior != undefined)? that.getContainer().getStatePath() + "/" : "")
 			+ that.getStateName();
+	}
+
+	this.getStateId = function() {
+		return state_id;
+	}
+	this.setStateId = function(_state_id) {
+		state_id = _state_id;
 	}
 
 	this.getStateClass = function() {

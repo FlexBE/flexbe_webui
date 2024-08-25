@@ -94,7 +94,7 @@ class WebuiNode(Node):
                 publisher.publish(msg)
                 return True
             except Exception as exc:
-                print(f"\x1b[91mFailed to publish '{topic}' - {exc}\x1b[0m", flush=True)
+                print(f"\x1b[91mFailed to publish '{topic}' - {exc}\n{req}\x1b[0m", flush=True)
                 return False
 
         @app.post('/api/v1/create_publisher')
