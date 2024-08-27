@@ -619,7 +619,7 @@ UI.RuntimeControl = new (function() {
 			case RC.Sync.STATUS_ERROR: color = "linear-gradient(#e86, #c64)"; break;
 			default: color = "linear-gradient(#bf7, #9d5)"; break;
 		}
-		document.getElementById('progress_bar').style.background = color;
+		document.getElementById('progress_bar').style.backgroundColor = color;
 	}
 
 	this.resetParameterTableClicked = function() {
@@ -1250,6 +1250,9 @@ UI.RuntimeControl = new (function() {
 
 		let panel = document.getElementById("runtime_feedback_text");
 
+		// Check if the user has scrolled away from the bottom to prevent autoscroll
+		let isAtBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 5;
+
 		let entry_time = document.createElement("span");
 		entry_time.style.color = "gray";
 		entry_time.innerHTML = "[" + time + "] ";
@@ -1300,9 +1303,36 @@ UI.RuntimeControl = new (function() {
 		if (prev_entry != undefined) {
 			prev_entry.children[1].style.fontSize = "";
 		}
+
+		// Check the current height before appending the new entry
+		let previousScrollHeight = panel.scrollHeight;
+
 		panel.appendChild(entry);
 
-		panel.scrollTop = entry_title.offsetTop - panel.offsetTop;
+
+		// Only auto-scroll if the user is at the bottom of the panel
+		if (isAtBottom) {
+			panel.scrollTop = panel.scrollHeight - panel.clientHeight;
+			panel.style.backgroundColor = "";  // reset to default color
+		} else {
+			// Check if the scroll height has increased
+			if (panel.scrollHeight > previousScrollHeight) {
+				// If the scroll height has increased and the user is not at the bottom,
+				// change the background color to pale yellow to warn that new messages are available
+
+				if (panel.style.backgroundColor === "") {
+					// Add the scroll event listener
+					const resetBackgroundColor = function() {
+						if (panel.scrollHeight - panel.scrollTop - panel.clientHeight < 5) {
+							panel.style.backgroundColor = "";  // Reset to default color at bottom
+							panel.removeEventListener("scroll", resetBackgroundColor);  // Remove listener
+						}
+					};
+					panel.addEventListener("scroll", resetBackgroundColor);
+				}
+				panel.style.backgroundColor = `#FFF8C0`;
+			}
+		}
 	}
 
 	var helper_collectEmbeddedBehaviors = function(sm) {

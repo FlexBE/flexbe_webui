@@ -6,8 +6,8 @@ UI.Panels.StateProperties = new (function() {
 	var listeners_to_cleanup = [];
 
 	var fadeOutBackground = function(id) {
-	 	document.getElementById(id).style.transition = "all 1s ease-out";
-		document.getElementById(id).style.background = "";
+		document.getElementById(id).style.transition = "all 1s ease-out";
+		document.getElementById(id).style.backgroundColor = "";
 	}
 
 	this.addHoverDocumentation = function(el, type, name, state_class, behavior_name) {
@@ -103,7 +103,7 @@ UI.Panels.StateProperties = new (function() {
 				div.setAttribute('id', ac.id + "_suggestion_" + i);
 				const clickHandler = function(event) {
 					el.value = div.getAttribute("fill");
- 					ac.setAttribute("style", "display: none;");
+					ac.setAttribute("style", "display: none;");
 				};
 				div.addEventListener('click', clickHandler);
 				listeners_to_cleanup.push({'element': div, 'listener_type': 'click', 'handler': clickHandler});
@@ -142,21 +142,21 @@ UI.Panels.StateProperties = new (function() {
 		const highlightApplyButton = function() {
 			if (apply_pulse != undefined) return;
 			apply_button = document.getElementById("button_apply_properties");
-			apply_button.style.background = "#fd5";
+			apply_button.style.backgroundColor = "#fd5";
 
-	 		apply_button.style.transition = "all 0.25s ease-in";
-	 		is_on = false;
+			apply_button.style.transition = "all 0.25s ease-in";
+			is_on = false;
 
-	 		let border_pulse = function() {
-	 			if (is_on) {
-	 				apply_button.style.background = "black";
-	 				apply_button.style.color = "white";
-	 			} else {
-	 				apply_button.style.background = "white";
-	 				apply_button.style.color = "black";
-	 			}
-	 			apply_pulse = setTimeout(border_pulse, is_on? 300 : 700);
-	 			is_on = !is_on;
+			let border_pulse = function() {
+				if (is_on) {
+					apply_button.style.backgroundColor = "black";
+					apply_button.style.color = "white";
+				} else {
+					apply_button.style.backgroundColor = "white";
+					apply_button.style.color = "black";
+				}
+				apply_pulse = setTimeout(border_pulse, is_on? 300 : 700);
+				is_on = !is_on;
 			}
 			border_pulse();
 		}
@@ -1022,7 +1022,7 @@ UI.Panels.StateProperties = new (function() {
 		}
 		UI.Panels.setActivePanel(UI.Panels.STATE_PROPERTIES_PANEL, sub_panel);
 		if (apply_pulse != undefined) clearTimeout(apply_pulse);
-		document.getElementById('button_apply_properties').style.background = "";
+		document.getElementById('button_apply_properties').style.backgroundColor = "";
 		document.getElementById('button_apply_properties').style.color = "";
 		UI.Panels.updatePanelTabTargets(UI.Panels.STATE_PROPERTIES_PANEL, sub_panel);
 	}
@@ -1034,7 +1034,7 @@ UI.Panels.StateProperties = new (function() {
 		UI.Panels.hidePanelIfActive(UI.Panels.STATE_PROPERTIES_PANEL);
 		current_prop_state = undefined;
 		if (apply_pulse != undefined) clearTimeout(apply_pulse);
-		document.getElementById('button_apply_properties').style.background = "";
+		document.getElementById('button_apply_properties').style.backgroundColor = "";
 		document.getElementById('button_apply_properties').style.color = "";
 	}
 
@@ -1056,7 +1056,7 @@ UI.Panels.StateProperties = new (function() {
 			if (current_prop_state instanceof BehaviorState) { id = "button_delete_be"; }
 			else { id = "button_delete_state"; }
 			document.getElementById(id).style.transition = "none";
-			document.getElementById(id).style.background = "#f63";
+			document.getElementById(id).style.backgroundColor = "#f63";
 			window.setTimeout(function() { fadeOutBackground(id); }, 100);
 			console.log(`\x1b[93mCannot delete this state for '${id}' (possibly readOnly mode or in another behavior)\x1b[0m`);
 			return;
@@ -1202,7 +1202,7 @@ UI.Panels.StateProperties = new (function() {
 
 			window.setTimeout(function() {
 				document.getElementById('button_apply_properties').style.transition = "none";
-				document.getElementById('button_apply_properties').style.background = "#f63";
+				document.getElementById('button_apply_properties').style.backgroundColor = "#f63";
 			}, 100);
 			window.setTimeout(function() {
 				fadeOutBackground('button_apply_properties');
@@ -1269,7 +1269,7 @@ UI.Panels.StateProperties = new (function() {
 
 		window.setTimeout(function() {
 			document.getElementById('button_apply_properties').style.transition = "none";
-			document.getElementById('button_apply_properties').style.background = "#9f7";
+			document.getElementById('button_apply_properties').style.backgroundColor = "#9f7";
 		}, 100);
 		window.setTimeout(function() {
 			fadeOutBackground('button_apply_properties');
