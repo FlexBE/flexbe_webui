@@ -2,6 +2,14 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.0.0 (2024-08-25)
+------------------
+* this version is only compatible with verison 4+ of the FlexBE Behavior engine
+* this version is jumping the initial version directly to 4.0.0 to match the onboard and API designation
+* this implements version 4.1.0 of UI api
+  * this uses state id for onboard/ocs synchronization and messaging instead of full path strings
+  * this is only an internal change between onboard and OCS
+
 0.0.1 (2024-08-25)
 ------------------
 * released as beta-enhanced using the flexbe_app 4.0.0 API

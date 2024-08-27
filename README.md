@@ -18,6 +18,10 @@ The `flexbe_webui` has the look of the classic `flexbe_app` with some notable im
   * Option to save behaviors to your development `src` folder in your workspace (in addition to `install` folder)
   * Native Python publishing and subscribing for easier development debugging of the UI
   * Exported `json` based configuration text file
+  * Improved tab handling
+
+> Note: This version `4.0.0` of `flexbe_webui` is designed to work with version `4.0+` of the `flexbe_behavior_engine`.
+> If using an earlier `3.x.x` version of `flexbe_behavior_engine`, use either the `flexbe_app` or the "beta-enhanced" branch of `flexbe_webui` (preferred).
 
 ## Installation
 
@@ -87,16 +91,17 @@ To assist in debugging development, or to run the UI on seperate machine, we can
     > `headless:=true` starts the main server node without the UI
 
   Then one (and only one) of
-    * `ros2 run flexbe_webui webui_client`
-      > This starts the PySide6 UI in a single window and is the recommended mode.
+  * `ros2 run flexbe_webui webui_client`
 
-    * `python3 -m webbrowser -n http://127.0.0.1:8000`
+  This starts the PySide6 UI in a single window and is the recommended mode.
 
-      > Note: The `-n` option opens web browser in a new window
+  * `python3 -m webbrowser -n http://127.0.0.1:8000`
 
-      > Use `-t` instead to open in new tab in existing broswer window.
+    > Note:
+    - The `-n` option opens web browser in a new window
+    - Use `-t` instead to open in new tab in existing broswer window.
 
-    * Use `http://127.0.0.1:8000` in your browser window
+  * Use `http://127.0.0.1:8000` in your browser window
 
 
   The port number `8000` can be changed and specified in the node invocation; see `webui_node.py`

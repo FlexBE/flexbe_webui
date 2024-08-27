@@ -525,9 +525,7 @@ const Checking = new (function() {
 				return true;
 			} catch (e) {
 				// Cannot evaluate as a JavaScript equivalent expression
-				console.log(`    Error:  ${e}`);
-				console.log(`    We cannot confirm  | ${expr} | is valid python expression,`);
-				console.log(`    nor can we confirm | ${convert} | - unknown type for now!`);
+				console.log(`    We cannot confirm nor exclude that '${expr}' or '${convert}' is valid python equation (possibly due to : string).`);
 			}
 		}
 		return false;

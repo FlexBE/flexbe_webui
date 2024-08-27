@@ -453,6 +453,8 @@ UI.RuntimeControl = new (function() {
 			tr.appendChild(hint_td);
 			table.appendChild(tr);
 		}
+
+		that.setupTabHandling();  // reset tab handling anytime the parameter table is updated
 	}
 
 	this.parseParameterConfig = function(callback) {
