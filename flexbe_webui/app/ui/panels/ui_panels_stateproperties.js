@@ -209,11 +209,16 @@ UI.Panels.StateProperties = new (function() {
 				let tr = document.createElement("tr");
 				tr.innerHTML = "<td>" + outcome_list_complete[i] + ": </td>"
 					+"<td><select class='select_box' id='panel_prop_autonomy_content_" + i + "' tabindex='0'>"
-					+"<option value='0' " + ((autonomy_list_complete[i] == 0)? "selected='selected'" : "") + " style='color: black;'>Off</option>"
-					+"<option value='1' " + ((autonomy_list_complete[i] == 1)? "selected='selected'" : "") + " style='color: blue;'>Low</option>"
-					+"<option value='2' " + ((autonomy_list_complete[i] == 2)? "selected='selected'" : "") + " style='color: green;'>High</option>"
-					+"<option value='3' " + ((autonomy_list_complete[i] == 3)? "selected='selected'" : "") + " style='color: red;'>Full</option>"
-					+"<option value='-1' " + ((autonomy_list_complete[i] == -1)? "selected='selected'" : "") + " style='color: gray; font-style: italic;'>Inherit</option>"
+					+"<option value='0' " + ((autonomy_list_complete[i] == 0)? "selected='selected'" : "")
+					+ " style='color: black;'>Off</option>"
+					+"<option value='1' " + ((autonomy_list_complete[i] == 1)? "selected='selected'" : "")
+					+ " style='color: blue;'>Low</option>"
+					+"<option value='2' " + ((autonomy_list_complete[i] == 2)? "selected='selected'" : "")
+					+ " style='color: green;'>High</option>"
+					+"<option value='3' " + ((autonomy_list_complete[i] == 3)? "selected='selected'" : "")
+					+ " style='color: red;'>Full</option>"
+					+"<option value='-1' " + ((autonomy_list_complete[i] == -1)? "selected='selected'" : "")
+					+ " style='color: gray; font-style: italic;'>Inherit</option>"
 					+"</select></td>";
 				document.getElementById("panel_prop_autonomy_content").appendChild(tr);
 				that.addHoverDocumentation(tr, "outcome", outcome_list_complete[i], state.getStateType());
@@ -308,15 +313,95 @@ UI.Panels.StateProperties = new (function() {
 		//----------
 		document.getElementById("panel_prop_sm_outcomes_content").innerHTML = "";
 		for (let i=0; i<state.getOutcomes().length; ++i) {
-			let label = document.createElement("td");
-			label.innerHTML = state.getOutcomes()[i] + ": ";
+			const outcome = state.getOutcomes()[i];
+			const selectElement = document.createElement('select');
+			selectElement.className = 'select_box';
+			selectElement.id = 'panel_prop_sm_outcomes_content_' + i;
+			selectElement.tabIndex = 0;
 
-			let input_field = document.createElement("td");
-			input_field.innerHTML = "<select class='select_box'"
-				+ " id='panel_prop_sm_outcomes_content_" + i + "' tabindex='0'>"
-				+"<option value='-1' " + ((state.getAutonomy()[i] == -1)? "selected='selected'" : "")
-				+ " style='color: gray; font-style: italic;'>Inherit</option>"
-				+"</select>";
+			// Create the options
+			const options = [
+				{ value: '0', text: 'Off', color: 'black' },
+				{ value: '1', text: 'Low', color: 'blue' },
+				{ value: '2', text: 'High', color: 'green' },
+				{ value: '3', text: 'Full', color: 'red' },
+				{ value: '-1', text: 'Inherit', color: 'gray', fontStyle: 'italic' }
+			];
+
+			options.forEach(option => {
+				const opt = document.createElement('option');
+				opt.value = option.value;
+				opt.textContent = option.text;
+				opt.style.color = option.color;
+
+				if (option.fontStyle) {
+					opt.style.fontStyle = option.fontStyle;
+				}
+
+				if (state.getAutonomy()[i] == option.value) {
+					opt.selected = true;
+				}
+
+				selectElement.appendChild(opt);
+			});
+
+
+			const autonomyChangeHandler = function(event) {
+				// If a match is found, return the integer part as an integer
+				const autonomy = parseInt(event.target.value);
+				if (state.getAutonomy()[i] != autonomy) {
+					const oldAutonomy = state.getAutonomy()[i];
+					state.getAutonomy()[i] = autonomy;
+					let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
+						return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
+					});
+					if (transition_obj != undefined)
+						transition_obj.setAutonomy(autonomy);
+					UI.Statemachine.refreshView();
+					console.log(`State machine '${state.getStateName()}' outcome '${state.getOutcomes()[i]}' autonomy level ${event.target.value} changed!`);
+
+					ActivityTracer.addActivity(ActivityTracer.ACT_STATE_CHANGE,
+						"Changed autonomy level of state machine '" + state.getStateName() + "'",
+						function() { // undo
+							let container = Behavior.getStatemachine().getStateByPath(state.getStatePath());
+							let ndx = container.getOutcomes().indexOf(outcome);
+							if (ndx == -1) {
+								console.log(`invalid outcome '${outcome}' for '${state.getStateByPath()}' - cannot undo`);
+								return;
+							}
+							state.getAutonomy()[ndx] = oldAutonomy;
+							let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
+								return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
+							});
+							if (transition_obj != undefined)
+								transition_obj.setAutonomy(oldAutonomy);
+							UI.Statemachine.refreshView();
+							if (container == current_prop_state)
+								that.displayPropertiesForStatemachine(current_prop_state);
+						},
+						function() { // redo
+							let container = Behavior.getStatemachine().getStateByPath(state.getStatePath());
+							let ndx = container.getOutcomes().indexOf(outcome);
+							if (ndx == -1) {
+								console.log(`invalid outcome '${outcome}' for '${state.getStateByPath()}' - cannot redo`);
+								return;
+							}
+							state.getAutonomy()[ndx] = autonomy;
+							let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
+								return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
+							});
+							if (transition_obj != undefined)
+								transition_obj.setAutonomy(autonomy);
+							UI.Statemachine.refreshView();
+							if (container == current_prop_state)
+								that.displayPropertiesForStatemachine(current_prop_state);
+						}
+					);
+
+				}
+			}
+			selectElement.addEventListener("change", autonomyChangeHandler);
+			listeners_to_cleanup.push({'element': selectElement, 'listener_type': 'change', 'handler': autonomyChangeHandler});
 
 			let remove_button = document.createElement("img");
 			remove_button.setAttribute("id", "panel_prop_sm_outcomes_content_" + i + "_remove");
@@ -349,7 +434,7 @@ UI.Panels.StateProperties = new (function() {
 						container.addOutcome(removed_outcome);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					},
 					function() { // redo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
@@ -370,6 +455,11 @@ UI.Panels.StateProperties = new (function() {
 			}
 			remove_button.addEventListener("keydown", onEnterRemove);
 			listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'keydown', 'handler': onEnterRemove});
+
+			let label = document.createElement("td");
+			label.innerHTML = state.getOutcomes()[i] + ": ";
+			let input_field = document.createElement("td");
+			input_field.appendChild(selectElement);
 
 			let row = document.createElement("tr");
 			row.appendChild(label);
@@ -416,7 +506,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getInputMapping()[idx] = old_mapping_value;
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					},
 					function() { // redo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
@@ -424,7 +514,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getInputMapping()[idx] = new_mapping_value;
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					}
 				);
 			});
@@ -467,7 +557,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getInputMapping().push(old_input_mapping);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					},
 					function() { // redo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
@@ -475,7 +565,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getInputMapping().remove(old_input_mapping);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					}
 				);
 			}
@@ -534,7 +624,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getOutputMapping()[idx] = old_mapping_value;
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					},
 					function() { // redo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
@@ -542,7 +632,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getOutputMapping()[idx] = new_mapping_value;
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					}
 				);
 			});
@@ -584,7 +674,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getOutputMapping().push(old_output_mapping);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					},
 					function() { // redo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
@@ -592,7 +682,7 @@ UI.Panels.StateProperties = new (function() {
 						container.getOutputMapping().remove(old_output_mapping);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
-							displayPropertiesForStatemachine(current_prop_state);
+							that.displayPropertiesForStatemachine(current_prop_state);
 					}
 				);
 			}
@@ -795,12 +885,101 @@ UI.Panels.StateProperties = new (function() {
 			document.getElementById("panel_prop_be_autonomy").style.display = "block";
 			document.getElementById("panel_prop_be_autonomy_content").innerHTML = "";
 			for (let i=0; i<outcome_list_complete.length; ++i) {
-				document.getElementById("panel_prop_be_autonomy_content").innerHTML += "<tr><td>"
-					+ outcome_list_complete[i] + ": </td>"
-					+"<td><select class='select_box'"
-					+" id='panel_prop_be_autonomy_content_" + i + "' tabindex='0'>"
-					+"<option value='-1' " + ((autonomy_list_complete[i] == -1)? "selected='selected'" : "") + " style='color: gray; font-style: italic;'>Inherit</option>"
-					+"</select></td></tr>";
+				const outcome = state.getOutcomes()[i];
+				const selectElement = document.createElement('select');
+				selectElement.className = 'select_box';
+				selectElement.id = 'panel_prop_be_autonomy_content_' + i;
+				selectElement.tabIndex = 0;
+
+				// Create the options
+				const options = [
+					{ value: '0', text: 'Off', color: 'black' },
+					{ value: '1', text: 'Low', color: 'blue' },
+					{ value: '2', text: 'High', color: 'green' },
+					{ value: '3', text: 'Full', color: 'red' },
+					{ value: '-1', text: 'Inherit', color: 'gray', fontStyle: 'italic' }
+				];
+
+				options.forEach(option => {
+					const opt = document.createElement('option');
+					opt.value = option.value;
+					opt.textContent = option.text;
+					opt.style.color = option.color;
+
+					if (option.fontStyle) {
+						opt.style.fontStyle = option.fontStyle;
+					}
+
+					if (autonomy_list_complete[i] == option.value) {
+						opt.selected = true;
+					}
+
+					selectElement.appendChild(opt);
+				});
+
+				const autonomyChangeHandler = function(event) {
+					const autonomy = parseInt(event.target.value);
+					if (state.getAutonomy()[i] != autonomy) {
+						const oldAutonomy = state.getAutonomy()[i];
+						state.getAutonomy()[i] = autonomy;
+						let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
+							return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
+						});
+						if (transition_obj != undefined)
+							transition_obj.setAutonomy(autonomy);
+						UI.Statemachine.refreshView();
+						console.log(`Behavior '${state.getStateName()}' outcome '${state.getOutcomes()[i]}' autonomy level ${autonomy} changed!`);
+
+						ActivityTracer.addActivity(ActivityTracer.ACT_STATE_CHANGE,
+							"Changed autonomy level of behavior '" + state.getStateName() + "'",
+							function() { // undo
+								let container = Behavior.getStatemachine().getStateByPath(state.getStatePath());
+								let ndx = container.getOutcomes().indexOf(outcome);
+								if (ndx == -1) {
+									console.log(`invalid outcome '${outcome}' for '${state.getStateByPath()}' - cannot undo`);
+									return;
+								}
+								state.getAutonomy()[ndx] = oldAutonomy;
+								let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
+									return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
+								});
+								if (transition_obj != undefined)
+									transition_obj.setAutonomy(oldAutonomy);
+								UI.Statemachine.refreshView();
+								if (container == current_prop_state)
+									that.displayPropertiesForBehavior(current_prop_state);
+							},
+							function() { // redo
+								let container = Behavior.getStatemachine().getStateByPath(state.getStatePath());
+								let ndx = container.getOutcomes().indexOf(outcome);
+								if (ndx == -1) {
+									console.log(`invalid outcome '${outcome}' for '${state.getStateByPath()}' - cannot redo`);
+									return;
+								}
+								state.getAutonomy()[ndx] = autonomy;
+								let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
+									return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
+								});
+								if (transition_obj != undefined)
+									transition_obj.setAutonomy(autonomy);
+								UI.Statemachine.refreshView();
+								if (container == current_prop_state)
+									that.displayPropertiesForBehavior(current_prop_state);
+							}
+						);
+					}
+				}
+				selectElement.addEventListener("change", autonomyChangeHandler);
+				listeners_to_cleanup.push({'element': selectElement, 'listener_type': 'change', 'handler': autonomyChangeHandler});
+
+				let label = document.createElement("td");
+				label.innerHTML = outcome_list_complete[i] + ": ";
+				let input_field = document.createElement("td");
+				input_field.appendChild(selectElement);
+				let row = document.createElement("tr");
+				row.appendChild(label);
+				row.appendChild(input_field);
+				document.getElementById("panel_prop_be_autonomy_content").appendChild(row);
 			}
 		} else {
 			document.getElementById("panel_prop_be_autonomy").style.display = "none";
@@ -1463,7 +1642,7 @@ UI.Panels.StateProperties = new (function() {
 				if (UI.Statemachine.isDataflow())
 					UI.Statemachine.refreshView();
 				if (container == current_prop_state)
-					displayPropertiesForStatemachine(current_prop_state);
+					that.displayPropertiesForStatemachine(current_prop_state);
 			},
 			function() { // redo
 				let container = Behavior.getStatemachine().getStateByPath(container_path);
@@ -1472,7 +1651,7 @@ UI.Panels.StateProperties = new (function() {
 				if (UI.Statemachine.isDataflow())
 					UI.Statemachine.refreshView();
 				if (container == current_prop_state)
-					displayPropertiesForStatemachine(current_prop_state);
+					that.displayPropertiesForStatemachine(current_prop_state);
 			}
 		);
 	}
@@ -1507,7 +1686,7 @@ UI.Panels.StateProperties = new (function() {
 				if (UI.Statemachine.isDataflow())
 					UI.Statemachine.refreshView();
 				if (container == current_prop_state)
-					displayPropertiesForStatemachine(current_prop_state);
+					that.displayPropertiesForStatemachine(current_prop_state);
 			},
 			function() { // redo
 				let container = Behavior.getStatemachine().getStateByPath(container_path);
@@ -1516,7 +1695,7 @@ UI.Panels.StateProperties = new (function() {
 				if (UI.Statemachine.isDataflow())
 					UI.Statemachine.refreshView();
 				if (container == current_prop_state)
-					displayPropertiesForStatemachine(current_prop_state);
+					that.displayPropertiesForStatemachine(current_prop_state);
 			}
 		);
 	}

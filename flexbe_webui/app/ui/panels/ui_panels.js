@@ -76,7 +76,13 @@ UI.Panels = new (function() {
 		if (activePanel == that.ADD_STATE_PANEL) document.getElementById("panel_add_state").focus({preventScroll: true});
 		else if (activePanel == that.SELECT_BEHAVIOR_PANEL) document.getElementById("panel_select_behavior").focus({preventScroll: true});
 		else if (activePanel == that.STATE_PROPERTIES_PANEL) document.getElementById("panel_properties").focus({preventScroll: true});
-		console.log(`Set focus to '${activePanel}' active element '${document.activeElement.id}'`);
+		// console.log(`Set focus to '${activePanel}' active element '${document.activeElement.id}'`);
+	}
+
+	this.refocusStart = function() {
+		if (tab_targets && tab_targets.length > 0) {
+			tab_targets[0].focus({ preventScroll: true });
+		}
 	}
 
 	this.setActivePanel = function(panel, sub_panel='') {

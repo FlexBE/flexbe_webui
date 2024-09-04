@@ -503,7 +503,6 @@ UI.Menu = new (function() {
 	}
 
 	this.loadBehaviorClicked = async function() {
-		console.log(`processing loadBehaviorClicked ...`);
 		if (RC.Controller.isReadonly()) return;
 		if (ActivityTracer.hasUnsavedChanges()) {
 			// Display the confirmation dialog

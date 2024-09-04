@@ -85,6 +85,20 @@ const Transition = function(_from_state, _to_state, _outcome, _autonomy,
 		end = _end; //end is formatted {x: , y: }
 	}
 
+	this.translate = function(dx, dy) {
+		if (x != undefined) x += dx;
+		if (y != undefined) y += dy;
+
+		if (beginning != undefined) {
+			beginning.x += dx;
+			beginning.y += dy;
+		}
+		if (end != undefined) {
+			end.x += dx;
+			end.y += dy;
+		}
+	}
+
 	this.toJSON = function(){
 		var temp_beg_x = undefined;
 		var temp_beg_y = undefined;

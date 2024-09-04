@@ -154,20 +154,24 @@ def left_align_block(code_block, blk_indent, ws_indent):
             current_ws = next_indent_chars
 
     justified_lines = []
+    non_empty = False
     for line in lines:
         # Second pass to process each line and standardize indentation
         line = line.rstrip()
         if line:
+            non_empty = True
             # By definition, len(line) > min_indent or empty
             shifted_line = line[min_indent_level:].rstrip()
             if (shifted_line[:1] == current_ws[:1]) and (current_ws[:1] != ws):
                 # Converting remaining spaces/tabs if required
                 shifted_line = shifted_line.replace(current_ws, ws)
             justified_lines.append(blk_indent + shifted_line)
-        else:
+        elif non_empty:
+            # Ignore empty lines until after we encounter a non-empty line
             justified_lines.append(line)  # Empty line
 
-    if len(justified_lines) < 2:
+    while len(justified_lines) < 2:
+        # We want at least 2 lines in block
         justified_lines.append('')
 
     new_block = '\n'.join(justified_lines) + '\n'

@@ -15,9 +15,9 @@ Tools = new (function() {
 			});
 			s.getTransitions().forEach(function (element) {
 				if (element.getOutcome() == "" && element.getFrom().getStateName() == "INIT") return;
-				var new_from = new_state.getStateByName(element.getFrom().getStateName());
-				var new_to = new_state.getStateByName(element.getTo().getStateName());
-				var is_outcome = new_to == undefined;
+				let new_from = new_state.getStateByName(element.getFrom().getStateName());
+				let new_to = new_state.getStateByName(element.getTo().getStateName());
+				let is_outcome = new_to == undefined;
 				if (is_outcome) {
 					new_to = new_state.getSMOutcomeByName(element.getTo().getStateName());
 				}
@@ -59,33 +59,39 @@ Tools = new (function() {
 	}
 
 	var pasteAll = function(elements, container) {
-		var state_list = elements.filter(function(s) {
+		let state_list = elements.filter(function(s) {
 			return (s instanceof State) || (s instanceof Statemachine) || (s instanceof BehaviorState);
 		});
-		var transition_list = elements.filter(function(t) {
+		let transition_list = elements.filter(function(t) {
 			return t instanceof Transition;
 		});
+		console.log(`Pasting ${state_list.length} states and ${transition_list.length} transitions ...`);
 
 
-		var new_states = [];
-		var renaming = [];
-		for (var i = 0; i < state_list.length; i++) {
-			var new_state = pasteStateInto(state_list[i], container, true);
+		let new_states = [];
+		let renaming = [];
+		for (let i = 0; i < state_list.length; i++) {
+			let new_state = pasteStateInto(state_list[i], container, true);
 			new_states.push(new_state);
 			renaming[state_list[i].getStateName()] = new_state.getStateName();
+			console.log(`   creating '${new_state.getStateName()}' (${new_state.getStatePath()}) from '${state_list[i].getStateName()}' (${state_list[i].getStatePath()}) ...`);
 		}
 
+		console.log(`Adding ${new_states.length} states to container '${container.getStateName()} ...`);
 		new_states.forEach(container.addState);
 
-		var new_transitions = [];
+		let new_transitions = [];
 		transition_list.forEach(function (transition) {
-			var from_state = new_states.findElement(function(s) { return s.getStateName() == renaming[transition.getFrom().getStateName()]; });
-			var to_state = new_states.findElement(function(s) { return s.getStateName() == renaming[transition.getTo().getStateName()]; });
-			var new_transition = new Transition(from_state, to_state, transition.getOutcome(), transition.getAutonomy());
-			new_state.getContainer().addTransition(new_transition);
+			let from_state = new_states.findElement(function(s) { return s.getStateName() == renaming[transition.getFrom().getStateName()]; });
+			let to_state = new_states.findElement(function(s) { return s.getStateName() == renaming[transition.getTo().getStateName()]; });
+			let new_transition = new Transition(from_state, to_state, transition.getOutcome(), transition.getAutonomy());
+			console.log(`    adding transition from '${from_state ? from_state.getStateName() : 'undefined'}' to `
+						+ ` '${to_state ? to_state.getStateName() : 'undefined'}' to '${container.getStateName()}' ...`);
+			container.addTransition(new_transition);
 			new_transitions.push(new_transition);
 		});
 
+		console.log(`Added ${new_transitions.length} transitions to container '${container.getStateName()} ...`);
 		UI.Statemachine.refreshView();
 
 		return new_states.concat(new_transitions);
@@ -101,7 +107,7 @@ Tools = new (function() {
 		that.copy();
 
 		if(RC.Controller.isRunning()) {
-			var locked_state = clipboard.findElement(function(el) {
+			let locked_state = clipboard.findElement(function(el) {
 				return ((el instanceof State) || (el instanceof Statemachine) || (el instanceof BehaviorState))
 					&& RC.Controller.isOnLockedPath(el.getStatePath());
 			});
@@ -115,31 +121,31 @@ Tools = new (function() {
 			}
 		}
 
-		var container = UI.Statemachine.getDisplayedSM();
-		var container_path = container.getStatePath();
+		let container = UI.Statemachine.getDisplayedSM();
+		let container_path = container.getStatePath();
 
-		var paste_clipboard = clipboard.clone();
-		var history_clipboard = paste_clipboard.map(function (element) {
+		let paste_clipboard = clipboard.clone();
+		let history_clipboard = paste_clipboard.map(function (element) {
 			return (element instanceof Transition)? element : element.getStatePath();
 		});
 
-		var state_list = paste_clipboard.filter(function(s) {
+		let state_list = paste_clipboard.filter(function(s) {
 			return (s instanceof State) || (s instanceof Statemachine) || (s instanceof BehaviorState);
 		});
-		var transition_list = paste_clipboard.filter(function(t) {
+		let transition_list = paste_clipboard.filter(function(t) {
 			return t instanceof Transition;
 		});
 
-		var initial_state = state_list.findElement(function(element) {
+		let initial_state = state_list.findElement(function(element) {
 			return container.getInitialState() != undefined
 				&& container.getInitialState().getStateName() == element.getStateName();
 		});
 
-		var transitions_out = container.getTransitions().filter(function(t) {
+		let transitions_out = container.getTransitions().filter(function(t) {
 			return transition_list.findElement(function(el) { return el.getFrom() == t.getFrom() && el.getOutcome() == t.getOutcome(); }) == undefined
 				&& state_list.findElement(function(el) { return el.getStateName() == t.getFrom().getStateName(); }) != undefined;
 		});
-		var transitions_in = container.getTransitions().filter(function(t) {
+		let transitions_in = container.getTransitions().filter(function(t) {
 			return t.getFrom().getStateName() != "INIT"
 				&& transition_list.findElement(function(el) { return el.getFrom() == t.getFrom() && el.getOutcome() == t.getOutcome(); }) == undefined
 				&& state_list.findElement(function(el) { return el.getStateName() == t.getTo().getStateName(); }) != undefined;
@@ -150,9 +156,9 @@ Tools = new (function() {
 		ActivityTracer.addActivity(ActivityTracer.ACT_COMPLEX_OPERATION,
 			"Cut " + paste_clipboard.length + " elements",
 			function() {
-				var container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
-				var pasted_elements = pasteAll(paste_clipboard, container);
-				var pasted_states = pasted_elements.filter(function(s) {
+				let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
+				let pasted_elements = pasteAll(paste_clipboard, container);
+				let pasted_states = pasted_elements.filter(function(s) {
 					return (s instanceof State) || (s instanceof Statemachine) || (s instanceof BehaviorState);
 				});
 				if (initial_state != undefined) {
@@ -167,7 +173,7 @@ Tools = new (function() {
 				});
 				transitions_out.forEach(function(t) {
 					t.setFrom(pasted_states.findElement(function(s) { return s.getStateName() == t.getFrom().getStateName(); }));
-					var out_target = container.getStateByName(t.getTo().getStateName());
+					let out_target = container.getStateByName(t.getTo().getStateName());
 					if (out_target == undefined) out_target = container.getSMOutcomeByName(t.getTo().getStateName());
 					t.setTo(out_target);
 					container.addTransition(t);
@@ -176,7 +182,7 @@ Tools = new (function() {
 				UI.Statemachine.refreshView();
 			},
 			function() {
-				var delete_clipboard = history_clipboard.map(function (element) {
+				let delete_clipboard = history_clipboard.map(function (element) {
 					return (element instanceof Transition)? element : Behavior.getStatemachine().getStateByPath(element);
 				});
 				deleteAll(delete_clipboard);
@@ -188,33 +194,33 @@ Tools = new (function() {
 		if (clipboard == undefined) return;
 		if (clipboard.length == 0) return;
 
-		var container_path = UI.Statemachine.getDisplayedSM().getStatePath();
+		let container_path = UI.Statemachine.getDisplayedSM().getStatePath();
 
-		var paste_clipboard = pasteAll(clipboard, UI.Statemachine.getDisplayedSM());
+		let paste_clipboard = pasteAll(clipboard, UI.Statemachine.getDisplayedSM());
 
-		var history_clipboard = paste_clipboard.map(function (element) {
+		let history_clipboard = paste_clipboard.map(function (element) {
 			return (element instanceof Transition)? element : element.getStatePath();
 		});
 
 		ActivityTracer.addActivity(ActivityTracer.ACT_COMPLEX_OPERATION,
 			"Pasted " + paste_clipboard.length + " elements",
 			function() {
-				var delete_clipboard = history_clipboard.map(function (element) {
+				let delete_clipboard = history_clipboard.map(function (element) {
 					return (element instanceof Transition)? element : Behavior.getStatemachine().getStateByPath(element);
 				});
 				deleteAll(delete_clipboard);
 			},
 			function() {
-				var container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
+				let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
 				pasteAll(paste_clipboard, container);
 			}
 		);
 	}
 
 	this.groupSelection = function() {
-		var selection = UI.Statemachine.getSelectedStatesAndTransitions();
+		let selection = UI.Statemachine.getSelectedStatesAndTransitions();
 		if(RC.Controller.isRunning()) {
-			var locked_state = selection.findElement(function(el) {
+			let locked_state = selection.findElement(function(el) {
 				return ((el instanceof State) || (el instanceof Statemachine) || (el instanceof BehaviorState))
 					&& RC.Controller.isOnLockedPath(el.getStatePath());
 			});
@@ -284,7 +290,7 @@ Tools = new (function() {
 
 		state_list.forEach(container.removeState);
 		sm_outcomes.forEach(function(oc) {
-			var transition = transitions_out.findElement(t => t.getOutcome() == oc);
+			let transition = transitions_out.findElement(t => t.getOutcome() == oc);
 			container.addTransition(new Transition(sm, transition.getTo(), oc, -1));
 		});
 		transitions_in.forEach(function(transition) {
@@ -294,7 +300,7 @@ Tools = new (function() {
 
 		//let pasted_elements = pasteAll(selection, sm);
 		if (transitions_in.length > 0) {
-			var init_state_name = transitions_in[0].getTo().getStateName();
+			let init_state_name = transitions_in[0].getTo().getStateName();
 			sm.setInitialState(sm.getStateByName(init_state_name));
 		}
 		ActivityTracer.doNotTrace(function() {
@@ -332,7 +338,7 @@ Tools = new (function() {
 				});
 				transitions_out.forEach(function(t) {
 					t.setFrom(pasted_states.findElement(function(s) { return s.getStateName() == t.getFrom().getStateName(); }));
-					var out_target = container.getStateByName(t.getTo().getStateName());
+					let out_target = container.getStateByName(t.getTo().getStateName());
 					if (out_target == undefined) out_target = container.getSMOutcomeByName(t.getTo().getStateName());
 					t.setTo(out_target);
 					container.addTransition(t);
@@ -479,7 +485,7 @@ Tools = new (function() {
 			function() { // undo
 				let sm = (sm_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(sm_path);
 				new_transitions.forEach(function(t) {
-					var from_state = sm.getStateByName(t.from);
+					let from_state = sm.getStateByName(t.from);
 					from_state.unconnect(t.outcome);
 					sm.removeTransitionFrom(from_state, t.outcome);
 				});

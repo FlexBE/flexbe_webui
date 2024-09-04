@@ -6,9 +6,9 @@ UI.Tools = new (function() {
 	var command_library = CommandLib.load();
 
 	var last_ros_command = undefined;
+	var prior_focus = undefined;
 
 	Mousetrap.bind("ctrl+space", function(evt) {
-		console.log(`Open tool icons ...`);
 		evt.preventDefault();
 		evt.stopPropagation();
 		UI.Tools.toggle();
@@ -128,6 +128,7 @@ UI.Tools = new (function() {
 	}
 
 	this.hide = function() {
+
 		getPanel().style.opacity = "0";
 		hide_timeout = setTimeout(function() {
 			getPanel().style.display = "none";
@@ -143,6 +144,12 @@ UI.Tools = new (function() {
 		document.getElementById("command_overlay").style.opacity = "0";
 		document.getElementById("command_overlay_suggestions").style.display = "none";
 		document.getElementById("command_overlay_suggestions").style.opacity = "0";
+
+		console.log(`Restore prior focus: from active element = '${document.activeElement.id}' to '${prior_focus ? prior_focus.id : 'undefined'}'`);
+		if (prior_focus) {
+			prior_focus.focus({preventScroll: true});
+			prior_focus = undefined;
+		}
 	}
 
 	this.toggle = function() {
@@ -151,6 +158,7 @@ UI.Tools = new (function() {
 		let panel = getPanel();
 		if (!hover_mode) {
 			if (panel.style.display != "block") {
+				console.log(`Open tool icons ...`);
 				that.display();
 				hover_mode = true;
 			} else {
@@ -158,7 +166,7 @@ UI.Tools = new (function() {
 			}
 		} else {
 			let mouse_distance = Math.sqrt(Math.pow(mouse.x - (parseInt(panel.style.left) + 50), 2) + Math.pow(mouse.y - (parseInt(panel.style.top) + 50), 2));
-			if (mouse_distance > 170) {
+			if (mouse_distance > 60 && mouse_distance < 180) {
 				let new_closest_button = getClosestButton();
 				if (closest_button != new_closest_button) {
 					if (closest_button != undefined)
@@ -168,6 +176,9 @@ UI.Tools = new (function() {
 				}
 			} else {
 				if (closest_button != undefined) {
+					console.log(`tool toggle - clear closest button md=${mouse_distance} = sqrt(`
+						+ `(${mouse.x} - (${parseInt(panel.style.left)} + 50))^2 + `
+						+ `(${mouse.y} - (${parseInt(panel.style.top)} + 50))^2)`);
 					closest_button.style.backgroundColor = "";
 					closest_button = undefined;
 				}
@@ -181,6 +192,7 @@ UI.Tools = new (function() {
 			let will_stay = true;
 			hover_mode = false;
 			if (closest_button != undefined) {
+				console.log(`tool evaluate invoked with closest button defined - do it!`);
 				will_stay = false;
 				closest_button.click();
 				closest_button.style.backgroundColor = "";
@@ -188,24 +200,34 @@ UI.Tools = new (function() {
 			} else {
 				// triggering keydown again the first time is slow, so make sure we dont miss any selection
 				let mouse_distance = Math.sqrt(Math.pow(mouse.x - (parseInt(panel.style.left) + 50), 2) + Math.pow(mouse.y - (parseInt(panel.style.top) + 50), 2));
-				if (mouse_distance > 170) {
+				if (mouse_distance > 60 && mouse_distance < 180) {
+					console.log(`tool evaluate invoked without a closest button defined but just found one with md=${mouse_distance} - do it!`);
 					getClosestButton().click();
 					will_stay = false;
+				} else {
+					console.log(`no button chosen - check md=${mouse_distance} = sqrt(`
+						+ `(${mouse.x} - (${parseInt(panel.style.left)} + 50))^2 + `
+						+ `(${mouse.y} - (${parseInt(panel.style.top)} + 50))^2)`);
 				}
 			}
 			if (will_stay) {
 				// display panels
+				console.log(`tool evaluate invoked without a closest button found - keep open with command and history ...`);
 				document.getElementById("history_overlay").style.left = "-15px";
 				ActivityTracer.setUpdateCallback(createHistoryContent);
 				createHistoryContent();
-
 				that.displayCommandInput();
 			}
+		} else {
+			console.log(`tool not in hover mode and evaluate called, so hide the tool panels`);
+			that.hide();
 		}
 
 	}
 
 	this.displayCommandInput = function() {
+		console.log(`Store prior focus: active element = '${document.activeElement.id}' (${prior_focus ? prior_focus.id : 'undefined'})`);
+		prior_focus = prior_focus ? document.activeElement : prior_focus;
 		document.getElementById("command_overlay").style.display = "block";
 		document.getElementById("command_overlay_suggestions").style.display = "block";
 		setTimeout(function() {

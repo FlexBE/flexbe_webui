@@ -1532,7 +1532,7 @@ UI.Dashboard = new (function() {
 			let name = type_input_field.getAttribute("name");
 			let type = type_input_field.options[type_input_field.selectedIndex].value;
 
-			let param = this.getBehaviorParameterElement(name);
+			let param = Behavior.getBehaviorParameterElement(name);
 			if (param == undefined) {
 				console.log(`\x1b[93m Invalid parameter '${name}' - parameter does not exist for this behavior! (?)\x1b[0m`);
 				return;

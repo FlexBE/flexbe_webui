@@ -6,6 +6,9 @@ UI.Statemachine = new (function() {
 	var displayed_sm = undefined;
 	var selection_area = undefined;
 	var selection_set = undefined;
+	var selection_dx = undefined;
+	var selection_dy = undefined;
+
 	var pan_origin = {x: 0, y: 0};
 	var pan_shift = {x: 0, y: 0};
 
@@ -92,6 +95,7 @@ UI.Statemachine = new (function() {
 			let my = mouse_pos.attr("cy");
 
 			selection_area.attr({opacity: 1, x: mx, y: my, width: 0, height: 0}).toFront();
+			selection_area.transform(""); // Clear the current transform
 		}
 	}
 
@@ -118,17 +122,22 @@ UI.Statemachine = new (function() {
 
 		}
 		if (selecting) {
-			let xoffset = 0, yoffset = 0;
-			if (dx < 0) {
-				xoffset = dx;
-				dx = -dx;
-			}
-			if (dy < 0) {
-				yoffset = dy;
-				dy = -dy;
-			}
-			selection_area.transform("T" + xoffset + "," + yoffset);
-			selection_area.attr({width: dx, height: dy});
+			let newWidth = Math.abs(dx);  // New width of the selection area based on drag distance
+			let newHeight = Math.abs(dy); // New height of the selection area based on drag distance
+
+			// Determine the new top-left corner position (adjusts for dragging in any direction, and handles page offset)
+			let newX = selection_area.attr("x");
+			if (dx < 0) newX += selection_area.attr("width") + dx;
+			let newY = selection_area.attr("y");
+			if (dy < 0) newY += selection_area.attr("height") + dy;
+
+			// Update the selection area
+			selection_area.attr({
+				x: newX,
+				y: newY,
+				width: newWidth,
+				height: newHeight
+			});
 		}
 	}
 	var endSelection = function(event) {
@@ -143,26 +152,159 @@ UI.Statemachine = new (function() {
 			that.removeSelection();
 	}
 
-	var beginSelectionMove = function() {
-		console.log(`\x1b[91m Selection move is disabled for now - (beginSelectionMove)\x1b[0m`);
-		//selection_set = R.set();
-		//that.getSelectedStates().forEach(function (element) {
-		//	selection_set.push(that.getDrawnState(element));
-		//});
+	var beginSelectionMove = function(event) {
+		// Grab the states within the selection
+		that.selection_dx = undefined;
+		that.selection_dy = undefined;
+
+		if (that.isReadonly()) {
+			console.log(`\x1b[93mCannot do selection move of behavior defined elsewhere! (read only)\x1b[0m`);
+			return;
+		}
+		this.attr({cursor: "grab"});
+
+		// Grab list of all states completely within the selection bounding box
+		let state_names = that.getSelectedStates().map((element) => {return element.getStateName()});
+
+		if (state_names.length > 0) {
+			//console.log(`Selected ${JSON.stringify(state_names)}`);
+			that.selection_set = state_names;
+		} else {
+			console.log(` no states are selected!`);
+			that.selection_set = undefined;
+		}
 	}
 	var updateSelectionMove = function(dx, dy, x, y, event) {
-		console.log(`\x1b[91m Selection move is disabled for now - (beginSelectionMove)\x1b[0m`);
-		//let old_x = selection_set.attr("x");
-		//let old_y = selection_set.attr("y");
-		//selection_set.attr({x: old_x + dx, y: old_y + dy});
+		if (that.isReadonly()) {
+			return;
+		}
+		if (selection_area == undefined || that.selection_set == undefined) {
+			console.log(`invalid selection ${selection_area} ${that.selection_set}`);
+			return;
+		}
+
+		// Keep selection in bounds
+		let curX = selection_area.attr('x'); // upper left corner of selection area
+		let curY = selection_area.attr('y');
+		if (curX + dx < 0) {
+		    dx = -curX;
+		}
+		if (curY + dy < 0) {
+		    dy = -curY;
+		}
+		that.selection_dx = dx;
+		that.selection_dy = dy;
+		selection_area.transform("T" + dx + "," + dy);
 	}
-	var endSelectionMove = function() {
-		console.log(`\x1b[91m Selection move is disabled for now - (beginSelectionMove)\x1b[0m`);
-		//selection_set.forEach(function (element) {
-		//
-		//});
-		//selection_set.clear();
+	var endSelectionMove = function(event) {
+		// Ensure selection_set is defined
+		if (that.isReadonly()) {
+			return;
+		}
+		this.attr({cursor: "pointer"});
+		if (that.selection_set && that.selection_set.length > 0) {
+
+			if (that.selection_dx == undefined || that.selection_dy == undefined) {
+				console.log(`invalid motion data for selection set with ${that.selection_set ? that.selection_set.length : 0} items`);
+				return;
+			}
+			const dx = that.selection_dx;
+			const dy = that.selection_dy;
+
+			translateSelectedStates(that.selection_set, dx, dy);
+
+			const selectedStatePaths = that.selection_set.clone();
+			// ActivityTracer to allow undo/redo
+			ActivityTracer.addActivity(ActivityTracer.ACT_COMPLEX_OPERATION,
+				`Move selected states ${JSON.stringify(selectedStatePaths)}.`,
+				function() { // undo
+					translateSelectedStates(selectedStatePaths, -dx, -dy);
+				},
+				function() { // redo
+					translateSelectedStates(selectedStatePaths, dx, dy);
+				}
+			);
+
+			// Clear the selection set
+			that.selection_set.length = 0;
+			that.selection_set = null; // Clear the reference to avoid memory leaks
+			that.selection_dx = undefined;
+			that.selection_dy = undefined;
+
+		} else {
+			console.log(`invalid selection data `);
+		}
+
+		// Now update the selection area attributes to match the current visual
+		// Get the current transformation applied to the element
+		let transformMatrix = selection_area.transform();
+
+		// If it's a translation, extract the x and y offsets
+		let translateX = 0;
+		let translateY = 0;
+
+		// Check if there is a translation in the transform
+		if (transformMatrix.length > 0 && transformMatrix[0][0] === "T") {
+			translateX = transformMatrix[0][1];  // Translation in the x direction
+			translateY = transformMatrix[0][2];  // Translation in the y direction
+		}
+
+		// Get the current attributes of the selection area
+		let currentX = selection_area.attr("x");
+		let currentY = selection_area.attr("y");
+
+		// Update the selection area's actual x and y based on the translation
+		selection_area.attr({
+			x: currentX + translateX,
+			y: currentY + translateY
+		});
+
+		// Reset the transform to avoid double transformations
+		selection_area.transform(""); // Clear the current transform
 	}
+
+	var translateSelectedStates = function(selected_states, dx, dy) {
+		console.log(`\x1b[93mTranslate ${selected_states.length} selected states by delta=(${dx}, ${dy}) `
+			+ ` in '${displayed_sm.getStatePath()}' \x1b[0m`);
+
+		let stateObjects = [];
+		selected_states.forEach( (name) => {
+			const state = displayed_sm.getStateByName(name);
+			if (state != undefined) {
+				state.translate(dx, dy);
+				stateObjects.push(state); // for use in transition selection
+			} else {
+				console.log(`    cannot find state for '${name}' in container '${displayed_sm.getStatePath()}'`);
+			}
+		})
+
+		let selected_transitions = displayed_sm.getTransitions().filter(function(t) {
+			if (t.getFrom().getStateName() == "INIT") return false;
+			let from_state = stateObjects.findElement(function (element) { return element.getStateName() == t.getFrom().getStateName() });
+			let to_state = stateObjects.findElement(function (element) { return element.getStateName() == t.getTo().getStateName() });
+			const from_def = from_state != undefined;
+			const to_def = to_state != undefined;
+			if ((from_def || to_def) && !(from_def && to_def)) {
+				console.log(`    ignoring transition '${t.getFrom() ? t.getFrom().getStateName() : 'undefined'}' to `
+							+ ` '${t.getTo() ? t.getTo().getStateName() : 'undefined'}' that is not fully contained in selection!`)
+			}
+			return from_def && to_def; // only translate if both ends are selected
+		});
+
+		selected_transitions.forEach(function(t) {
+			// Move each drawing element by dx and dy
+			try {
+				// transition
+				// console.log(`    translating transition from `
+				// 			+ `'${t.getFrom() ? t.getFrom().getStateName() : 'undefined'}' to `
+				// 			+ `'${t.getTo() ? t.getTo().getStateName() : 'undefined'}'`);
+				t.translate(dx, dy);
+			} catch (err) {
+				console.log('failed to transform ' + err);
+			}
+		});
+		that.refreshView();
+}
 
 	var displayInitialDot = function() {
 		let dummyStateObj = new State("INIT", WS.Statelib.getFromLib(":INIT"));
@@ -194,7 +336,12 @@ UI.Statemachine = new (function() {
 	var initializeDrawingArea = function() {
 		R = Raphael("drawing_area");
 		drag_indicator = R.rect(0,0,1,1).attr({opacity: 0});
-		selection_area = R.rect(0,0,0,0).attr({opacity: 0, stroke: "#000", 'stroke-dasharray': "--", fill: "rgba(250,250,250,0.4)", 'stroke-width': 0.5})
+		selection_area = R.rect(0,0,0,0).attr({
+			opacity: 0,
+			stroke: "#000", 'stroke-dasharray': "--",
+			fill: "rgba(250,250,250,0.4)",
+			'stroke-width': 0.5,
+			cursor: "pointer"})
 			.drag(updateSelectionMove, beginSelectionMove, endSelectionMove);
 
 		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0});
@@ -757,9 +904,8 @@ UI.Statemachine = new (function() {
 	}
 
 	this.connectTransition = function(state) {
-		console.log('UI.StateMachine connectTransition ...');
+		// console.log('UI.StateMachine connectTransition ...');
 		if (!connecting) return;
-		console.log('  connecting ...');
 		if (displayed_sm.isConcurrent()
 			&& state.getStateClass() != ':CONDITION'
 			&& drag_transition.getFrom().getStateName() != "INIT")
@@ -875,6 +1021,7 @@ UI.Statemachine = new (function() {
 			return from_state != undefined && to_state != undefined;
 		});
 
+		console.log(` selected ${selected_states.length} states and ${selected_transitions.length} transitions`);
 		return selected_states.concat(selected_transitions);
 	}
 

@@ -30,7 +30,7 @@ const Autocomplete = new (function() {
 
 		let def_user_data = Behavior.getDefaultUserdata();
 		if (def_user_data.length > 0){
-			let parent_name = state.getContainer() && state.getContainer().getStateName() ? state.getContainer().getStateName() : "_state_machine";
+			let parent_name = state && state.getContainer() && state.getContainer().getStateName() ? state.getContainer().getStateName() : "_state_machine";
 			let prefix = parent_name;
 			if (!entry.includes("userdata")){
 				prefix += '.userdata';

@@ -149,19 +149,19 @@ UI.Panels.AddState = new (function() {
 				  '<b>' + state_def.getStateClass() + '</b><br>'
 				+ '<i>' + state_def.getShortDesc() + '</i>';
 
-			const clickHandler = function() {
+			const clickHandler = function(event) {
+				event.preventDefault(); // Prevent default action
+				event.stopPropagation(); // Stop the event from propagating to other handlers
 				document.getElementById('add_state_class').value = this.getAttribute("value");
-				UI.Panels.tab_targets[0].focus({ preventScroll: true });
+				UI.Panels.refocusStart();
 			}
 			state_div.addEventListener('click', clickHandler);
 			listeners_to_cleanup.push({'element': state_div, 'listener_type': 'click', 'handler': clickHandler});
 
 			const enterHandler = function(event) {
-				if (event.key === 'Enter') {
-					event.preventDefault(); // Prevent default action for Enter key
-					event.stopPropagation(); // Stop the event from propagating to other handlers
-					document.getElementById('add_state_class').value = this.getAttribute("value");
-					UI.Panels.tab_targets[0].focus({ preventScroll: true });
+				if (event.key === 'Enter' || event.key === ' ') {
+					// allow enter or space selection from list equivalent to click
+					clickHandler(event);
 				}
 			}
 			state_div.addEventListener('keydown', enterHandler);

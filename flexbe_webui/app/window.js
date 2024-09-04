@@ -57,3 +57,7 @@ window.onload = async () => {
 
 	console.log(`\x1b[95m  Active element is '${document.activeElement ? document.activeElement.id : 'undefined'}'\x1b[0m`);
 }
+
+window.onerror = function(message, source, lineno, colno, error) {
+    console.error(`Error: ${message}, Source: ${source}, Line: ${lineno}, Column: ${colno}, Error object: ${error}`);
+};
