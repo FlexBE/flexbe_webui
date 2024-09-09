@@ -48,7 +48,7 @@ class CodeGenerator:
 
     def generate_behavior_code(self, behavior):
         """Generate the behavior python code."""
-        class_name = re.sub('[^0-9a-zA-Z]+', '', behavior.behavior_name)
+        class_name = re.sub(r'[^\w]', '', behavior.behavior_name)
         states = get_all_states(behavior.root_sm)
         outcomes = behavior.root_sm.sm_outcomes
         self.author = behavior.author

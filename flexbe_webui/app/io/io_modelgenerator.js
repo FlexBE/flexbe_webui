@@ -36,12 +36,11 @@ IO.ModelGenerator = new (function() {
 			UI.Dashboard.addBehaviorOutcome(element);
 		});
 		data.smi_input.forEach(function(element, i) {
-			UI.Dashboard.addBehaviorInputKey(element);
+			UI.Dashboard.addInterfaceInputKey(element);
 		});
 		data.smi_output.forEach(function(element, i) {
-			UI.Dashboard.addBehaviorOutputKey(element);
+			UI.Dashboard.addInterfaceOutputKey(element);
 		});
-
 
 		// code given as a block of text, separate into individual import lines
 		let manual_code_import = [];
