@@ -38,7 +38,7 @@ setup(
     install_requires=[
         'fastAPI==0.109.1',
         'pydantic>=1.10.13',
-        'PySide6>=6.7.1'
+        'PySide6>=6.7.1',
         'setuptools',
         'websockets>=10.3',
     ],
