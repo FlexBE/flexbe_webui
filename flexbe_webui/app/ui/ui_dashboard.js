@@ -995,7 +995,7 @@ UI.Dashboard = new (function() {
 		that.clearChildElements("db_field_outcome_table_input_field_" + outcome.replace(' ', '_'));
 		document.getElementById("db_outcome_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
-		document.getElementById("db_outcome_add").focus({ preventScroll: true });
+		document.getElementById("input_db_outcome_add").focus({ preventScroll: true });
 
 		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
 			"Removed behavior outcome " + outcome,
