@@ -232,7 +232,7 @@ class CodeGenerator:
                     if not self.initialize_flexbe_core:
                         init_statement = self.ws + self.ws + imp_state.state_class + '.initialize_ros(node)'
                 else:
-                    print('Using explict package name for '
+                    print('Using explicit package name for '
                           f'{imp_state.state_class} ({self.explicit_package}, '
                           f'{use_explicit_package})')
                     import_list.append('from ' + imp_state.state_import

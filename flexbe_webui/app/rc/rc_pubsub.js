@@ -225,7 +225,7 @@ RC.PubSub = new (function() {
 			if (Behavior.getBehaviorId() != undefined) {
 				console.log(`\x1b[93m Updating behavior ID to ${msg.behavior_id} from ${Behavior.getBehaviorId()} and clear existing state map\x1b[0m`);
 			}
-			Behavior.setBehaviorId(msg.behavior_id); // presume state map message is the latest requestd behavior
+			Behavior.setBehaviorId(msg.behavior_id); // presume state map message is the latest requested behavior
 			state_map.clear();
 			state_map.set(0, {path: '', state: Behavior.getStatemachine()}); // always add root
 		}

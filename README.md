@@ -10,7 +10,7 @@ to interface with the Flexible Behavior Engine.
 
 For detailed information on FlexBE see the [documentation](https://flexbe.readthedocs.io/en/latest/).
 
-This version supercedes the 4.0.0 version of the [flexbe_app](https://github.com/flexbe/flexbe_app) interface.
+This version supersedes the 4.0.0 version of the [flexbe_app](https://github.com/flexbe/flexbe_app) interface.
 The `flexbe_webui` has the look of the classic `flexbe_app` with some notable improvements:
   * Ability to select and adjust the endpoints and labels of transitions.
   * Improved handling of concurrent states and embedded states requiring operator feedback.
@@ -32,7 +32,7 @@ Clone the following repos into your ROS workspace (e.g. `$WORKSPACE_ROOT/src` or
 
 Make sure that the branches are appropriate for your version (e.g. `git checkout ros2-devel`, `iron`, or `jazzy` as appropriate)
 
-> Note: This UI is designed for improved handling of concurrent state execution and is compatibile with the ROS 2 version `4.+` of the `flexbe_app`; it will not work with older versions such as `galactic` or `humble` of the `flexbe_behavior_engine` .  It is likely that the `iron` or `ros2-devel` versions of `flexbe_behavior_engine` should work on those older ROS 2 systems if you build from source.
+> Note: This UI is designed for improved handling of concurrent state execution and is compatible with the ROS 2 version `4.+` of the `flexbe_app`; it will not work with older versions such as `galactic` or `humble` of the `flexbe_behavior_engine` .  It is likely that the `iron` or `ros2-devel` versions of `flexbe_behavior_engine` should work on those older ROS 2 systems if you build from source.
 
 Install any required dependencies.
 
@@ -86,7 +86,7 @@ To execute the runtime Operator Control Station (OCS) on one machine, you may ch
   * `ros2 launch flexbe_webui flexbe_ocs.launch.py`
   This runs all of the OCS including the PySide6-based UI client.
 
-To assist in debugging development, or to run the UI on seperate machine, we can start the `webui_client` separately
+To assist in debugging development, or to run the UI on separate machine, we can start the `webui_client` separately
   * `ros2 launch flexbe_webui flexbe_ocs.launch.py headless:=true`
     > `headless:=true` starts the main server node without the UI
 
@@ -99,13 +99,13 @@ To assist in debugging development, or to run the UI on seperate machine, we can
 
     > Note:
     - The `-n` option opens web browser in a new window
-    - Use `-t` instead to open in new tab in existing broswer window.
+    - Use `-t` instead to open in new tab in existing browser window.
 
   * Use `http://127.0.0.1:8000` in your browser window
 
 
   The port number `8000` can be changed and specified in the node invocation; see `webui_node.py`
-  If running one seperate machines, then the IP address must be changed accordingly.
+  If running one separate machines, then the IP address must be changed accordingly.
   Use the `--help` to see command line options for changing the IP and port.
 
   > Note: This version of the `flexbe_webui` is inherently *insecure*!

@@ -36,13 +36,13 @@ const CommandLib = new (function() {
 			match: /^synthesize ([a-zA-Z0-9_]+) i: ?(.+?) g: ?(.+?)$/,
 			impl: function(args) {
 				if (UI.Statemachine.isReadonly()) {
-					console.log("command_lib: sythesize SM is read only!");
+					console.log("command_lib: synthesize SM is read only!");
 					return;
 				}
 				var initial_condition = args[2];
 				var goal = args[3];
 				var path = UI.Statemachine.getDisplayedSM().getStatePath() + "/" + args[1];
-				console.log("command_lib: sythesize SM IC=[" + initial_condition + "] goal = [" + goal + "] path='" + path + "' ....");
+				console.log("command_lib: synthesize SM IC=[" + initial_condition + "] goal = [" + goal + "] path='" + path + "' ....");
 				RC.PubSub.requestBehaviorSynthesis( path, UI.Settings.getSynthesisSystem(), goal, initial_condition,
 													['finished', 'failed'], function() { UI.Tools.notifyRosCommand('synthesize'); });
 			},

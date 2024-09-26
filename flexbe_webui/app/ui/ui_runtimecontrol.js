@@ -632,7 +632,7 @@ UI.RuntimeControl = new (function() {
 			return;
 		}
 		document.getElementById('button_behavior_start').disabled = true;
-		// Start button is reenabled in RC.Controller when state changes to Configuration
+		// Start button is re-enabled in RC.Controller when state changes to Configuration
 
 		that.parseParameterConfig(function (result) {
 			param_keys = [];
@@ -929,7 +929,7 @@ UI.RuntimeControl = new (function() {
 					}
 				}
 			}
-			return; // not updating curent state path if pending outcome request
+			return; // not updating current state path if pending outcome request
 		}
 		RC.Controller.updateCurrentStatePath(targetPath);
 	}
@@ -1355,7 +1355,7 @@ UI.RuntimeControl = new (function() {
 		// Set focus on the main panel to capture key presses
 		document.getElementById("runtimecontrol").focus({preventScroll: true});
 		tab_targets = updateTabTargets("runtimecontrol");
-		// We do not set intial focus on runtime
+		// We do not set initial focus on runtime
 	}
 
 	this.removeTabHandling = function() {

@@ -1028,7 +1028,7 @@ UI.Settings = new (function() {
 		// Set focus on the main panel to capture key presses
 		document.getElementById("settings").focus({preventScroll: true});
 		tab_targets = updateTabTargets("settings");
-		// We do not set intial focus on runtime
+		// We do not set initial focus on runtime
 	}
 
 	this.removeTabHandling = function() {
