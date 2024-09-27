@@ -2,6 +2,22 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.0.1 (2024-09-26)
+------------------
+* codespell clean up
+* correct element name
+* add missing comma in setup.py
+* fix two bugs related to inconsistent naming
+* update fastapi version to avoid security warning
+* allow autonomy level selection on container outcomes
+* move selection functionality
+* copy/paste updates
+* misc fixes
+* do not scroll behavior feeback if user has moved scroll bar
+  * but warn more text is available with pale yellow background
+  * auto scroll if scroll at bottom
+* use backgroundColor consistently
+
 4.0.0 (2024-08-25)
 ------------------
 * this version is only compatible with version 4+ of the FlexBE Behavior engine
