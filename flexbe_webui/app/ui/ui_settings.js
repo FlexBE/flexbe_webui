@@ -15,6 +15,9 @@ UI.Settings = new (function() {
 	var explicit_states;
 	var gridsize;
 
+	var select_license;
+	var custom_license_file;
+
 	var pkg_cache_enabled;
 
 	var runtime_timeout;
@@ -49,6 +52,8 @@ UI.Settings = new (function() {
 			'editor_command': editor_command,
 			'explicit_states': explicit_states,
 			'gridsize': gridsize,
+			'license': select_license,
+			'license_file': custom_license_file,
 			'pkg_cache_enabled': pkg_cache_enabled,
 			'runtime_timeout': runtime_timeout,
 			'save_in_source': save_in_source,
@@ -76,6 +81,8 @@ UI.Settings = new (function() {
 			'editor_command': editor_command,
 			'explicit_states': explicit_states,
 			'gridsize': gridsize,
+			'license': select_license,
+			'license_file': custom_license_file,
 			'pkg_cache_enabled': pkg_cache_enabled,
 			'runtime_timeout': runtime_timeout,
 			'save_in_source': save_in_source,
@@ -175,6 +182,16 @@ UI.Settings = new (function() {
 				synthesis_system = items.synthesis_system;
 				document.getElementById("input_synthesis_system").value = items.synthesis_system;
 				updateSynthesisInterface();
+
+				select_license = items.license.toUpperCase();
+				document.getElementById("select_license").value = select_license;
+
+				custom_license_file = items.license_file;
+				document.getElementById("custom_license_file").value = custom_license_file;
+				if (select_license != 'CUSTOM') {
+					document.getElementById("custom_license_file").disabled = true;
+				}
+				T.logInfo(`selected license ${select_license} for behaviors (${custom_license_file})`);
 
 				text_encoding = items.text_encoding.toUpperCase();
 				document.getElementById("select_encoding").value = text_encoding;
@@ -547,6 +564,28 @@ UI.Settings = new (function() {
 		let el = document.getElementById('select_encoding');
 		if (text_encoding === el.value) return;
 		text_encoding = el.value;
+		storeSettings();
+	}
+
+	this.licenseChanged = function() {
+		let el = document.getElementById('select_license');
+		if (select_license === el.value) return;
+		select_license = el.value;
+		if (select_license != 'CUSTOM') {
+			T.logInfo(`selected ${select_license} license for behaviors`);
+			document.getElementById("custom_license_file").disabled = true;
+		} else {
+			T.logInfo(`selected ${select_license} license for behaviors (${custom_license_file})`);
+			document.getElementById("custom_license_file").disabled = false;
+		}
+		storeSettings();
+	}
+
+	this.licenseFileChanged = function() {
+		let el = document.getElementById('custom_license_file');
+		if (el.value === custom_license_file) return;
+		custom_license_file = el.value;
+		T.logInfo(`selected ${select_license} license for behaviors (${custom_license_file})`);
 		storeSettings();
 	}
 

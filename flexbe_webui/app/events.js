@@ -296,6 +296,11 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('cb_explicit_states').addEventListener('change', UI.Settings.explicitStatesClicked);
 	document.getElementById('cb_explicit_states').addEventListener('keydown', onCheckboxChange);
 
+
+	document.getElementById('select_encoding').addEventListener('change', UI.Settings.encodingChanged);
+	document.getElementById('select_license').addEventListener('change', UI.Settings.licenseChanged);
+	document.getElementById('custom_license_file').addEventListener('change', UI.Settings.licenseFileChanged);
+
 	document.getElementById('input_gridsize').addEventListener('change', UI.Settings.gridsizeChanged);
 
 	document.getElementById('cb_pkg_cache_enabled').addEventListener('change', UI.Settings.pkgCacheEnabledClicked);

@@ -46,7 +46,7 @@ class CodeGenerator:
         """Specify whether to use explicit package names."""
         self.explicit_package = exp
 
-    def generate_behavior_code(self, behavior):
+    def generate_behavior_code(self, behavior, license_text):
         """Generate the behavior python code."""
         class_name = re.sub(r'[^\w]', '', behavior.behavior_name)
         states = get_all_states(behavior.root_sm)
@@ -62,7 +62,7 @@ class CodeGenerator:
         code = '#!/usr/bin/env python\n'
         code += '# -*- coding: utf-8 -*-\n'
         code += '\n'
-        code += self.generate_license_text()
+        code += self.generate_license_text(license_text)
         code += '\n'
         code += '###########################################################\n'
         code += '#               WARNING: Generated code!                  #\n'
@@ -103,23 +103,13 @@ class CodeGenerator:
         code += self.generate_functions()
         return code
 
-    def generate_license_text(self):
+    def generate_license_text(self, license_text):
         """Generate the license text."""
         # @todo - make the license configurable
         code = ''
         code += '# Copyright ' + str(self.get_year_from_creation_date()) + ' ' + self.author + '\n'
         code += '#\n'
-        code += '# Licensed under the Apache License, Version 2.0 (the "License");\n'
-        code += '# you may not use this file except in compliance with the License.\n'
-        code += '# You may obtain a copy of the License at\n'
-        code += '#\n'
-        code += '#     http://www.apache.org/licenses/LICENSE-2.0\n'
-        code += '#\n'
-        code += '# Unless required by applicable law or agreed to in writing, software\n'
-        code += '# distributed under the License is distributed on an "AS IS" BASIS,\n'
-        code += '# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n'
-        code += '# See the License for the specific language governing permissions and\n'
-        code += '# limitations under the License.\n'
+        code += f'{license_text}'
         return code
 
     def generate_class_definition(self, class_name, behavior_name, description):

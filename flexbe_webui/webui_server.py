@@ -37,7 +37,7 @@ from .io.manifest_generator import ManifestGenerator, generate_file_name, genera
 from .io.state_parser import parse_state_folder
 from .ros import PackageData
 from .ros.packages import get_packages, has_behaviors, has_states
-from .settings import load_settings
+from .settings import load_settings, update_settings
 from .tools import find_subfolder, highlight_code, validate_path_consistency
 
 
@@ -212,17 +212,21 @@ class WebuiServer:
             try:
                 save_cache = self._settings['pkg_cache_enabled']
                 self._settings.update(json_dict['configuration'])
+                update_settings(self._settings)  # Load custom information based on settings
                 if 'file_name' in json_dict:
                     try:
                         print('Save current settings to the configuration file ...', flush=True)
-                        print(self._settings, flush=True)
+                        save_settings = self._settings.copy()
+                        save_settings.pop('license_text')
+                        print(save_settings, flush=True)
                         file_path = os.path.join(json_dict['folder_path'], json_dict['file_name'])
                         with open(file_path, 'w', encoding=self._settings['text_encoding']) as json_file:
-                            json.dump(self._settings, json_file, indent=4)
+                            json.dump(save_settings, json_file, indent=4)
                         print(f"Dictionary saved to '{file_path}'", flush=True)
                     except Exception as exc:
                         print('Failed to save configuration settings to file', flush=True)
                         return {'success': False, 'text': str(exc)}
+
                 if self._settings['pkg_cache_enabled'] and not save_cache:
                     # We have recently enabled package cache, so save what we currently have
                     self.save_package_cache()
@@ -404,10 +408,11 @@ class WebuiServer:
 
                 cg = CodeGenerator(ws=ws,
                                    target_line_length=self._settings['target_line_length'],
-                                   initialize_flexbe_core=self._settings['initialize_flexbe_core'])
+                                   initialize_flexbe_core=self._settings['initialize_flexbe_core'],
+                                   )
                 cg.set_explicit_package(explicit_package)
 
-                code = cg.generate_behavior_code(behavior)
+                code = cg.generate_behavior_code(behavior, self._settings['license_text'])
                 # Validate the code
                 try:
                     compile(code, '<string>', 'exec')
