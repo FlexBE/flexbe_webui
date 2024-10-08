@@ -307,7 +307,7 @@ class WebuiNode(Node):
                         return {'success': False, 'reason': 'Goal was canceled!'}
                     else:
                         print(f"Goal '{topic}' was not successful ({result.status})!", flush=True)
-                        return {'success': False, 'reason': "Did not success : Goal status='{result.status}'"}
+                        return {'success': False, 'reason': f"Did not succeed : Goal status='{result.status}'"}
                 except Exception as exc:
                     print(f'Error: {exc}', flush=True)
                     return {'success': False, 'reason': 'failed to retrieve future: ' + str(exc)}
