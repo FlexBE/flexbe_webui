@@ -304,17 +304,17 @@ UI.Settings = new (function() {
 
 	var displaySettingsHints = function() {
 		if (behavior_pkg_cache == undefined || behavior_pkg_cache.length == 0) {
-			let action_div = document.createElement("div");
+			//let action_div = document.createElement("div");
 
-			let pkg_select = document.createElement("select");
-			pkg_select.setAttribute("style", "width:100%; margin: 5px 0;");
-			let pkg_select_update_title = function() {
-				if (pkg_select.options.length > 0) {
-					pkg_select.setAttribute("title", pkg_select.options[pkg_select.selectedIndex].getAttribute("title"));
-				}
-			};
-			pkg_select.addEventListener('change', pkg_select_update_title);
-			console.log(`\x1b[91m skipping ros_pkg_cache check and selection options\x1b[0m`);
+			// let pkg_select = document.createElement("select");
+			// pkg_select.setAttribute("style", "width:100%; margin: 5px 0;");
+			// let pkg_select_update_title = function() {
+			// 	if (pkg_select.options.length > 0) {
+			// 		pkg_select.setAttribute("title", pkg_select.options[pkg_select.selectedIndex].getAttribute("title"));
+			// 	}
+			// };
+			// pkg_select.addEventListener('change', pkg_select_update_title);
+			console.log(`\x1b[91m skipping ros_pkg_cache check and behavior format conversion - use flexbe_app to convert format if required \x1b[0m`);
 			// let packages = ros_pkg_cache.filter((pkg) => { return !pkg['path'].startsWith("/opt/ros"); });
 			// for (let i=0; i<packages.length; i++) {
 			// 	let option = document.createElement("option");
@@ -324,51 +324,52 @@ UI.Settings = new (function() {
 			// 	pkg_select.appendChild(option);
 			// }
 
+			//let suggestion = undefined;
 			// let suggestion = packages.findElement((pkg) => { return pkg['name'] == "flexbe_behaviors"; });
 			// suggestion = suggestion || packages.findElement((pkg) => { return pkg['name'].indexOf("flexbe_behaviors") != -1; });
 			// if (suggestion != undefined) {
 			// 	pkg_select.selectedIndex = packages.indexOf(suggestion);
 			// }
-			pkg_select_update_title();
+			// pkg_select_update_title();
 
-			let pkg_convert_cb = document.createElement("input");
-			pkg_convert_cb.setAttribute("id", "pkg_convert_cb");
-			pkg_convert_cb.setAttribute("type", "checkbox");
-			if (suggestion != undefined) pkg_convert_cb.setAttribute("checked", "checked");
-			let pkg_convert_label = document.createElement("label");
-			pkg_convert_label.setAttribute("for", "pkg_convert_cb");
-			pkg_convert_label.innerText = "Convert existing behaviors";
-			let pkg_convert_group = document.createElement("div");
-			pkg_convert_group.setAttribute("title", "If this package already contains behaviors in the old format, import them into this package. You can remove the old behavior packages afterwards.");
-			pkg_convert_group.setAttribute("style", "vertical-align:middle; margin: 0 0 5px 0;");
-			pkg_convert_group.appendChild(pkg_convert_cb);
-			pkg_convert_group.appendChild(pkg_convert_label);
+			// let pkg_convert_cb = document.createElement("input");
+			// pkg_convert_cb.setAttribute("id", "pkg_convert_cb");
+			// pkg_convert_cb.setAttribute("type", "checkbox");
+			// if (suggestion != undefined) pkg_convert_cb.setAttribute("checked", "checked");
+			// let pkg_convert_label = document.createElement("label");
+			// pkg_convert_label.setAttribute("for", "pkg_convert_cb");
+			// pkg_convert_label.innerText = "Convert existing behaviors";
+			// let pkg_convert_group = document.createElement("div");
+			// pkg_convert_group.setAttribute("title", "If this package already contains behaviors in the old format, import them into this package. You can remove the old behavior packages afterwards.");
+			// pkg_convert_group.setAttribute("style", "vertical-align:middle; margin: 0 0 5px 0;");
+			// pkg_convert_group.appendChild(pkg_convert_cb);
+			// pkg_convert_group.appendChild(pkg_convert_label);
 
-			let pkg_init_button = document.createElement("input");
-			pkg_init_button.setAttribute("value", "Initialize");
-			pkg_init_button.setAttribute("type", "button");
-			pkg_init_button.addEventListener("click", function() {
-				T.clearLog();
-				T.logInfo("DEPRECATED: Initializing package " + pkg_select.value + "...");
-				T.show();
-				let pkg_name = pkg_select.value;
-				let convert = pkg_convert_cb.checked;
-				console.log(`   skipping initializeBehavior '${pkg_name}'  (${convert})`);
-				// IO.PackageGenerator.initializeBehaviorPackage(pkg_name, convert, () => {
-				// 	that.retrieveConfigurationSettings(); // load configuration parameters from server
-				// 	T.logInfo("Initialization done!");
-				// 	if (convert) {
-				// 		T.logInfo("You can now remove the old behavior packages and the /behaviors folder in "+pkg_name+".");
-				// 	}
-				// });
-			});
+			// let pkg_init_button = document.createElement("input");
+			// pkg_init_button.setAttribute("value", "Initialize");
+			// pkg_init_button.setAttribute("type", "button");
+			// pkg_init_button.addEventListener("click", function() {
+			// 	T.clearLog();
+			// 	T.logInfo("DEPRECATED: Initializing package " + pkg_select.value + "...");
+			// 	T.show();
+			// 	let pkg_name = pkg_select.value;
+			// 	let convert = pkg_convert_cb.checked;
+			// 	console.log(`   skipping initializeBehavior '${pkg_name}'  (${convert})`);
+			// 	// IO.PackageGenerator.initializeBehaviorPackage(pkg_name, convert, () => {
+			// 	// 	that.retrieveConfigurationSettings(); // load configuration parameters from server
+			// 	// 	T.logInfo("Initialization done!");
+			// 	// 	if (convert) {
+			// 	// 		T.logInfo("You can now remove the old behavior packages and the /behaviors folder in "+pkg_name+".");
+			// 	// 	}
+			// 	// });
+			// });
 
-			action_div.appendChild(pkg_select);
-			action_div.appendChild(pkg_convert_group);
-			action_div.appendChild(pkg_init_button);
+			//action_div.appendChild(pkg_select);
+			//action_div.appendChild(pkg_convert_group);
+			//action_div.appendChild(pkg_init_button);
 			UI.Feed.displayCustomMessage('msg_no_behavior_packages', 1, 'No Behavior Packages',
-				'There are no behavior packages available. Please initialize a ROS package for this purpose or prepare one manually.',
-				action_div
+				'There are no behavior packages available.\n\nPlease initialize a ROS package for this purpose or prepare one manually.',
+				//action_div
 			);
 		} else {
 			let msg = document.getElementById('msg_no_behavior_packages');
@@ -377,7 +378,7 @@ UI.Settings = new (function() {
 
 		if (state_pkg_cache == undefined || state_pkg_cache.length == 0) {
 			UI.Feed.displayCustomMessage('msg_no_state_packages', 1, 'No State Packages',
-				'The list of available states is empty. You can find available states <a href="https://github.com/FlexBE" target="_blank">on Github</a>.'
+				'The list of available FlexBE states is empty.\n\n You can find available states <a href="https://github.com/FlexBE" target="_blank">on Github</a>.'
 			);
 		} else {
 			let msg = document.getElementById('msg_no_state_packages');
