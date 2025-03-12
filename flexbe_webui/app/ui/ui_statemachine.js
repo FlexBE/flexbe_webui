@@ -11,7 +11,7 @@ UI.Statemachine = new (function() {
 
 	var pan_origin = {x: 0, y: 0};
 	var pan_shift = {x: 0, y: 0};
-
+	var sm_extents = undefined;
 	var drawings = [];
 	var drag_transition;
 	var drag_transition_drawing;
@@ -22,6 +22,7 @@ UI.Statemachine = new (function() {
 	var allow_panning = false;
 	var panning = false;
 	var mouse_pos = undefined;
+	var mouse_text = undefined;
 	var background = undefined;
 	var dataflow_displayed = false;
 	var comments_displayed = true;
@@ -45,21 +46,79 @@ UI.Statemachine = new (function() {
 	}, 'keyup');
 
 	Mousetrap.bind("shift+space", function() {
-		if (allow_panning) {
-			hideGrid();
-			drawings.forEach(function(entry) {
-				if (entry.obj instanceof State && entry.obj.getStateClass() == ':CONTAINER') return;
-				let d = entry.drawing;
-				d.translate(-pan_shift.x, -pan_shift.y);
-			});
-			pan_shift = {x: 0, y: 0};
-			if (!panning) displayGrid();
-		}
+		T.logInfo(`shift+space - Go to Home position ...`)
+		panShift(-pan_shift.x, -pan_shift.y);
 	});
 
-	var updateMousePos = function(event) {
-		mouse_pos.attr({cx: event.layerX, cy: event.layerY});
+	Mousetrap.bind("shift+home", function() {
+		T.logInfo(`shift+home - Go to Home position ...`)
+		panShift(-pan_shift.x, -pan_shift.y);
+	});
 
+	Mousetrap.bind("shift+end", function() {
+		// Move to zero starting position
+		T.logInfo(`shift+end - pan to canvas extents ...`);
+		if (sm_extents == undefined) {
+			T.logInfo(`     Undefined extents - ignore panShift to extents.`)
+			return;
+		}
+		let xc = sm_extents.x - R.width;
+		let yc = sm_extents.y - R.height;
+		if (xc < 0) xc = 0;
+		if (yc < 0) yc = 0;
+		panShift(-pan_shift.x - xc, -pan_shift.y - yc);
+	});
+
+	Mousetrap.bind("shift+left", function() {
+		T.logInfo(`shift+left - pan left ...`);
+		panShift(UI.Settings.getGridsize(), 0);
+	});
+	Mousetrap.bind("shift+right", function() {
+		T.logInfo(`shift+right - pan right ...`);
+		panShift(-UI.Settings.getGridsize(), 0);
+	});
+	Mousetrap.bind("shift+up", function() {
+		T.logInfo(`shift+up - pan up ...`);
+		panShift(0, UI.Settings.getGridsize());
+	});
+	Mousetrap.bind("shift+down", function() {
+		T.logInfo(`shift+down - pan down ...`);
+		panShift(0, -UI.Settings.getGridsize());
+	});
+
+	var panShift = function(dx, dy) {
+		if (!allow_panning) {
+			T.logInfo(`    Panning is not allowed in this configuration!`);
+			return;
+		}
+		hideGrid();
+		pan_shift.x += dx;
+		pan_shift.y += dy;
+		if (pan_shift.x > 0 ) {
+			dx =  dx - pan_shift.x
+			T.logInfo(`Limit pan shift! (${dx}, ${dy}) current pan(${pan_shift.x}, ${pan_shift.y})`);
+			pan_shift.x = 0;
+		}
+		if (pan_shift.y > 0 ) {
+			dy = dy - pan_shift.y;
+			T.logInfo(`Limit pan shift! (${dx}, ${dy}) current pan(${pan_shift.x}, ${pan_shift.y})`);
+			pan_shift.y = 0;
+		}
+		drawings.forEach(function(entry) {
+			if (entry.obj instanceof State && entry.obj.getStateClass() == ':CONTAINER') return;
+			let d = entry.drawing;
+			//T.logInfo(`  drawing BB  pre = ${JSON.stringify(d.getBBox())} (${dx}, ${dy})  ${d}`);
+			d.translate(dx, dy);
+			//T.logInfo(`  drawing BB  post= ${JSON.stringify(d.getBBox())}`)
+		});
+		T.logInfo(`Pan shifted (${dx}, ${dy})(${pan_shift.x}, ${pan_shift.y}).`)
+
+		if (!panning) displayGrid();
+	}
+
+	var updateMousePos = function(event) {
+		mouse_pos.attr({ cx: event.offsetX, cy: event.offsetY });
+		mouse_text.attr({ x: event.offsetX, y: event.offsetY  - 15, text: `(${event.offsetX}, ${event.offsetY})`});
 		if (connecting) that.refreshView();
 	}
 
@@ -102,24 +161,9 @@ UI.Statemachine = new (function() {
 	var updateSelection = function(dx, dy, x, y, event) {
 		if (panning) {
 			let shift = {x: x - pan_origin.x, y: y - pan_origin.y};
-			pan_shift.x += shift.x;
-			if (pan_shift.x > 0) {
-				pan_shift.x -= shift.x;
-				shift.x = 0;
-			}
-			pan_shift.y += shift.y;
-			if (pan_shift.y > 0) {
-				pan_shift.y -= shift.y;
-				shift.y = 0;
-			}
-			drawings.forEach(function(el) {
-				if (el.obj instanceof State && el.obj.getStateClass() == ':CONTAINER') return;
-				let d = el.drawing;
-				d.translate(shift.x, shift.y);
-			});
+			panShift(shift.x, shift.y);
 			pan_origin.x = x;
 			pan_origin.y = y;
-
 		}
 		if (selecting) {
 			let newWidth = Math.abs(dx);  // New width of the selection area based on drag distance
@@ -335,7 +379,7 @@ UI.Statemachine = new (function() {
 
 	var initializeDrawingArea = function() {
 		R = Raphael("drawing_area");
-		drag_indicator = R.rect(0,0,1,1).attr({opacity: 0});
+		drag_indicator = R.rect(0,0,1,1).attr({opacity: 0.5}); // @todo - opacity 0
 		selection_area = R.rect(0,0,0,0).attr({
 			opacity: 0,
 			stroke: "#000", 'stroke-dasharray': "--",
@@ -344,12 +388,16 @@ UI.Statemachine = new (function() {
 			cursor: "pointer"})
 			.drag(updateSelectionMove, beginSelectionMove, endSelectionMove);
 
-		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0});
+		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0.5}); // @todo - opacity 0
+		mouse_text = R.text(R.width / 2, R.height/2 + 10, `(${R.width/2}, ${R.height/2})`)
+						.attr({'font-size': 16, 'fill': 'gray'}); // @todo - remove text
+
 		background = R.rect(0, 0, R.width, R.height)
 			.attr({fill: '#FFF', stroke: '#FFF'}).toBack()
 			.mousemove(updateMousePos)
 			.drag(updateSelection, beginSelection, endSelection)
 			.click(function() { document.activeElement.blur(); });
+		sm_extents = {x: R.width, y: R.height};
 	}
 
 
@@ -602,16 +650,8 @@ UI.Statemachine = new (function() {
 	}
 
 	this.fireEvent = function (element,event) {
-		if (document.createEventObject) {
-			// dispatch for IE
-			let evt = document.createEventObject();
-			return element.fireEvent('on'+event,evt)
-		} else {
-			// dispatch for firefox + others
-			let evt = document.createEvent("HTMLEvents");
-			evt.initEvent(event, true, true); // event type,bubbling,cancelable
-			return !element.dispatchEvent(evt);
-		}
+		let evt = new Event(event, { bubbles: true, cancelable: true });
+		return !element.dispatchEvent(evt);
 	}
 
 	this.refreshView = function() {
@@ -649,6 +689,8 @@ UI.Statemachine = new (function() {
 		let transitions = displayed_sm.getTransitions();
 		let dataflow = displayed_sm.getDataflow();
 
+		sm_extents = {x:0, y:0};
+
 		for (let i=0; i<states.length; ++i) {
 			let s = states[i];
 			let a = RC.Controller.isRunning() && RC.Controller.isCurrentState(s, true);
@@ -659,11 +701,17 @@ UI.Statemachine = new (function() {
 				drawings.push(new Drawable.BehaviorState(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
 			else
 				drawings.push(new Drawable.State(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
+
+			if (s.getPosition().x > sm_extents.x) sm_extents.x = s.getPosition().x + UI.Settings.getGridsize()*2;
+			if (s.getPosition().y > sm_extents.y) sm_extents.y = s.getPosition().y + UI.Settings.getGridsize()*2;
+
 		}
 		for (let i=0; i<sm_outcomes.length; ++i) {
 			o = sm_outcomes[i];
 			let obj = new Drawable.Outcome(o, R, false, !outcomes_displayed);
 			drawings.push(obj);
+			if (o.getPosition().x > sm_extents.x) sm_extents.x = o.getPosition().x + UI.Settings.getGridsize();
+			if (o.getPosition().y > sm_extents.y) sm_extents.y = o.getPosition().y + UI.Settings.getGridsize();
 		}
 
 		// draw transitions at last
@@ -698,6 +746,9 @@ UI.Statemachine = new (function() {
 			});
 			new_transitions.push(dt);
 			drawings.push(dt);
+
+			if (t.getX() != undefined && t.getX() > sm_extents.x) sm_extents.x = t.getX() + UI.Settings.getGridsize()*2;
+			if (t.getY() != undefined && t.getY() > sm_extents.y) sm_extents.y = t.getY() + UI.Settings.getGridsize()*2;
 		}
 
 		new_transitions = [];
@@ -845,6 +896,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.removeTransition = function() {
+		T.logInfo(`** ui_statemachine : removeTransition ret conn=${!connecting} ... `);
 		if (!connecting) return;
 		if (!displayed_sm.hasTransition(drag_transition)) {
 			that.abortTransition();
@@ -904,13 +956,12 @@ UI.Statemachine = new (function() {
 	}
 
 	this.connectTransition = function(state) {
-		// console.log('UI.StateMachine connectTransition ...');
 		if (!connecting) return;
 		if (displayed_sm.isConcurrent()
 			&& state.getStateClass() != ':CONDITION'
-			&& drag_transition.getFrom().getStateName() != "INIT")
+			&& drag_transition.getFrom().getStateName() != "INIT") {
 			return;
-
+		}
 		let is_initial = drag_transition == displayed_sm.getInitialTransition();
 		let has_transition = displayed_sm.hasTransition(drag_transition);
 		let undo_end = previous_transition_end;
