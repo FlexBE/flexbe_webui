@@ -488,7 +488,6 @@ RC.PubSub = new (function() {
 
 	var synthesis_action_result_callback = function(result, root, result_cb) {
 		console.log(`\x1b[92mRC.PubSub: synthesis_action_result_callback ...\x1b[0m`);
-		console.log(result);
 		if (result == undefined) {
 			T.logError("Synthesis cancelled.");
 			return;
@@ -500,7 +499,6 @@ RC.PubSub = new (function() {
 		var root_split = root.split("/");
 		var root_name = root_split[root_split.length - 1];
 		var root_container_path = root.replace("/" + root_name, "");
-		console.log(`        root container path=${root_container_path} ...`);
 		var root_container = (root_container_path == "")? Behavior.getStatemachine() :
 								Behavior.getStatemachine().getStateByPath(root_container_path);
 		var root_varname = "";
@@ -544,7 +542,7 @@ RC.PubSub = new (function() {
 			state_machine.setOutputMapping(o_maps);
 
 			transitions.forEach(root_container.addTransition);
-			console.log(`   finished updating container with synthesized state machine!`);
+			console.log(`\x1b[92mRC.PubSub: finished updating container with synthesized state machine!\x1b[0m`);
 		} else {
 			console.log(`\x1b[92mRC.PubSub: adding synthesized SM directly to root container ...\x1b[0m`);
 			root_container.addState(state_machine);

@@ -80,10 +80,12 @@ IO.ModelGenerator = new (function() {
 			container_sm.setPriority(true);
 		}
 
-		// add states
+		// add states belonging to this container that are not outcomes
 		var container_states = sm_states.findElement(function(element) {
 			return element.sm_name == container_sm_var_name;
-		}).sm_states;
+		}).sm_states.filter(function(obj) {
+			return (obj.state_class != ':OUTCOME')
+		});
 		for (var i=0; i<container_states.length; i++) {
 			var s_def = container_states[i];
 			var s;
@@ -206,12 +208,34 @@ IO.ModelGenerator = new (function() {
 			}
 		}
 
-		var oc_objs = container_sm.getSMOutcomes();
+		// Process outcomes
+		let oc_objs = container_sm.getSMOutcomes();
+		let container_oc_states = sm_states.findElement(function(element) {
+			return (element.sm_name == container_sm_var_name);
+		}).sm_states.filter(function(obj) {
+			return obj.state_class == ':OUTCOME';
+		});
+		if (container_oc_states) {
+			// State defs includes :OUTCOME states
+			container_oc_states.forEach(element => {
+				let found = false;
+				for (let i = 0; i < oc_objs.length; i++) {
+					if (oc_objs[i].getStateName() === element.state_name) {
+						oc_objs[i].setPosition({x: element.state_pos_x, y: element.state_pos_y});
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					T.logError(`Failed to find matching outcome for state '${element.state_name}'`);
+				}
+			});
+		}
+		// Alternate approach to setting positions
 		var oc_pos_len = Math.min(oc_objs.length, container_sm_def.oc_positions.length);
 		for (var i = 0; i < oc_pos_len; i++) {
 			oc_objs[i].setPosition(container_sm_def.oc_positions[i]);
 		}
-
 		return container_sm;
 	}
 
