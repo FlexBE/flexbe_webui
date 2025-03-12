@@ -111,7 +111,7 @@ UI.Statemachine = new (function() {
 			d.translate(dx, dy);
 			//T.logInfo(`  drawing BB  post= ${JSON.stringify(d.getBBox())}`)
 		});
-		T.logInfo(`Pan shifted (${dx}, ${dy})(${pan_shift.x}, ${pan_shift.y}).`)
+		T.logInfo(`Pan shifted: dx, dy=(${dx}, ${dy})  pan shift=(${pan_shift.x}, ${pan_shift.y}).`)
 
 		if (!panning) displayGrid();
 	}

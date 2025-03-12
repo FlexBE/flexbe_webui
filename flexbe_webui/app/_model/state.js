@@ -167,7 +167,7 @@ const State = function(_state_name, state_def) {
 	var output_mapping = [];
 	for (let i=0; i<output_keys.length; ++i) output_mapping[i] = output_keys[i];
 
-	var position = {x: 30, y: 40};
+	var position = {x: 30 - UI.Statemachine.getPanShift().x, y: 40 - UI.Statemachine.getPanShift().y};
 
 	var container = undefined;
 
