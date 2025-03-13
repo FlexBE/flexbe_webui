@@ -15,7 +15,8 @@ const Statemachine = function(sm_name, sm_definition) {
 
 	var addSMOutcome = function(outcome) {
 		var outcome_state = new State(outcome + (concurrent? ('#' + sm_outcomes.length) : ''), WS.Statelib.getFromLib(concurrent? ":CONDITION" : ":OUTCOME"));
-		outcome_state.setPosition({x: 30 + sm_outcomes.length * 100, y: UI.Statemachine.getR().height / 2});
+		//outcome_state.setPosition({x: 30 + sm_outcomes.length * 100, y: UI.Statemachine.getR().height / 2});
+		outcome_state.setPosition({x: UI.Statemachine.getR().width - 50, y: (1 + sm_outcomes.length) * UI.Statemachine.getR().height / 10});
 		sm_outcomes.push(outcome_state);
 		outcome_state.setContainer(that);
 	}
@@ -244,7 +245,8 @@ const Statemachine = function(sm_name, sm_definition) {
 	this.addOutcome = function(outcome) {
 		sm_definition.addOutcome(outcome);
 		var outcome_state = new State(outcome, WS.Statelib.getFromLib(concurrent? ":CONDITION" : ":OUTCOME"));
-		outcome_state.setPosition({x: 30 + sm_outcomes.length * 100, y: UI.Statemachine.getR().height / 2});
+		//outcome_state.setPosition({x: 30 + sm_outcomes.length * 100, y: UI.Statemachine.getR().height / 2});
+		outcome_state.setPosition({x: UI.Statemachine.getR().width - 50, y: (1 + sm_outcomes.length) * UI.Statemachine.getR().height / 10});
 		outcome_state.setContainer(that);
 		sm_outcomes.push(outcome_state);
 		that.getOutcomes().push(outcome);
