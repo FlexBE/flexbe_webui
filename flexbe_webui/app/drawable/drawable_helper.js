@@ -146,15 +146,16 @@ Drawable.Helper = new (function() {
 		ly = dy + oy;
 		lx = Math.min(Math.max(lx, 0), UI.Statemachine.getR().width - this.data("bubble").attr("rx")*2);
 		ly = Math.min(Math.max(ly, 0), UI.Statemachine.getR().height - this.data("bubble").attr("ry")*2);
-		const ul_x = lx - this.data("bubble").attr("rx");
-		const ul_y = ly - this.data("bubble").attr("ry");
+		const ul_x = lx - this.data("bubble").attr("rx"); // center to upper left corner in screen coordinates
+		const ul_y = ly - this.data("bubble").attr("ry"); // center to upper left corner in screen coordinates;
 		let i_pos = {x: ul_x, y: ul_y};
 		if (evt.shiftKey) {
 			i_pos = that.snapToCenter(ul_x, ul_y, this.data("bubble").attr("rx")*2, this.data("bubble").attr("ry")*2);
 		 }
-		UI.Statemachine.getDragIndicator().attr({x: i_pos.x, y: i_pos.y, opacity: 1,
+		 UI.Statemachine.getDragIndicator().attr({x: i_pos.x, y: i_pos.y, opacity: 1,
 				width: this.data("bubble").attr("rx")*2,
 				height: this.data("bubble").attr("ry")*2});
+
 		/*if(that.intersectsAnyOther(UI.Statemachine.getDragIndicator(), this.data("state")))
 			UI.Statemachine.getDragIndicator().attr({'stroke': '#F00', 'fill': 'rgba(100%, 0%, 0%, 50%)'});
 		else
@@ -165,7 +166,7 @@ Drawable.Helper = new (function() {
 	// state - object representing the state
 	this.startFnc = function() {
 		if (UI.Statemachine.isConnecting()) return;
-		lx = this.data("state").getPosition().x + UI.Statemachine.getPanShift().x;
+		lx = this.data("state").getPosition().x + UI.Statemachine.getPanShift().x; // coordinates on screen
 		ly = this.data("state").getPosition().y + UI.Statemachine.getPanShift().y;
 		ox = this.data("state").getPosition().x + UI.Statemachine.getPanShift().x;
 		oy = this.data("state").getPosition().y + UI.Statemachine.getPanShift().y;
@@ -184,7 +185,7 @@ Drawable.Helper = new (function() {
 			trans.setY(this.data("set_y")); // recovered stored value as we begin to move
 		}
 
-		lx = trans.getX() + UI.Statemachine.getPanShift().x;
+		lx = trans.getX() + UI.Statemachine.getPanShift().x;  // transform center canvas coordinates to screen
 		ly = trans.getY() + UI.Statemachine.getPanShift().y;
 		ox = trans.getX() + UI.Statemachine.getPanShift().x;
 		oy = trans.getY() + UI.Statemachine.getPanShift().y;
@@ -201,11 +202,12 @@ Drawable.Helper = new (function() {
 		var container = state.getContainer();
 		var state_name = state.getStateName();
 		var old_pos = state.getPosition();
-		var new_pos = (UI.Statemachine.getDragIndicator().attr('width') > 1)?
-			UI.Statemachine.getDragIndicator().attr(['x', 'y']):
-			state.getPosition();
-		new_pos.x -= UI.Statemachine.getPanShift().x;
-		new_pos.y -= UI.Statemachine.getPanShift().y;
+		var new_pos = state.getPosition();
+		if (UI.Statemachine.getDragIndicator().attr('width') > 1) {
+			new_pos = UI.Statemachine.getDragIndicator().attr(['x', 'y']); // screen coordinates of upper left (as is state reference)
+			new_pos.x -= UI.Statemachine.getPanShift().x; // screen to absolute coordinates
+			new_pos.y -= UI.Statemachine.getPanShift().y;
+		}
 
 		UI.Statemachine.getDragIndicator().attr({x: 0, y: 0, opacity: 0, width: 1, height: 1});
 		state.setPosition(new_pos);
@@ -262,6 +264,7 @@ Drawable.Helper = new (function() {
 	// transition - object representing the state
 	this.endFncTransition = function(evt) {
 		if (UI.Statemachine.isConnecting()) return;
+
 		var transition = this.data("transition");
 		/* var bbox = (UI.Statemachine.getDragIndicator().attr('width') > 1)?
 			UI.Statemachine.getDragIndicator().getBBox():
@@ -271,16 +274,16 @@ Drawable.Helper = new (function() {
 		var old_pos = {x: transition.getX(), y: transition.getY()};
 		var new_pos = {x: transition.getX(), y: transition.getY()};
 
-		if (UI.Statemachine.getDragIndicator().attr('width') > 1) {
-			new_pos = UI.Statemachine.getDragIndicator().attr(['x', 'y']);
+		if (UI.Statemachine.getDragIndicator().attr('width') > 1 || UI.Statemachine.getDragIndicator().attr('height') > 1) {
 			// Calculate the center of the drag box
-			new_pos.x += UI.Statemachine.getDragIndicator().getBBox().width / 2;
+			new_pos = UI.Statemachine.getDragIndicator().attr(['x', 'y']);       // upper left screen coordinates
+			new_pos.x += UI.Statemachine.getDragIndicator().getBBox().width / 2; // center screen coordinates
 			new_pos.y += UI.Statemachine.getDragIndicator().getBBox().height / 2;
-			new_pos.x -= UI.Statemachine.getPanShift().x;
+			new_pos.x -= UI.Statemachine.getPanShift().x;  // center screen to absolute canvas coordinates
 			new_pos.y -= UI.Statemachine.getPanShift().y;
 		}
 
-		UI.Statemachine.getDragIndicator().attr({x: 0, y: 0, opacity: 0, width: 1, height: 1});
+		UI.Statemachine.getDragIndicator().attr({x: 0, y: 0, opacity: 0, width: 1, height: 1});  // move out of way and hide
 		transition.setX(new_pos.x);
 		transition.setY(new_pos.y);
 		UI.Statemachine.updateMergedTransitions(transition);
@@ -311,157 +314,45 @@ Drawable.Helper = new (function() {
 
 	this.startFncEndPoint = function() {
 		if (UI.Statemachine.isConnecting()) return;
-		lx = this.data("point").attr("cx")+ UI.Statemachine.getPanShift().x;
-		ly = this.data("point").attr("cy")+ UI.Statemachine.getPanShift().y;
-		ox = this.data("point").attr("cx")+ UI.Statemachine.getPanShift().x;
-		oy = this.data("point").attr("cy")+ UI.Statemachine.getPanShift().y;
+		lx = this.data("point").attr("cx") + UI.Statemachine.getPanShift().x; // absolute to screen coordinates
+		ly = this.data("point").attr("cy") + UI.Statemachine.getPanShift().y;
+		ox = this.data("point").attr("cx") + UI.Statemachine.getPanShift().x;
+		oy = this.data("point").attr("cy") + UI.Statemachine.getPanShift().y;
 	}
 
-	//returns true if point c is to the left of the line drawn by connecting points a and b
+	// returns true if point c is to the left of the line drawn by connecting points a and b
+	// by calculating the 2D cross product of ab x ac
 	this.isLeft = function(a, b, c){
 		return ((b.x - a.x)*(c.y - a.y)) - ((b.y - a.y)*(c.x - a.x)) >= 0
 	}
 
 	this.moveFncEndPoint = function(dx, dy, x, y, evt) {
-		x =  UI.Statemachine.getMousePos().getBBox().x;
-		y =  UI.Statemachine.getMousePos().getBBox().y;
-		var i_pos = {x, y};
-		var corners = this.data("corners"); //[top left, bottom left, bottom right, top right]
+		x =  UI.Statemachine.getMousePos().getBBox().cx - UI.Statemachine.getPanShift().x; // account for movement of canvas
+		y =  UI.Statemachine.getMousePos().getBBox().cy - UI.Statemachine.getPanShift().y; // by converting from screen to absolute coordinates
 
+		var corners = this.data("corners"); //[top left, bottom left, bottom right, top right]
 		if(x > corners[0].x && x < corners[2].x && y > corners[0].y && y<corners[2].y){
+			// Only calculate move when we are beyond boundaries of the state box
 			return;
 		}
 
-		var diagonal_point1;
-		var diagonal_point2;
-		var screen_height = UI.Statemachine.getR().height;
-		var screen_width = UI.Statemachine.getR().width;
-		if (y <= corners[0].y){
-			diagonal_point1 = corners[0].y >= corners[0].x ? {x: 0, y: corners[0].y-corners[0].x} : {x: corners[0].x-corners[0].y, y: 0};
-			diagonal_point2 = corners[3].y >= screen_width-corners[3].x ? {x: screen_width, y: corners[3].y - (screen_width-corners[3].x)} : {x: corners[3].x+corners[3].y, y:0};
-			if(that.isLeft(diagonal_point2, corners[3], i_pos) && !(that.isLeft(diagonal_point1, corners[0], i_pos))){
-				let x1 = (corners[0].x-(corners[0].y-y));
-				x1 = x1 < 0 ? 0: x1;
-				let x2 = (corners[3].x+(corners[3].y-y));
-				x2 = x2 > screen_width ? screen_width : x2;
-				let width = x2-x1
-				i_pos.x = ((x-x1)/width) * (corners[3].x-corners[0].x);
-				i_pos.x = i_pos.x+corners[0].x;
-				i_pos.y = corners[0].y;
-			}
-			//if (corners[0].x < x && x < corners[3].x)
-
-		}else if (y > corners[1].y){
-			diagonal_point1 = screen_height - corners[1].y >= corners[1].x ? {x: 0, y:corners[1].y+corners[1].x} : {x: corners[1].x-(screen_height - corners[1].y), y:screen_height};
-			diagonal_point2 = screen_height - corners[2].y >= screen_width - corners[2].x ? {x: screen_width, y:corners[2].y+(screen_width - corners[2].x)}: {x: corners[2].x+(screen_height - corners[2].y), y:screen_height};
-			if(that.isLeft(corners[2], diagonal_point2, i_pos) && !(that.isLeft(corners[1], diagonal_point1, i_pos))){
-				let x1 = corners[1].x-(y-corners[1].y);
-				x1 = x1 < 0 ? 0: x1;
-				let x2 = corners[2].x+(y-corners[2].y);
-				x2 = x2 > screen_width ? screen_width : x2;
-				let width = x2-x1;
-				i_pos.x = ((x-x1)/width) * (corners[2].x-corners[1].x);
-				i_pos.x = i_pos.x + corners[1].x
-				i_pos.y = corners[1].y;
-			}
-			//if (corners[1].x < x && x < corners[2].x){
-		}
-
-		if(i_pos.x == x || i_pos.y == y){
-			if (x < corners[0].x){
-				let y1 = corners[0].y - (corners[0].x - x)
-				y1 = y1 < 0 ? 0: y1;
-				let y2 = corners[1].y + (corners[1].x - x);
-				y2 = y2 > screen_height ? screen_height : y2;
-				const height = y2-y1;
-				i_pos.x = corners[0].x;
-				i_pos.y = ((y-y1)/height) * (corners[1].y - corners[0].y);
-				i_pos.y = i_pos.y + corners[0].y
-			}
-			else if (x > corners[3].x){
-				let y1 = corners[3].y - (x - corners[3].x)
-				y1 = y1 < 0 ? 0: y1;
-				let y2 = corners[2].y + (x - corners[2].x);
-				y2 = y2 > screen_height ? screen_height : y2;
-				const height = y2-y1;
-				i_pos.x = corners[3].x;
-				i_pos.y = ((y-y1)/height) * (corners[2].y - corners[3].y);
-				i_pos.y = i_pos.y + corners[3].y
-			}
-		}
-
+		let i_pos = that.clampToBox(x, y, corners);
 		this.data("point").attr({"cx": i_pos.x, "cy": i_pos.y});
 
 	}
 
 	this.endPointClick = function(point, _corners){
-		const x =  point.attr("cx");
+		const x =  point.attr("cx"); // current location of end point
 		const y =  point.attr("cy");
-		let i_pos = {x, y};
+
 		let corners = _corners; //[top left, bottom left, bottom right, top right]
 
 		if(x > corners[0].x && x < corners[2].x && y > corners[0].y && y<corners[2].y){
+			// Only calculate move when we are beyond boundaries of the state box
 			return;
 		}
 
-		let diagonal_point1;
-		let diagonal_point2;
-		let screen_height = UI.Statemachine.getR().height;
-		let screen_width = UI.Statemachine.getR().width;
-		if (y <= corners[0].y){
-			diagonal_point1 = corners[0].y >= corners[0].x ? {x: 0, y: corners[0].y-corners[0].x} : {x: corners[0].x-corners[0].y, y: 0};
-			diagonal_point2 = corners[3].y >= screen_width-corners[3].x ? {x: screen_width, y: corners[3].y - (screen_width-corners[3].x)} : {x: corners[3].x+corners[3].y, y:0};
-			if(that.isLeft(diagonal_point2, corners[3], i_pos) && !(that.isLeft(diagonal_point1, corners[0], i_pos))){
-				let x1 = (corners[0].x-(corners[0].y-y));
-				x1 = x1 < 0 ? 0: x1;
-				let x2 = (corners[3].x+(corners[3].y-y));
-				x2 = x2 > screen_width ? screen_width : x2;
-				const width = x2-x1
-				i_pos.x = ((x-x1)/width) * (corners[3].x-corners[0].x);
-				i_pos.x = i_pos.x+corners[0].x;
-				i_pos.y = corners[0].y;
-			}
-			//if (corners[0].x < x && x < corners[3].x)
-
-		}else if (y > corners[1].y){
-			diagonal_point1 = screen_height - corners[1].y >= corners[1].x ? {x: 0, y:corners[1].y+corners[1].x} : {x: corners[1].x-(screen_height - corners[1].y), y:screen_height};
-			diagonal_point2 = screen_height - corners[2].y >= screen_width - corners[2].x ? {x: screen_width, y:corners[2].y+(screen_width - corners[2].x)}: {x: corners[2].x+(screen_height - corners[2].y), y:screen_height};
-			if(that.isLeft(corners[2], diagonal_point2, i_pos) && !(that.isLeft(corners[1], diagonal_point1, i_pos))){
-				let x1 = corners[1].x-(y-corners[1].y);
-				x1 = x1 < 0 ? 0: x1;
-				let x2 = corners[2].x+(y-corners[2].y);
-				x2 = x2 > screen_width ? screen_width : x2;
-				const width = x2-x1;
-				i_pos.x = ((x-x1)/width) * (corners[2].x-corners[1].x);
-				i_pos.x = i_pos.x + corners[1].x
-				i_pos.y = corners[1].y;
-			}
-			//if (corners[1].x < x && x < corners[2].x){
-		}
-
-		if(i_pos.x == x || i_pos.y == y){
-			if (x < corners[0].x){
-				let y1 = corners[0].y - (corners[0].x - x)
-				y1 = y1 < 0 ? 0: y1;
-				let y2 = corners[1].y + (corners[1].x - x);
-				y2 = y2 > screen_height ? screen_height : y2;
-				const height = y2-y1;
-				i_pos.x = corners[0].x;
-				i_pos.y = ((y-y1)/height) * (corners[1].y - corners[0].y);
-				i_pos.y = i_pos.y + corners[0].y
-			}
-			else if (x > corners[3].x){
-				let y1 = corners[3].y - (x - corners[3].x)
-				y1 = y1 < 0 ? 0: y1;
-				let y2 = corners[2].y + (x - corners[2].x);
-				y2 = y2 > screen_height ? screen_height : y2;
-				const height = y2-y1;
-				i_pos.x = corners[3].x;
-				i_pos.y = ((y-y1)/height) * (corners[2].y - corners[3].y);
-				i_pos.y = i_pos.y + corners[3].y
-			}
-		}
-
+		let i_pos = that.clampToBox(x, y, corners);
 		point.attr({"cx": i_pos.x, "cy": i_pos.y})
 	}
 
@@ -481,6 +372,63 @@ Drawable.Helper = new (function() {
 	// state - object representing the state
 	this.connectTransition = function() {
 		UI.Statemachine.connectTransition(this.data("state"));
+	}
+
+	this.clampToBox = function(x, y, corners) {
+		//
+		var i_pos = {x, y};
+		if(x > corners[0].x && x < corners[2].x && y > corners[0].y && y<corners[2].y){
+			// Only calculate move when we are beyond boundaries of the state box
+			// This should not happen as should be checked outside of this call
+			return i_pos;
+		}
+
+		// Step 1: Compute the center of the box
+		let centerX = (corners[0].x + corners[2].x) / 2;
+		let centerY = (corners[0].y + corners[2].y) / 2;
+
+		// Step 2: Compute direction vector from center to (x, y)
+		let dx = x - centerX;
+		let dy = y - centerY;
+
+		if (dx === 0 && dy === 0) {
+			// The point is already at the center, return the center itself
+			return { x: centerX, y: centerY };
+		}
+
+		// Step 3: Find scaling factor (t) to move the point to the boundary
+		// Function to find intersection of line with an edge
+		function intersectWithEdge(cx, cy, dx, dy, edgeStart, edgeEnd) {
+			let ex = edgeEnd.x - edgeStart.x;
+			let ey = edgeEnd.y - edgeStart.y;
+
+			let denominator = dx * ey - dy * ex;
+			if (denominator === 0) return null; // Parallel lines, no intersection
+
+			let t = ((edgeStart.x - cx) * ey - (edgeStart.y - cy) * ex) / denominator;
+			let u = ((edgeStart.x - cx) * dy - (edgeStart.y - cy) * dx) / denominator;
+
+			// Intersection must be within edge bounds (0 ≤ u ≤ 1)
+			if (u < 0 || u > 1) return null;
+			return t;
+		}
+
+		let tValues = [];
+		corners.forEach((corner, i) => {
+			let nextCorner = corners[(i + 1) % 4]; // Next corner in sequence (wraps around)
+			let t = intersectWithEdge(centerX, centerY, dx, dy, corner, nextCorner);
+			if (t !== null) {
+				tValues.push(t);
+			}
+		});
+
+		if (tValues.length != 0) {
+			// Step 4: Use the smallest positive t to find the intersection point
+			let tMin = Math.min(...tValues.filter(t => t > 0));
+			i_pos.x = centerX + tMin * dx;
+			i_pos.y = centerY + tMin * dy;
+		}
+		return i_pos;
 	}
 
 }) ();

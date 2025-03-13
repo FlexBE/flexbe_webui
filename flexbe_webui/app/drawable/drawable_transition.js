@@ -315,7 +315,6 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 			path = ["M", x1.toFixed(3), y1.toFixed(3), "L", x2.toFixed(3), y2.toFixed(3)].join(",");
 		}
 	} else{
-		// console.log("\x1b[31m  SM view with custom placement of bubble using getX() and getY()\x1b[0m");
 		if (path_type == Drawable.Transition.PATH_CURVE) {
 			//path = ["M", x1.toFixed(3), y1.toFixed(3), "C", x4, y4, x3, y3, x2.toFixed(3), y2.toFixed(3)].join(",");
 			path = ["M", x1.toFixed(3), y1.toFixed(3), "R", x3.toFixed(3), y3.toFixed(3), x2.toFixed(3), y2.toFixed(3)].join(",");
@@ -341,19 +340,24 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 	var text_set = paper.set();
 	var bbox = line.getBBox();
 
-	if (UI.Statemachine.isConnecting()){
-		transition_obj.setX(Math.floor(bbox.x + bbox.width / 2 ));
-		transition_obj.setY(Math.floor(bbox.y + bbox.height / 2));
-		// console.log("Connecting transition: (" + transition_obj.getX() + ", " + transition_obj.getY() + ") <" + JSON.stringify(bbox) + ">");
-	}
+	// Reset the bubble setX, setY and only initialize when dragging
+	// if (UI.Statemachine.isConnecting()){
+	// 	//transition_obj.setX(Math.floor(bbox.x + bbox.width / 2 ) );
+	// 	//transition_obj.setY(Math.floor(bbox.y + bbox.height / 2) );
+	// } else {
+	// 	if (transition_obj.getX() == undefined || transition_obj.getY() == undefined) {
+	// 		transition_obj.setX(Math.floor(bbox.x + bbox.width / 2 ));
+	// 		transition_obj.setY(Math.floor(bbox.y + bbox.height / 2));
+	// 	}
+	// }
 
 	if (transition_obj.getOutcome() && !outline) {
 
 		var text_obj;
 		var center = {'x': bbox.x + bbox.width / 2, 'y': bbox.y + bbox.height / 2};
 		if (!runtime_view && transition_obj.getX() != undefined && transition_obj.getY() != undefined){
-			center.x = transition_obj.getX();
-			center.y = transition_obj.getY();
+			center.x = transition_obj.getX(); //+ UI.Statemachine.getPanShift().x; // move to screen coordinates
+			center.y = transition_obj.getY(); //+ UI.Statemachine.getPanShift().y;
 		}
 
 		// Draw outcome text (centered by default)

@@ -22,7 +22,7 @@ UI.Statemachine = new (function() {
 	var allow_panning = false;
 	var panning = false;
 	var mouse_pos = undefined;
-	var mouse_text = undefined;
+	// var mouse_text = undefined;
 	var background = undefined;
 	var dataflow_displayed = false;
 	var comments_displayed = true;
@@ -46,20 +46,19 @@ UI.Statemachine = new (function() {
 	}, 'keyup');
 
 	Mousetrap.bind("shift+space", function() {
-		T.logInfo(`shift+space - Go to Home position ...`)
+		// console.log(`shift+space - Go to Home position ...`)
 		panShift(-pan_shift.x, -pan_shift.y);
 	});
 
 	Mousetrap.bind("shift+home", function() {
-		T.logInfo(`shift+home - Go to Home position ...`)
+		// console.log(`shift+home - Go to Home position ...`)
 		panShift(-pan_shift.x, -pan_shift.y);
 	});
 
 	Mousetrap.bind("shift+end", function() {
 		// Move to zero starting position
-		T.logInfo(`shift+end - pan to canvas extents ...`);
+		// console.log(`shift+end - pan to canvas extents ...`);
 		if (sm_extents == undefined) {
-			T.logInfo(`     Undefined extents - ignore panShift to extents.`)
 			return;
 		}
 		let xc = sm_extents.x - R.width;
@@ -70,19 +69,19 @@ UI.Statemachine = new (function() {
 	});
 
 	Mousetrap.bind("shift+left", function() {
-		T.logInfo(`shift+left - pan left ...`);
+		// console.log(`shift+left - pan left ...`);
 		panShift(UI.Settings.getGridsize(), 0);
 	});
 	Mousetrap.bind("shift+right", function() {
-		T.logInfo(`shift+right - pan right ...`);
+		// console.log(`shift+right - pan right ...`);
 		panShift(-UI.Settings.getGridsize(), 0);
 	});
 	Mousetrap.bind("shift+up", function() {
-		T.logInfo(`shift+up - pan up ...`);
+		// console.log(`shift+up - pan up ...`);
 		panShift(0, UI.Settings.getGridsize());
 	});
 	Mousetrap.bind("shift+down", function() {
-		T.logInfo(`shift+down - pan down ...`);
+		// console.log(`shift+down - pan down ...`);
 		panShift(0, -UI.Settings.getGridsize());
 	});
 
@@ -96,29 +95,27 @@ UI.Statemachine = new (function() {
 		pan_shift.y += dy;
 		if (pan_shift.x > 0 ) {
 			dx =  dx - pan_shift.x
-			T.logInfo(`Limit pan shift! (${dx}, ${dy}) current pan(${pan_shift.x}, ${pan_shift.y})`);
+			// console.log(`Limit pan shift! (${dx}, ${dy}) current pan(${pan_shift.x}, ${pan_shift.y})`);
 			pan_shift.x = 0;
 		}
 		if (pan_shift.y > 0 ) {
 			dy = dy - pan_shift.y;
-			T.logInfo(`Limit pan shift! (${dx}, ${dy}) current pan(${pan_shift.x}, ${pan_shift.y})`);
+			// console.log(`Limit pan shift! (${dx}, ${dy}) current pan(${pan_shift.x}, ${pan_shift.y})`);
 			pan_shift.y = 0;
 		}
 		drawings.forEach(function(entry) {
 			if (entry.obj instanceof State && entry.obj.getStateClass() == ':CONTAINER') return;
 			let d = entry.drawing;
-			//T.logInfo(`  drawing BB  pre = ${JSON.stringify(d.getBBox())} (${dx}, ${dy})  ${d}`);
 			d.translate(dx, dy);
-			//T.logInfo(`  drawing BB  post= ${JSON.stringify(d.getBBox())}`)
 		});
-		T.logInfo(`Pan shifted: dx, dy=(${dx}, ${dy})  pan shift=(${pan_shift.x}, ${pan_shift.y}).`)
+		// console.log(`Pan shifted: dx, dy=(${dx}, ${dy})  pan shift=(${pan_shift.x}, ${pan_shift.y}).`)
 
 		if (!panning) displayGrid();
 	}
 
 	var updateMousePos = function(event) {
 		mouse_pos.attr({ cx: event.offsetX, cy: event.offsetY });
-		mouse_text.attr({ x: event.offsetX, y: event.offsetY  - 15, text: `(${event.offsetX}, ${event.offsetY})`});
+		// mouse_text.attr({ x: event.offsetX, y: event.offsetY  - 15, text: `(${event.offsetX}, ${event.offsetY})`});
 		if (connecting) that.refreshView();
 	}
 
@@ -211,7 +208,7 @@ UI.Statemachine = new (function() {
 		let state_names = that.getSelectedStates().map((element) => {return element.getStateName()});
 
 		if (state_names.length > 0) {
-			//console.log(`Selected ${JSON.stringify(state_names)}`);
+			// console.log(`Selected ${JSON.stringify(state_names)}`);
 			that.selection_set = state_names;
 		} else {
 			console.log(` no states are selected!`);
@@ -379,7 +376,7 @@ UI.Statemachine = new (function() {
 
 	var initializeDrawingArea = function() {
 		R = Raphael("drawing_area");
-		drag_indicator = R.rect(0,0,1,1).attr({opacity: 0.5}); // @todo - opacity 0
+		drag_indicator = R.rect(0,0,1,1).attr({opacity: 0});
 		selection_area = R.rect(0,0,0,0).attr({
 			opacity: 0,
 			stroke: "#000", 'stroke-dasharray': "--",
@@ -388,9 +385,9 @@ UI.Statemachine = new (function() {
 			cursor: "pointer"})
 			.drag(updateSelectionMove, beginSelectionMove, endSelectionMove);
 
-		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0.5}); // @todo - opacity 0
-		mouse_text = R.text(R.width / 2, R.height/2 + 10, `(${R.width/2}, ${R.height/2})`)
-						.attr({'font-size': 16, 'fill': 'gray'}); // @todo - remove text
+		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0});
+		// mouse_text = R.text(R.width / 2, R.height/2 + 10, `(${R.width/2}, ${R.height/2})`)
+		// 				.attr({'font-size': 16, 'fill': 'gray'}); // @todo - remove text
 
 		background = R.rect(0, 0, R.width, R.height)
 			.attr({fill: '#FFF', stroke: '#FFF'}).toBack()
@@ -886,6 +883,9 @@ UI.Statemachine = new (function() {
 		if (connecting) return;
 		transition.setBeginning(undefined);
 		transition.setEnd(undefined);
+		transition.setX(undefined);
+		transition.setY(undefined);
+
 		drag_transition = transition;
 		previous_transition_end = drag_transition.getTo().getStateName();
 		drag_transition.setTo(undefined);
@@ -896,7 +896,6 @@ UI.Statemachine = new (function() {
 	}
 
 	this.removeTransition = function() {
-		T.logInfo(`** ui_statemachine : removeTransition ret conn=${!connecting} ... `);
 		if (!connecting) return;
 		if (!displayed_sm.hasTransition(drag_transition)) {
 			that.abortTransition();
