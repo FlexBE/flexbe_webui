@@ -217,8 +217,8 @@ UI.Panels.StateProperties = new (function() {
 					+ " style='color: green;'>High</option>"
 					+"<option value='3' " + ((autonomy_list_complete[i] == 3)? "selected='selected'" : "")
 					+ " style='color: red;'>Full</option>"
-					+"<option value='-1' " + ((autonomy_list_complete[i] == -1)? "selected='selected'" : "")
-					+ " style='color: gray; font-style: italic;'>Inherit</option>"
+					//+"<option value='-1' " + ((autonomy_list_complete[i] == -1)? "selected='selected'" : "")
+					//+ " style='color: gray; font-style: italic;'>Inherit</option>"
 					+"</select></td>";
 				document.getElementById("panel_prop_autonomy_content").appendChild(tr);
 				that.addHoverDocumentation(tr, "outcome", outcome_list_complete[i], state.getStateType());
