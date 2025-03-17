@@ -2,6 +2,20 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.0.2 (2025-03-17)
+------------------
+* basic states do not use Inherit autonomy level
+* Put outcomes to right side of canvas by default
+* reset transitions on reconnect to handle pan shifting properly
+* add new states to upper left of view when canvas is shifted
+* update pan-shift handling with SHIFT-left/right/up/down/home/end
+* remove out of date IE fireEvent handling
+* calculate extents of state machine canvas
+* add handling for :OUTCOME states in the StateInstantiation message (used by future synthesis)
+* deprecate conversion handling and pkg init
+* fix typo in action result message
+* modify to allow setting LICENSE of saved behaviors to BSD-3, Apache-2, or Custom
+
 4.0.1 (2024-09-26)
 ------------------
 * codespell clean up
