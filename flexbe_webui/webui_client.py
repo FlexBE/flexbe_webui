@@ -285,11 +285,16 @@ def main(args=None):
     parser.add_argument('--clear_cache', type=bool, default=True, help='Clear JavaScript cache (default=True)')
     parser.add_argument('--client_delay', type=float, default=0.0, help='Delay client startup (default=0.0')
     parser.add_argument('--verbose', type=bool, default=True, help='Verbose output (default=True)')
-    parser.add_argument('--debug', type=bool, default=False,
+    parser.add_argument('--debug', action='store_true',
                         help='Show Javascript debug lines with verbose output (default=False)')
-    parser.add_argument('--flush', type=bool, default=False, help='Flush python outputs immediately (default=False)')
+    parser.add_argument('--flush', action='store_true', help='Flush python outputs immediately (default=False)')
+    parser.add_argument('--qt_software', action='store_true', help='Use QT software rendering (default=False)')
 
     args, unknown = parser.parse_known_args()
+
+    if args.qt_software:
+           os.environ["QT_QUICK_BACKEND"] = 'software'
+           print(f"Using QT_QUICK_BACKEND='{os.environ.get('QT_QUICK_BACKEND')}' rendering (instead of GPU)", flush=True)
 
     if args.client_delay > 0.0:
         start = time.time()

@@ -103,11 +103,10 @@ def generate_launch_description():
                              executable='be_launcher', output='screen',
                              condition=UnlessCondition(LaunchConfiguration('offline')))
 
-    # opens web browser in a new window  (-t instead of -n opens in existing browser in new tab)
-    # webui_client = ExecuteProcess(cmd=['python3', '-m', 'webbrowser', '-n', 'http://127.0.0.1:8000'])
     webui_client = Node(name='flexbe_webui_client', package='flexbe_webui',
                         executable='webui_client',
-                        arguments=['--port', LaunchConfiguration('port'), '--client_delay', LaunchConfiguration('client_delay')],
+                        arguments=['--port', LaunchConfiguration('port'),
+                                   '--client_delay', LaunchConfiguration('client_delay')],
                         output='screen',
                         condition=UnlessCondition(LaunchConfiguration('headless')))
 

@@ -19,9 +19,10 @@ The `flexbe_webui` has the look of the classic `flexbe_app` with some notable im
   * Native Python publishing and subscribing for easier development debugging of the UI
   * Exported `json` based configuration text file
   * Improved tab handling
+  * Improved panning of canvas for larger statemachines using SHIFT-left/right/up/down/home/end keys
 
-> Note: This version `4.0.0` of `flexbe_webui` is designed to work with version `4.0+` of the `flexbe_behavior_engine`.
-> If using an earlier `3.x.x` version of `flexbe_behavior_engine`, use either the `flexbe_app` or the "beta-enhanced" branch of `flexbe_webui` (preferred).
+> Note: This version `4.0+` of `flexbe_webui` is designed to work with version `4.0+` of the `flexbe_behavior_engine`.
+> If using an earlier `3.x.x` version of `flexbe_behavior_engine`, use either the `flexbe_app` or the "beta-enhanced" branch of `flexbe_webui`.  The FlexBE WebUI is not compatible with `flexbe_behavior_engine` version `2.x.x`.
 
 ## Installation
 
@@ -32,8 +33,6 @@ Clone the following repos into your ROS workspace (e.g. `$WORKSPACE_ROOT/src` or
 
 Make sure that the branches are appropriate for your version (e.g. `git checkout ros2-devel`, `iron`, or `jazzy` as appropriate)
 
-> Note: This UI is designed for improved handling of concurrent state execution and is compatible with the ROS 2 version `4.+` of the `flexbe_app`; it will not work with older versions such as `galactic` or `humble` of the `flexbe_behavior_engine` .  It is likely that the `iron` or `ros2-devel` versions of `flexbe_behavior_engine` should work on those older ROS 2 systems if you build from source.
-
 Install any required dependencies.
 
  * `rosdep update`
@@ -42,11 +41,11 @@ Install any required dependencies.
 The `flexbe_webui` requires consistent versions of several Python dependencies; these are specified in the `install_requires` field of the `setup.py` and
 the `requires.txt` file.
 
-The system has currently been tested on Ubuntu 22.04 with the following Python packages `pip install`ed locally via the `requires.txt`:
-   * `pip install websockets==10.3`
-   * `pip install pydantic==1.10.13`
-   * `pip install fastAPI==0.89.1`
-   * `pip install PySide6==6.7.1`
+The system has currently been tested on Ubuntu 24.04 with the following Python packages `pip install`ed locally via the `requires.txt`:
+   * `pip install fastAPI>=0.109.1`
+   * `pip install pydantic>=1.10.13`
+   * `pip install PySide6>=6.7.1`
+   * `pip install websockets>=10.3`
 
 On Ubuntu 24.04 (i.e., for ROS 2 Jazzy), the system installs for `sudo apt install python3-websockets python3-pydantic python3-fastapi`
 are sufficient and can be installed via `rosdep` from the `package.xml` dependencies.
@@ -69,8 +68,10 @@ This creates a `venv` folder that we will `COLCON_IGNORE` during builds.
 
 Now `colcon build` from this environment.
 
-If the Python files are not installed automatically, you can directly go to the `$WORKSPACE_ROOT/src/flexbe_webui` folder and :
-* `pip install -r requires.txt` to install all of the required files in the virtual environment.
+If the Python files are not installed automatically, you can directly go to the `$WORKSPACE_ROOT` folder and :
+* `venv/bin/pip3 install -r $WORKSPACE_ROOT/src/flexbe_webui/requires.txt`
+
+This will install all of the required files in the virtual environment.
 
 This should install the required `PySide6` in this activated virtual environment under `$WORKSPACE_ROOT/venv/lib/python3.12/site-packages`.
 
@@ -111,7 +112,7 @@ To assist in debugging development, or to run the UI on separate machine, we can
   > Note: This version of the `flexbe_webui` is inherently *insecure*!
     * Secure your robot control network from outside influence as the ports are known by default and no special security is in place.
 
-  > We recommend running `ros2 launch flexbe_webui flexbe_ocs.launch.py headless:=true` with `ros2 run flexbe_webui webui_client` in a
+  > We recommend running `ros2 launch flexbe_webui flexbe_ocs.launch.py headless:=true` and `ros2 run flexbe_webui webui_client` in a
   > separate terminal for initial testing.
 
 To run the full OCS nodes individually use
@@ -180,7 +181,7 @@ Please use the following publications for reference when using FlexBE and the Fl
 
 - Joshua Zutell, David C. Conner, and Philipp Schillinger, ["ROS 2-Based Flexible Behavior Engine for Flexible Navigation ,"](http://dx.doi.org/10.1109/SoutheastCon48659.2022.9764047), IEEE SouthEastCon, April 2022.
 
-- Samuel Raymond, Grace Walters, Joshua Luzier, and David C. Conner, "Design and Development of the FlexBE WebUI with Introductory Tutorials", CCSC Eastern, 2024, to appear.
+- Samuel Raymond, Grace Walters, Joshua Luzier, and David C. Conner, ["Design and Development of the FlexBE WebUI with Introductory Tutorials"](https://dl.acm.org/doi/10.5555/3722479.3722523), Journal of Computing Sciences in Colleges, Volume 40, Issue 3, October 2024.
 
 ----
 
@@ -202,4 +203,7 @@ Please use the following publications for reference when using FlexBE and the Fl
   * This version of the `flexbe_webui` is inherently *insecure*.
     * Secure your network from outside influence as the ports are known by default and no special security is in place.
 
-
+  * On some Ubuntu 24.04 systems with older NVidia GPUs, there is an issue that causes the FlexBE WebUI
+    client to display a blank screen when running with GazeboSim or Turtlesim.
+    * Use the `--qt_software` flag to force software rendering; e.g., `ros2 run flexbe_webui webui_client --qt_software`
+    * or you may access with web browser as described above.
