@@ -2,6 +2,11 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.0.3 (2025-03-26)
+------------------
+* update to enable qt software rendering
+* update README with links, known issue comment, and description
+
 4.0.2 (2025-03-17)
 ------------------
 * basic states do not use Inherit autonomy level
