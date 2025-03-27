@@ -36,7 +36,7 @@ setup(
         ('share/' + PACKAGE_NAME + '/config', glob('config/*.json'))
     ] + app_data_files('app'),
     install_requires=[
-        'fastAPI==0.109.1',
+        'fastAPI>=0.109.1',
         'pydantic>=1.10.13',
         'PySide6>=6.7.1',
         'setuptools',
