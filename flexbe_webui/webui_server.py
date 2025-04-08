@@ -620,10 +620,10 @@ class WebuiServer:
                 print(traceback.format_exc().replace('%', '%%'))
                 return False
 
-    def run(self, port: int = 8000, logging: str = 'warning'):
+    def run(self, port: int = 8000, host: str = '0.0.0.0', logging: str = 'warning'):
         """Run main web server loop."""
-        print(f'  Configure uvicorn port={port} logging={logging} ...', flush=True)
-        config = uvicorn.Config(self._app, port=port, log_level=logging)
+        print(f'  Configure uvicorn port={port} host={host} logging={logging} ...', flush=True)
+        config = uvicorn.Config(self._app, host=host, port=port, log_level=logging)
         print('  Construct uvicorn server ...', flush=True)
         server = uvicorn.Server(config)
         print('  Run uvicorn server...', flush=True)
@@ -636,6 +636,7 @@ def parse_args(args: List[str] = None):
     """Parse command line arguments for webui_server and webui_node."""
     parser = argparse.ArgumentParser(description='FlexBE WebUI Server parameters')
     parser.add_argument('--port', type=str, default='8000', help="FlexBE WebUI Server port (default='8000')")
+    parser.add_argument('--host', type=str, default='0.0.0.0', help="IP address to bind the FlexBE WebUI server to (default: 0.0.0.0 — listen on all interfaces)")
     parser.add_argument('--config_folder', type=str, default='',
                         help="FlexBE WebUI Server configuration file folder (default='' use 'flexbe_webui/config')")
     parser.add_argument('--config_file', type=str, default='',
@@ -667,9 +668,15 @@ def main(args: List[str] = None):
         print(f'\n  Invalid port = {args.port} - {exc}', flush=True)
         return
 
+    try:
+        host = str(args.host)
+    except Exception as exc:
+        print(f'\n  Invalid host = {args.host} - {exc}', flush=True)
+        return
+
     print(f'at port={port} logging={args.logging_level} ...', flush=True)
     webui_server = WebuiServer(args)
-    webui_server.run(port, args.logging_level)
+    webui_server.run(port, host, args.logging_level)
     print('shutdown FlexBE WebUI server!', flush=True)
 
 
