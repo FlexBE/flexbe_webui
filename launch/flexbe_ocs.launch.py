@@ -46,6 +46,10 @@ def generate_launch_description():
                                  default_value='8000'
                                  )
 
+    host = DeclareLaunchArgument('host',
+                                description="IP address to bind the FlexBE WebUI server to (default: 0.0.0.0 — listen on all interfaces)",
+                                default_value='0.0.0.0')
+
     clear_cache = DeclareLaunchArgument('clear_cache',
                                         description='Clear existing package data cache and reprocess',
                                         default_value='false')
@@ -62,12 +66,14 @@ def generate_launch_description():
         config_folder = LaunchConfiguration('config_folder').perform(context)
         config_file = LaunchConfiguration('config_file').perform(context)
         port = LaunchConfiguration('port').perform(context)
+        host = LaunchConfiguration('host').perform(context)
         clear_cache = LaunchConfiguration('clear_cache').perform(context)
         print('Setting up launch for FlexBE WebUI')
         print(f"    offline      : '{offline}'")
         print(f"    config_folder: '{config_folder}'")
         print(f"    config_file  : '{config_file}'")
         print(f"    port         : '{port}'")
+        print(f"    host         : '{host}'")
         print(f"    clear_cache  : '{clear_cache}'")
 
         node_args = []
@@ -77,6 +83,8 @@ def generate_launch_description():
             node_args += ['--config_file', config_file]
         if port != '':
             node_args += ['--port', port]
+        if host != '':
+            node_args += ['--host', host]
         if clear_cache.lower() == 'true':
             node_args += ['--clear_cache', 'true']
 
@@ -117,6 +125,7 @@ def generate_launch_description():
         config_folder,
         config_file,
         port,
+        host,
         clear_cache,
         behavior_mirror,
         client_delay,
