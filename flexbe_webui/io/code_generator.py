@@ -1,4 +1,4 @@
-# Copyright 2024 Philipp Schillinger and Christopher Newport University
+# Copyright 2025 Philipp Schillinger and Christopher Newport University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class CodeGenerator:
                        behavior.manual_code_func]
 
         # prefix
-        code = '#!/usr/bin/env python\n'
+        code = '#!/usr/bin/env python3\n'
         code += '# -*- coding: utf-8 -*-\n'
         code += '\n'
         code += self.generate_license_text(license_text)
