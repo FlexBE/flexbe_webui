@@ -3,7 +3,10 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 
 	var msg_type = msg_typeIn;
 	var topic = topicIn;
-	var ws = new WebSocket("ws://localhost:8000/ws/"+topic.replaceAll('/','-'));
+
+	const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+	const wsHost = window.location.host;
+	const ws = new WebSocket(`${wsProto}//${wsHost}/ws/${topic.replaceAll('/', '-')}`);
 
 	ws.onopen = (event) => {
 		// console.log("On open for " + topic + "(" + msg_type + ") ...");
@@ -12,7 +15,7 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 		dict['msg_type'] = msg_type;
 		API.post('create_subscriber', dict, (result) => {
 			if (result) {
-				T.logInfo("Created subscriber for '" + topic +"' (" + msg_type + ")");
+				T.logInfo("Created subscriber for '" + topic +"' (" + msg_type + ") at " + wsProto + "/" + wsHost);
 			} else {
 				T.logWarn("Failed to create subscriber for '" + topic +"' (" + msg_type + ")");
 			}

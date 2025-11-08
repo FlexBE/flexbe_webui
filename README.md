@@ -106,8 +106,11 @@ To assist in debugging development, or to run the UI on separate machine, we can
 
 
   The port number `8000` can be changed and specified in the node invocation; see `webui_node.py`
+  along with the `host` information. By default we use `127.0.0.1` for localhost.  Change host to `0.0.0.0`
+  to listen on all network interfaces, or adjust for specific interfaces.
+
   If running one separate machines, then the IP address must be changed accordingly.
-  Use the `--help` to see command line options for changing the IP and port.
+  Use the `--help` to see command line options for changing the IP, host, and port.
 
   > Note: This version of the `flexbe_webui` is inherently *insecure*!
     * Secure your robot control network from outside influence as the ports are known by default and no special security is in place.

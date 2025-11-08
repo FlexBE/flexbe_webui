@@ -47,8 +47,8 @@ def generate_launch_description():
                                  )
 
     host = DeclareLaunchArgument('host',
-                                description="IP address to bind the FlexBE WebUI server to (default: 0.0.0.0 — listen on all interfaces)",
-                                default_value='0.0.0.0')
+                                description="IP address to bind the FlexBE WebUI server to (default: 127.0.0.1 — localhost)",
+                                default_value='127.0.0.1')
 
     clear_cache = DeclareLaunchArgument('clear_cache',
                                         description='Clear existing package data cache and reprocess',
