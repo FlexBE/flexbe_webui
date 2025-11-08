@@ -28,6 +28,9 @@ from . import StateDefinition
 def parse_state_folder(folder: str, import_path_prefix: str = None) -> List[StateDefinition]:
     """Parse the state folder."""
     state_defs = []
+    if folder is None or folder == '':
+        return state_defs
+
     if os.path.exists(os.path.join(folder, '__init__.py')) and import_path_prefix is None:
         import_path_prefix = os.path.dirname(folder)
     for file_name in os.listdir(folder):
