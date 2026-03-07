@@ -2,6 +2,10 @@
 
 This page documents the keyboard shortcuts and hotkeys currently wired into the FlexBE WebUI.
 
+Shortcut note:
+- Some shortcuts are page-specific.
+- Many focused controls also support keyboard activation with `Enter` or `Space`.
+
 ## Global Shortcuts
 
 These shortcuts are available regardless of the active page unless noted otherwise.

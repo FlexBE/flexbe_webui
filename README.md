@@ -49,10 +49,6 @@ The `flexbe_webui` has the look of the classic `flexbe_app` with some notable im
 - [docs/diagnostics.md](docs/diagnostics.md)
 - [docs/package-discovery.md](docs/package-discovery.md)
 
-Shortcut note:
-- Some shortcuts are page-specific.
-- Many focused controls also support keyboard activation with `Enter` or `Space`.
-
 ### Troubleshooting
 - [docs/troubleshooting.md](docs/troubleshooting.md)
 

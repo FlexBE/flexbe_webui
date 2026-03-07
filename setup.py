@@ -36,10 +36,13 @@ setup(
         ('share/' + PACKAGE_NAME + '/config', glob('config/*.json'))
     ] + app_data_files('app'),
     install_requires=[
-        'fastAPI>=0.109.1',
+        'fastapi>=0.109.1',
         'pydantic>=1.10.13',
+        'Pygments',
         'PySide6>=6.7.1',
+        'PyYAML',
         'setuptools',
+        'uvicorn',
         'websockets>=10.3',
     ],
     zip_safe=True,

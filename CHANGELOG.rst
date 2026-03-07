@@ -2,6 +2,61 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Harden server startup, settings, and packaged configuration (`304046d`)
+
+  * Hardened server startup, diagnostics, and packaged configuration handling.
+  * Added packaged default config loading through the install/share path, following symlinks to the canonical file.
+  * Added typed settings normalization and validation, including `server_timeout`.
+  * Fixed launch/client host propagation and cache-preserving startup defaults.
+  * Improved web client startup options, including `disable_gpu`.
+  * Added lightweight CI workflow coverage.
+
+* Document operation, testing, diagnostics, and shortcuts (`b00f18d`)
+
+  * Expanded and reorganized project documentation.
+  * Added dedicated docs for installation, running, diagnostics, security, testing, troubleshooting, package discovery, runtime architecture, and keyboard shortcuts.
+  * Updated `README.md` and `CONTRIBUTING.md` to point to the new docs and developer workflows.
+
+* Harden API, ROS transport, and behavior IO flows (`039f4b8`)
+
+  * Standardized API request/response handling across frontend and backend.
+  * Added typed request models for API endpoints and tightened request validation.
+  * Normalized frontend API handling so malformed or failed responses are treated as explicit failures.
+  * Hardened ROS transport wrappers for publishers, subscribers, and action clients.
+  * Fixed behavior save/load and manifest parsing edge cases.
+  * Improved bootstrap/offline recovery behavior in the window shell.
+
+* Polish editor panels, rendering, validation, and interaction flows (`0179a89`)
+
+  * Refined editor panel behavior across dashboard, state machine, configuration, feed, terminal, menu, and shared tools.
+  * Added separate dashboard and statemachine text sizing.
+  * Added bold and extra-bold statemachine text and adjustable transition line weights.
+  * Kept render preferences separate from saved state machine coordinates.
+  * Fixed numerous state panel, dashboard, container, and menu interaction bugs.
+  * Improved autocomplete, validation, focus handling, and terminal/feed behavior.
+  * Cleaned up drawable/rendering logic and related CSS styling.
+  * Hardened helper/model logic used across the UI.
+
+* Stabilize runtime messaging and add schema-driven synthesis support (`b084a0f`)
+
+  * Stabilized runtime messaging, state display, and synthesis integration.
+  * Fixed runtime controller/pubsub ordering and stale-path handling.
+  * Added action-goal schema introspection on the backend.
+  * Replaced hard-coded synthesis form fields with a schema-driven generated form in the UI.
+  * Made synthesis goal population respond to actual message fields rather than fixed action-type branches.
+  * Preserved compatibility by skipping payload fields not present in the installed ROS message type.
+
+* Add regression, contract, and smoke test coverage (`e077eec`)
+
+  * Added broad automated regression coverage across backend and frontend flows.
+  * Added browser-free frontend regression harnesses for API handling, runtime flows, dashboard editing, state panel flows, helper logic, validation behavior, and synthesis payload/form behavior.
+  * Added dedicated RC frontend regression harness.
+  * Added API contract, security, command-shape, and behavior code-generation tests.
+  * Added action-goal cancellation tests.
+  * Added startup smoke tests and optional browser smoke coverage.
+
 4.0.3 (2025-03-26)
 ------------------
 * update to enable qt software rendering
