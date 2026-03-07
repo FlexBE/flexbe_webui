@@ -2,8 +2,10 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+4.1.0 (2026-03-07)
+------------------
+* clarify that webui_client depends on local venv install of PySide6, and is not listed as a package dependency
+* update dependencies and documentation
 * Harden server startup, settings, and packaged configuration (`304046d`)
 
   * Hardened server startup, diagnostics, and packaged configuration handling.
@@ -27,6 +29,7 @@ Forthcoming
   * Hardened ROS transport wrappers for publishers, subscribers, and action clients.
   * Fixed behavior save/load and manifest parsing edge cases.
   * Improved bootstrap/offline recovery behavior in the window shell.
+  * Implement "Save As" functionality on behavior name change
 
 * Polish editor panels, rendering, validation, and interaction flows (`0179a89`)
 
@@ -56,6 +59,10 @@ Forthcoming
   * Added API contract, security, command-shape, and behavior code-generation tests.
   * Added action-goal cancellation tests.
   * Added startup smoke tests and optional browser smoke coverage.
+
+* protect against invalid package folder without python_path defined
+* specify python3 in code generator
+* update setup.py requires
 
 4.0.3 (2025-03-26)
 ------------------
