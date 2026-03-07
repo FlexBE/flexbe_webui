@@ -151,10 +151,10 @@
 				</td>
 				<td style="padding: 2px;"> </td>
 				<td>
-					<div class="category_button_active" id="button_to_db" tabindex="0"><img src="img/db_active.png" width="32" height="32" /> Behavior Dashboard</div>
-					<div class="category_button" id="button_to_sm" tabindex="0"><img src="img/sm.png" width="32" height="32" /> Statemachine Editor</div>
-					<div class="category_button" id="button_to_rc" tabindex="0"><img src="img/rc.png" width="32" height="32" /> Runtime Control</div>
-					<div class="category_button" id="button_to_se" tabindex="0"><img src="img/se.png" width="32" height="32" /> Configuration</div>
+					<div class="category_button_active" id="button_to_db" tabindex="0"><img src="img/db_active.png" width="32" height="32" /><span class="category_button_label">Behavior<br>Dashboard</span></div>
+					<div class="category_button" id="button_to_sm" tabindex="0"><img src="img/sm.png" width="32" height="32" /><span class="category_button_label">Statemachine<br>Editor</span></div>
+					<div class="category_button" id="button_to_rc" tabindex="0"><img src="img/rc.png" width="32" height="32" /><span class="category_button_label">Runtime<br>Control</span></div>
+					<div class="category_button" id="button_to_se" tabindex="0"><img src="img/se.png" width="32" height="32" /><span class="category_button_label">Configuration</span></div>
 				</td>
 				<td id="title_button_panel">
 				</td>
@@ -286,6 +286,7 @@
 							<option value="numeric">Numeric</option>
 							<option value="boolean">Boolean</option>
 							<option value="text">Text</option>
+							<option value="tuple">Tuple</option>
 							<option value="yaml">File</option>
 						</select>
 					</td><td>
@@ -580,6 +581,10 @@
 					<td width="150">Heartbeat timeout: </td>
 					<td><input id="input_runtime_timeout" type="number" value="10" min="4" max="30" step="1" /> seconds</td>
 				</tr>
+				<tr title="Time to wait for ROS services or action servers to acknowledge availability.">
+					<td width="150">Server timeout: </td>
+					<td><input id="input_server_timeout" type="number" value="0.25" min="0.05" max="10" step="0.05" /> seconds</td>
+				</tr>
 				<tr title="Make sure that only this GUI (if running) is able to execute behaviors and automatically stop others.">
 					<td width="150">Restrict execution: </td><td><input id="cb_stop_behaviors" type="checkbox" /> (stops externally started behaviors)</td>
 				</tr>
@@ -590,6 +595,42 @@
 						<input id="cb_collapse_error" type="checkbox" /> Error&nbsp;&nbsp;&nbsp;
 						<input id="cb_collapse_hint" type="checkbox" /> Hint
 					</td>
+				</tr>
+				<tr title="Text size used by non-state-machine HTML rendering (dashboard, settings, toolbar, and general runtime text).">
+					<td width="150">Dashboard text size: </td>
+					<td>
+						<input id="input_dashboard_text_size" type="number" value="86.5" min="50" max="150" step="0.5" /> %
+						&nbsp;&nbsp;<input id="cb_dashboard_text_bold" type="checkbox" /><label for="cb_dashboard_text_bold">Bold</label>
+					</td>
+				</tr>
+				<tr title="Text size used for state-machine rendering in editor/runtime drawing views.">
+					<td width="150">State machine text size: </td>
+					<td>
+						<input id="input_statemachine_text_size" type="number" value="86.5" min="50" max="150" step="0.5" /> %
+						&nbsp;&nbsp;<input id="cb_statemachine_text_bold" type="checkbox" checked="checked" /><label for="cb_statemachine_text_bold">Bold</label>
+						&nbsp;&nbsp;<input id="cb_statemachine_text_extra_bold" type="checkbox" /><label for="cb_statemachine_text_extra_bold">Extra Bold</label>
+					</td>
+				</tr>
+				<tr title="Transition line thickness in state-machine drawing (normal, bold, extra bold).">
+					<td width="150">Transition width: </td>
+					<td>
+						<table style="border-collapse: collapse;">
+							<tr>
+								<td style="padding-right: 14px;"><input id="input_transition_line_width_normal" type="number" value="2.0" min="1.0" max="20.0" step="0.1" style="width:65px;" /></td>
+								<td style="padding-right: 14px;"><input id="input_transition_line_width_bold" type="number" value="3.0" min="1.0" max="20.0" step="0.1" style="width:65px;" /></td>
+								<td><input id="input_transition_line_width_extra_bold" type="number" value="4.0" min="1.0" max="20.0" step="0.1" style="width:65px;" /></td>
+							</tr>
+							<tr>
+								<td style="text-align: center; color: gray;">Normal</td>
+								<td style="text-align: center; color: gray;">Bold</td>
+								<td style="text-align: center; color: gray;">Extra Bold</td>
+							</tr>
+						</table>
+					</td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><font style="color: gray;">% is relative to browser base text size.<br />(100% = browser default)</font></td>
 				</tr>
 			</table>
 		</div>
@@ -642,17 +683,21 @@
 				<tr title="Save behaviors to development source folder.">
 					<td style="width: 150px;">Save to source folder: </td>
 					<td style="white-space: nowrap;">
-						<input id="cb_save_in_source" type="checkbox" /> &nbsp;
+						<input id="cb_save_in_source" type="checkbox" checked="checked" /> &nbsp;
 						<input id="input_source_code_root" type="text" class="input_field" style="width: 90%;"/>
 					</td>
 				</tr>
 
-				<tr title="Terminal command which is used to open the code editor.">
-					<td width="150">Behavior Editor command: </td>
-					<td><input id="input_editor_command" type="text" class="input_field" /></td>
-				</tr>
-			</table>
-		</div>
+					<tr title="Terminal command which is used to open the code editor.">
+						<td width="150">Behavior Editor command: </td>
+						<td><input id="input_editor_command" type="text" class="input_field" /></td>
+					</tr>
+					<tr title="Comma-separated list of allowed editor executables used for opening source files.">
+						<td width="150">Allowed Editors: </td>
+						<td><input id="input_allow_editors" type="text" class="input_field" /></td>
+					</tr>
+				</table>
+			</div>
 
 		<div class="box">
 			<h1>Editor Settings</h1>
@@ -887,13 +932,7 @@
 				<b>Synthesis</b>
 
 				<table class="sidepanel_table"><tr><td>
-				Initial Conditions:
-				</td></tr><tr><td>
-				<input id="input_prop_synthesis_initial" type="text" class="input_field" />
-				</td></tr><tr><td>
-				Goal:
-				</td></tr><tr><td>
-				<input id="input_prop_synthesis_goal" type="text" class="input_field" />
+				<div id="panel_prop_synthesis_fields"></div>
 				</td></tr><tr><td>
 				<br />
 				<input id="button_prop_synthesize" type="button" value="Synthesize" />
@@ -1055,6 +1094,15 @@
 		<div class="custom_modal_dialog_content">
 			<p><span id="custom_acknowledge_dialog_msg" class="custom_modal_dialog_text">Acknowledge</span></p>
 			<button id="custom_acknowledge_dialog_confirm_btn" class="custom_modal_dialog_button" tabindex="-1" >&#x2714; OK</button>
+		</div>
+	</div>
+
+	<div id="custom_save_behavior_dialog" class="custom_modal_dialog" tabindex="-1">
+		<div class="custom_modal_dialog_content" style="width: 420px;">
+			<p><span id="custom_save_behavior_dialog_msg" class="custom_modal_dialog_text">Behavior name changed.</span></p>
+			<button id="custom_save_behavior_dialog_save_btn" class="custom_modal_dialog_button custom_modal_dialog_button_warning" tabindex="-1">Save (Old File)</button>
+			<button id="custom_save_behavior_dialog_save_as_btn" class="custom_modal_dialog_button custom_modal_dialog_button_positive" tabindex="-1">Save As (New File)</button>
+			<button id="custom_save_behavior_dialog_cancel_btn" class="custom_modal_dialog_button custom_modal_dialog_button_neutral" tabindex="-1">&#x2716; Cancel</button>
 		</div>
 	</div>
 

@@ -86,6 +86,7 @@ RC.PubSub = new (function() {
 		var targetEntry = Behavior.getStateMap().get(msg.target);
 		if (targetEntry == undefined) {
 			console.log(`\x1b[93m Error : cannot find state for '${msg.target}'!\x1b[0m`);
+			return;
 		}
 		UI.RuntimeControl.displayOutcomeRequest(msg.outcome, targetEntry.state);
 	}
@@ -106,7 +107,7 @@ RC.PubSub = new (function() {
 			updateOCSStatusDisplay(Date.now());
 		}
 		if (msg.code == STARTED && !RC.Controller.haveBehavior() && UI.Settings.isStopBehaviors()) {
-			T.logError("Onboard behavior is still running! Stopping it...");
+			T.logError("A behavior is already running onboard. Sending a stop request.");
 			RC.Sync.register("EmergencyStop", 30);
 			RC.Sync.setStatus("EmergencyStop", RC.Sync.STATUS_ERROR);
 			RC.PubSub.sendPreemptBehavior();
@@ -114,8 +115,8 @@ RC.PubSub = new (function() {
 		}
 		if (RC.Sync.hasProcess("EmergencyStop") && (msg.code == FINISHED || msg.code == FAILED)) {
 			RC.Sync.remove("EmergencyStop");
-			T.logInfo("Onboard behavior stopped!");
-			T.logInfo("Please press 'Stop Execution' next time before closing this window when running a behavior.");
+			T.logInfo("The onboard behavior has stopped.");
+			T.logInfo("Use 'Stop Execution' before closing the UI while a behavior is running.");
 		}
 
 		if (RC.Controller.isLocked() && msg.code == STARTED && msg.args.length > 0
@@ -144,6 +145,7 @@ RC.PubSub = new (function() {
 			}
 		} else if (msg.code == READY) {
 			last_mirror_state_id = undefined; // clear prior SM status
+			RC.Controller.signalConnected();
 			RC.Controller.signalFinished();
 			UI.RuntimeControl.displayBehaviorFeedback(4, "Onboard engine is ready.");
 		}
@@ -152,7 +154,6 @@ RC.PubSub = new (function() {
 	var onboard_heartbeat_timer;
 	var onboard_heartbeat_callback = function (msg){
 		if (onboard_heartbeat_timer != undefined) clearTimeout(onboard_heartbeat_timer);
-		RC.Controller.signalConnected();
 
 		let now = Date.now(); // time in milliseconds
 		if (last_onboard_heartbeat_time == undefined) {
@@ -246,7 +247,7 @@ RC.PubSub = new (function() {
 					}
 				} else {
 					// New entry for state map
-					if (state.getStateId() != undefined || state.getStateId() == -1) {
+					if (state.getStateId() == undefined || state.getStateId() == -1) {
 						state.setStateId(msg.state_ids[i]);
 					} else if (state.getStateId() != msg.state_ids[i]) {
 						console.log(`Unexpected state ID '${state.getStateId()}' vs '${msg.state_ids[i]}' for '${msg.state_paths[i]}'`);
@@ -683,7 +684,9 @@ RC.PubSub = new (function() {
 			latched=true);
 
 		//Publish the UI version
-		setTimeout(version_publisher.publish({data: UI.Settings.getVersion()}), 250);
+		setTimeout(function() {
+			version_publisher.publish({data: UI.Settings.getVersion()});
+		}, 250);
 
 		// Action Clients
 		if (UI.Settings.isSynthesisEnabled()) that.initializeSynthesisAction(ns);
@@ -820,7 +823,6 @@ RC.PubSub = new (function() {
 		if (behavior_start_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
 		var names = Behavior.createNames();
 		RC.Sync.register("Switch", 70);
-		RC.Controller.signalStarted(); // @todo - verify this works
 		console.log("Send behavior update for " + Behavior.getBehaviorName());
 		// request start
 		behavior_start_publisher.publish({
@@ -971,26 +973,35 @@ RC.PubSub = new (function() {
 		});
 	}
 
-	this.requestBehaviorSynthesis = function(root, system, goal, initial_condition, outcomes, result_cb, feedback_cb, timeout_cb) {
+	this.requestSynthesisGoal = function(goal_msg, root, result_cb, feedback_cb, timeout_cb) {
 		if (synthesis_action_client == undefined) { T.logWarn("ROS not initialized!"); return; }
 		console.log("RC.PubSub - requestBehaviorSynthesis ...");
-
-		var goal = {
-			request: {
-				name: root,
-				system: system,
-				goal: goal,
-				initial_condition: initial_condition,
-				sm_outcomes: outcomes
-			}
-		};
-		console.log(JSON.stringify(goal));
-		synthesis_action_client.send_goal(goal,
+		console.log(JSON.stringify(goal_msg));
+		synthesis_action_client.send_goal(goal_msg,
 			function(result) { synthesis_action_result_callback(result, root, result_cb); },
 			function(feedback) { synthesis_action_feedback_callback(feedback, root, feedback_cb); },
 			RC.Controller.onboardTimeout * 1000,
 			function() { synthesis_action_timeout_callback(timeout_cb); }
 		);
+	}
+
+	this.requestBehaviorSynthesis = function(root, system, goal, initial_condition, outcomes, result_cb, feedback_cb, timeout_cb) {
+		var goal_msg = {
+			request: {
+				name: root,
+				spec_name: root,
+				system: system,
+				system_name: system,
+				goal: goal,
+				goals: goal,
+				initial_condition: initial_condition,
+				initial_conditions: initial_condition,
+				sm_outcomes: outcomes,
+				specification_file_name: ""
+			},
+			synthesis_options: ""
+		};
+		that.requestSynthesisGoal(goal_msg, root, result_cb, feedback_cb, timeout_cb);
 	}
 
 	this.DEBUG_synthesis_action_result_callback = function(result, root) {

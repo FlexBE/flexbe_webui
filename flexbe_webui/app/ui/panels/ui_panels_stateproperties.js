@@ -4,6 +4,8 @@ UI.Panels.StateProperties = new (function() {
 	var current_prop_state;
 	var apply_pulse = undefined;
 	var listeners_to_cleanup = [];
+	var synthesis_schema_cache = undefined;
+	var synthesis_schema_action_type = undefined;
 
 	var fadeOutBackground = function(id) {
 		document.getElementById(id).style.transition = "all 1s ease-out";
@@ -17,6 +19,7 @@ UI.Panels.StateProperties = new (function() {
 		} else if (behavior_name) {
 			def = WS.Behaviorlib.getByName(behavior_name);
 		}
+		if (def == undefined) return;
 		let doc = undefined;
 		switch (type) {
 			case "param": doc = def.getParamDesc().findElement(function(el) { return el.name == name; }); break;
@@ -32,11 +35,20 @@ UI.Panels.StateProperties = new (function() {
 			tt.setAttribute("style", "right: 370px; top: " + rect.top + "px; display: block;");
 			tt.setAttribute("class", "sidepanel_tooltip");
 			tt.setAttribute("id", "properties_tooltip");
-			tt.innerHTML = "";
+			tt.textContent = "";
 			if (type != "outcome") {
-				tt.innerHTML += "<div style='margin-bottom: 0.5em;'>Type: <i>" + doc.type + "</i></div>";
+				let typeRow = document.createElement("div");
+				typeRow.style.marginBottom = "0.5em";
+				typeRow.textContent = "Type: ";
+				let typeValue = document.createElement("i");
+				typeValue.textContent = doc.type;
+				typeRow.appendChild(typeValue);
+				tt.appendChild(typeRow);
 			}
-			tt.innerHTML += doc.desc;
+			let desc = document.createElement("div");
+			desc.style.whiteSpace = "pre-wrap";
+			desc.textContent = doc.desc;
+			tt.appendChild(desc);
 			document.getElementsByTagName("body")[0].appendChild(tt);
 		}
 		el.addEventListener('mouseover', addHoverHandler);
@@ -54,10 +66,182 @@ UI.Panels.StateProperties = new (function() {
 		}
 	}
 
+	var getSynthesisFieldsContainer = function() {
+		return document.getElementById('panel_prop_synthesis_fields');
+	}
+
+	var clearSynthesisFields = function() {
+		let container = getSynthesisFieldsContainer();
+		container.innerHTML = "";
+	}
+
+	var getSynthesisFieldDefault = function(field_path) {
+		switch (field_path) {
+			case 'request.name':
+			case 'request.spec_name':
+				return current_prop_state ? current_prop_state.getStatePath() : '';
+			case 'request.system':
+			case 'request.system_name':
+				return UI.Settings.getSynthesisSystem();
+			case 'request.sm_outcomes':
+				return current_prop_state ? current_prop_state.getOutcomes().slice() : [];
+			case 'request.specification_file_name':
+			case 'synthesis_options':
+				return '';
+			default:
+				return undefined;
+		}
+	}
+
+	var setSynthesisInputValue = function(input, schema, value) {
+		if (value === undefined) {
+			return;
+		}
+		if (schema.kind === 'boolean') {
+			input.checked = Boolean(value);
+			return;
+		}
+		if (schema.kind === 'sequence') {
+			input.value = Array.isArray(value) ? value.join(', ') : String(value);
+			return;
+		}
+		input.value = String(value);
+	}
+
+	var parseSynthesisInputValue = function(input, schema) {
+		if (schema.kind === 'boolean') {
+			return input.checked;
+		}
+		if (schema.kind === 'integer') {
+			let value = input.value.trim();
+			return value === '' ? 0 : parseInt(value, 10);
+		}
+		if (schema.kind === 'number') {
+			let value = input.value.trim();
+			return value === '' ? 0 : parseFloat(value);
+		}
+		if (schema.kind === 'sequence') {
+			let raw = input.value.trim();
+			if (raw === '') return [];
+			let parts = raw.split(',').map(entry => entry.trim()).filter(entry => entry !== '');
+			if (schema.element_kind === 'integer') {
+				return parts.map(entry => parseInt(entry, 10));
+			}
+			if (schema.element_kind === 'number') {
+				return parts.map(entry => parseFloat(entry));
+			}
+			if (schema.element_kind === 'boolean') {
+				return parts.map(entry => entry.toLowerCase() === 'true');
+			}
+			return parts;
+		}
+		return input.value;
+	}
+
+	var renderSynthesisSchemaField = function(schema, parent, path_prefix='') {
+		let field_path = path_prefix ? path_prefix + '.' + schema.name : schema.name;
+		if (schema.kind === 'message') {
+			let group = document.createElement('div');
+			group.className = 'sidepanel_group';
+			group.style.marginBottom = '0.75em';
+			let title = document.createElement('div');
+			title.style.fontWeight = 'bold';
+			title.style.marginTop = '0.5em';
+			title.style.marginBottom = '0.25em';
+			title.textContent = schema.name;
+			group.appendChild(title);
+			(schema.fields || []).forEach((child) => {
+				renderSynthesisSchemaField(child, group, field_path);
+			});
+			parent.appendChild(group);
+			return;
+		}
+
+		let wrapper = document.createElement('div');
+		wrapper.style.marginBottom = '0.5em';
+		let label = document.createElement('div');
+		label.textContent = schema.name + ':';
+		wrapper.appendChild(label);
+
+		let input = document.createElement('input');
+		input.className = 'input_field';
+		input.setAttribute('id', 'input_prop_synthesis_' + field_path.replaceAll('.', '__'));
+		if (schema.kind === 'boolean') {
+			input.type = 'checkbox';
+		} else if (schema.kind === 'integer' || schema.kind === 'number') {
+			input.type = 'number';
+			if (schema.kind === 'number') {
+				input.step = 'any';
+			}
+		} else {
+			input.type = 'text';
+		}
+		if (schema.kind === 'sequence') {
+			input.placeholder = 'comma-separated values';
+		}
+		setSynthesisInputValue(input, schema, getSynthesisFieldDefault(field_path));
+		wrapper.appendChild(input);
+		parent.appendChild(wrapper);
+	}
+
+	var renderSynthesisSchema = function(schema_fields) {
+		clearSynthesisFields();
+		let container = getSynthesisFieldsContainer();
+		schema_fields.forEach((field) => {
+			renderSynthesisSchemaField(field, container);
+		});
+	}
+
+	var buildSynthesisPayloadField = function(schema, path_prefix='') {
+		let field_path = path_prefix ? path_prefix + '.' + schema.name : schema.name;
+		if (schema.kind === 'message') {
+			let value = {};
+			(schema.fields || []).forEach((child) => {
+				value[child.name] = buildSynthesisPayloadField(child, field_path);
+			});
+			return value;
+		}
+		let input = document.getElementById('input_prop_synthesis_' + field_path.replaceAll('.', '__'));
+		if (input == undefined) {
+			return undefined;
+		}
+		return parseSynthesisInputValue(input, schema);
+	}
+
+	var buildSynthesisPayload = function() {
+		if (synthesis_schema_cache == undefined) {
+			return undefined;
+		}
+		let payload = {};
+		synthesis_schema_cache.forEach((field) => {
+			payload[field.name] = buildSynthesisPayloadField(field);
+		});
+		return payload;
+	}
+
+	var loadSynthesisSchema = function(callback) {
+		let action_type = UI.Settings.getSynthesisType();
+		if (synthesis_schema_cache != undefined && synthesis_schema_action_type === action_type) {
+			callback(synthesis_schema_cache);
+			return;
+		}
+
+		API.postData('action_schema', {action_type: action_type}, (result_data) => {
+			synthesis_schema_cache = result_data.goal_fields || [];
+			synthesis_schema_action_type = action_type;
+			callback(synthesis_schema_cache);
+		}, (error) => {
+			T.logError('Failed to load synthesis action schema.');
+			T.logInfo(error);
+			clearSynthesisFields();
+		});
+	}
+
 	this.addAutocomplete = function(el, state_type, mode, state, additional_keywords) {
 		additional_keywords = additional_keywords || [];
 		if (state_type != undefined) {
 			let state_def = WS.Statelib.getFromLib(state_type);
+			if (state_def == undefined) return;
 			let state_prefix = (!UI.Settings.isExplicitStates() && WS.Statelib.isClassUnique(state_def.getStateClass()))?
 				state_def.getStateClass() : state_def.getStatePackage() + "__" + state_def.getStateClass();
 			let class_vars = state_def.getClassVariables();
@@ -72,7 +256,17 @@ UI.Panels.StateProperties = new (function() {
 			let ac = document.getElementById("properties_autocomplete");
 			let suggestions = (mode == "input")? Autocomplete.generateInputUserdata(el.value, state) :
 							  (mode == "output")? Autocomplete.generateOutputUserdata(el.value, state) :
+							  (state_type != undefined)? Autocomplete.generateStateParameterList(el.value) :
 							   Autocomplete.generateList(el.value, additional_keywords, state);
+			const acceptSuggestion = function(fill) {
+				// Treat autocomplete acceptance like a real edit so blur/change-based
+				// persistence paths observe the selected value immediately.
+				el.value = fill;
+				el.dispatchEvent(new Event('input', {bubbles: true}));
+				el.dispatchEvent(new Event('change', {bubbles: true}));
+				ac.setAttribute("style", "display: none;");
+				ac.setAttribute("idx", "0");
+			}
 
 			if (suggestions.length == 0) {
 				ac.setAttribute("style", "display: none;");
@@ -80,8 +274,7 @@ UI.Panels.StateProperties = new (function() {
 			}
 			let idx = parseInt(ac.getAttribute("idx"));
 			if (idx != -1 && (evt.key === 'Enter')) {
-				el.value = suggestions[idx].fill;
-				ac.setAttribute("style", "display: none;");
+				acceptSuggestion(suggestions[idx].fill);
 				return;
 			}
 			if (evt.key === 'ArrowDown') { idx = Math.min(idx + 1, Math.min(suggestions.length - 1, 9)); ac.setAttribute("idx", idx); }
@@ -101,14 +294,25 @@ UI.Panels.StateProperties = new (function() {
 				div.setAttribute("title", s.hint);
 				div.setAttribute("fill", s.fill);
 				div.setAttribute('id', ac.id + "_suggestion_" + i);
+				const mouseDownHandler = function(event) {
+					// Prevent the input from blurring before click selection resolves;
+					// this avoids saving the partial text instead of the suggestion.
+					event.preventDefault();
+				};
+				div.addEventListener('mousedown', mouseDownHandler);
+				listeners_to_cleanup.push({'element': div, 'listener_type': 'mousedown', 'handler': mouseDownHandler});
 				const clickHandler = function(event) {
-					el.value = div.getAttribute("fill");
-					ac.setAttribute("style", "display: none;");
+					acceptSuggestion(div.getAttribute("fill"));
 				};
 				div.addEventListener('click', clickHandler);
 				listeners_to_cleanup.push({'element': div, 'listener_type': 'click', 'handler': clickHandler});
 
-				div.innerHTML = "<span style='float:right; color:grey;'>" + hint + "</span>" + s.text;
+				let hintSpan = document.createElement("span");
+				hintSpan.style.float = "right";
+				hintSpan.style.color = "grey";
+				hintSpan.textContent = hint;
+				div.appendChild(hintSpan);
+				div.appendChild(document.createTextNode(s.text));
 				ac.appendChild(div);
 			};
 			el.setSelectionRange(el.value.length, el.value.length);
@@ -119,10 +323,12 @@ UI.Panels.StateProperties = new (function() {
 		const autoCompleteHandler = function(evt) {
 			let ac = document.getElementById("properties_autocomplete");
 			setTimeout(function() {
+				// Delay teardown briefly so a click on a suggestion can complete
+				// before the blur handler removes the suggestion nodes.
 				ac.setAttribute("style", "display: none;");
 				ac.setAttribute("idx", "0");
+				that.clearChildElements(ac.id + "_suggestion_");
 			}, 200);
-			that.clearChildElements(ac.id + "_suggestions_");
 		}
 		el.addEventListener('blur', autoCompleteHandler);
 		listeners_to_cleanup.push({'element': el, 'listener_type': 'blur', 'handler': autoCompleteHandler});
@@ -137,7 +343,10 @@ UI.Panels.StateProperties = new (function() {
 		document.getElementById("input_prop_state_name").value = state.getStateName();
 		document.getElementById("label_prop_state_class").innerText = state.getStateClass();
 		document.getElementById("label_prop_state_package").innerText = state.getStatePackage();
-		document.getElementById("label_prop_state_desc").innerText = WS.Statelib.getFromLib(state.getStateType()).getStateDesc();
+		let state_definition = WS.Statelib.getFromLib(state.getStateType());
+		document.getElementById("label_prop_state_desc").innerText = (state_definition != undefined)
+			? state_definition.getStateDesc()
+			: "";
 
 		const highlightApplyButton = function() {
 			if (apply_pulse != undefined) return;
@@ -207,19 +416,32 @@ UI.Panels.StateProperties = new (function() {
 			document.getElementById("panel_prop_autonomy_content").innerHTML = "";
 			for (let i=0; i<outcome_list_complete.length; ++i) {
 				let tr = document.createElement("tr");
-				tr.innerHTML = "<td>" + outcome_list_complete[i] + ": </td>"
-					+"<td><select class='select_box' id='panel_prop_autonomy_content_" + i + "' tabindex='0'>"
-					+"<option value='0' " + ((autonomy_list_complete[i] == 0)? "selected='selected'" : "")
-					+ " style='color: black;'>Off</option>"
-					+"<option value='1' " + ((autonomy_list_complete[i] == 1)? "selected='selected'" : "")
-					+ " style='color: blue;'>Low</option>"
-					+"<option value='2' " + ((autonomy_list_complete[i] == 2)? "selected='selected'" : "")
-					+ " style='color: green;'>High</option>"
-					+"<option value='3' " + ((autonomy_list_complete[i] == 3)? "selected='selected'" : "")
-					+ " style='color: red;'>Full</option>"
-					//+"<option value='-1' " + ((autonomy_list_complete[i] == -1)? "selected='selected'" : "")
-					//+ " style='color: gray; font-style: italic;'>Inherit</option>"
-					+"</select></td>";
+				let labelTd = document.createElement("td");
+				labelTd.textContent = outcome_list_complete[i] + ": ";
+				let selectTd = document.createElement("td");
+				let select = document.createElement("select");
+				select.setAttribute("class", "select_box");
+				select.setAttribute("id", "panel_prop_autonomy_content_" + i);
+				select.setAttribute("tabindex", "0");
+				let options = [
+					{value: "0", text: "Off", color: "black"},
+					{value: "1", text: "Low", color: "blue"},
+					{value: "2", text: "High", color: "green"},
+					{value: "3", text: "Full", color: "red"}
+				];
+				options.forEach(function(opt) {
+					let option = document.createElement("option");
+					option.value = opt.value;
+					option.textContent = opt.text;
+					option.style.color = opt.color;
+					if (autonomy_list_complete[i] == parseInt(opt.value)) {
+						option.selected = true;
+					}
+					select.appendChild(option);
+				});
+				selectTd.appendChild(select);
+				tr.appendChild(labelTd);
+				tr.appendChild(selectTd);
 				document.getElementById("panel_prop_autonomy_content").appendChild(tr);
 				that.addHoverDocumentation(tr, "outcome", outcome_list_complete[i], state.getStateType());
 			}
@@ -300,13 +522,13 @@ UI.Panels.StateProperties = new (function() {
 
 		if (state.isConcurrent()) {
 			document.getElementById("select_container_type").value = "concurrency";
-			document.getElementById("doc_container_type").innerHTML = "Parallel execution of all elements.";
+			document.getElementById("doc_container_type").textContent = "Parallel execution of all elements.";
 		} else if (state.isPriority()) {
 			document.getElementById("select_container_type").value = "priority";
-			document.getElementById("doc_container_type").innerHTML = "Execution supersedes all other containers.";
+			document.getElementById("doc_container_type").textContent = "Execution supersedes all other containers.";
 		} else {
 			document.getElementById("select_container_type").value = "statemachine";
-			document.getElementById("doc_container_type").innerHTML = "Sequential execution based on outcomes.";
+			document.getElementById("doc_container_type").textContent = "Sequential execution based on outcomes.";
 		}
 
 		// Outcomes
@@ -457,7 +679,7 @@ UI.Panels.StateProperties = new (function() {
 			listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'keydown', 'handler': onEnterRemove});
 
 			let label = document.createElement("td");
-			label.innerHTML = state.getOutcomes()[i] + ": ";
+			label.textContent = state.getOutcomes()[i] + ": ";
 			let input_field = document.createElement("td");
 			input_field.appendChild(selectElement);
 
@@ -475,7 +697,7 @@ UI.Panels.StateProperties = new (function() {
 		document.getElementById("panel_prop_sm_input_keys_content").innerHTML = "";
 		for (let i=0; i<input_keys.length; ++i) {
 			let label = document.createElement("td");
-			label.innerHTML = input_keys[i] + ": ";
+			label.textContent = input_keys[i] + ": ";
 
 			let input_field = document.createElement("input");
 			input_field.setAttribute("id", "panel_prop_sm_input_keys_content_" + input_keys[i]);
@@ -541,10 +763,11 @@ UI.Panels.StateProperties = new (function() {
 					|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 					) return;
 				let idx = state.getInputKeys().indexOf(remove_button.getAttribute("input_key"));
+				let original_idx = idx;
 				let old_input_key = remove_button.getAttribute("input_key");
 				let old_input_mapping = state.getInputMapping()[idx];
 				state.getInputKeys().remove(old_input_key);
-				state.getInputMapping().remove(old_input_mapping);
+				state.getInputMapping().splice(idx, 1);
 				let row = remove_button.parentNode;
 				row.parentNode.removeChild(row);
 				if (UI.Statemachine.isDataflow()) UI.Statemachine.refreshView();
@@ -553,16 +776,19 @@ UI.Panels.StateProperties = new (function() {
 					"Removed input key of container " + current_prop_state.getStateName(),
 					function() { // undo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
-						container.getInputKeys().push(old_input_key);
-						container.getInputMapping().push(old_input_mapping);
+						container.getInputKeys().splice(original_idx, 0, old_input_key);
+						container.getInputMapping().splice(original_idx, 0, old_input_mapping);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
 							that.displayPropertiesForStatemachine(current_prop_state);
 					},
 					function() { // redo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
+						let idx = container.getInputKeys().indexOf(old_input_key);
 						container.getInputKeys().remove(old_input_key);
-						container.getInputMapping().remove(old_input_mapping);
+						if (idx != -1) {
+							container.getInputMapping().splice(idx, 1);
+						}
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
 							that.displayPropertiesForStatemachine(current_prop_state);
@@ -593,7 +819,7 @@ UI.Panels.StateProperties = new (function() {
 		document.getElementById("panel_prop_sm_output_keys_content").innerHTML = "";
 		for (let i=0; i<output_keys.length; ++i) {
 			let label = document.createElement("td");
-			label.innerHTML = output_keys[i] + ": ";
+			label.textContent = output_keys[i] + ": ";
 
 			let input_field = document.createElement("input");
 			input_field.setAttribute("id", "panel_prop_sm_outcomes_content_" + output_keys[i]);
@@ -658,10 +884,11 @@ UI.Panels.StateProperties = new (function() {
 					|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 					) return;
 				let idx = state.getOutputKeys().indexOf(remove_button.getAttribute("output_key"));
+				let original_idx = idx;
 				let old_output_key = remove_button.getAttribute("output_key");
 				let old_output_mapping = state.getOutputMapping()[idx];
 				state.getOutputKeys().remove(old_output_key);
-				state.getOutputMapping().remove(old_output_mapping);
+				state.getOutputMapping().splice(idx, 1);
 				let row = remove_button.parentNode;
 				row.parentNode.removeChild(row);
 				if (UI.Statemachine.isDataflow()) UI.Statemachine.refreshView();
@@ -670,16 +897,19 @@ UI.Panels.StateProperties = new (function() {
 					"Removed output key of container " + current_prop_state.getStateName(),
 					function() { // undo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
-						container.getOutputKeys().push(old_output_key);
-						container.getOutputMapping().push(old_output_mapping);
+						container.getOutputKeys().splice(original_idx, 0, old_output_key);
+						container.getOutputMapping().splice(original_idx, 0, old_output_mapping);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
 							that.displayPropertiesForStatemachine(current_prop_state);
 					},
 					function() { // redo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
+						let idx = container.getOutputKeys().indexOf(old_output_key);
 						container.getOutputKeys().remove(old_output_key);
-						container.getOutputMapping().remove(old_output_mapping);
+						if (idx != -1) {
+							container.getOutputMapping().splice(idx, 1);
+						}
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
 							that.displayPropertiesForStatemachine(current_prop_state);
@@ -717,7 +947,10 @@ UI.Panels.StateProperties = new (function() {
 		document.getElementById("input_prop_be_name").value = state.getStateName();
 		document.getElementById("label_prop_be_class").innerText = state.getBehaviorName();
 		document.getElementById("label_prop_be_package").innerText = state.getStatePackage();
-		document.getElementById("label_prop_be_desc").innerText = WS.Behaviorlib.getByName(state.getBehaviorName()).getBehaviorDesc();
+		let behavior_definition = WS.Behaviorlib.getByName(state.getBehaviorName());
+		document.getElementById("label_prop_be_desc").innerText = (behavior_definition != undefined)
+			? behavior_definition.getBehaviorDesc()
+			: "";
 
 		// Parameters
 		//-----------
@@ -731,14 +964,14 @@ UI.Panels.StateProperties = new (function() {
 				let default_value = param_def.default;
 				default_value = (param_def.type == "text" || param_def.type == "enum")? '"' + default_value + '"' : default_value;
 				let label = document.createElement("td");
-				label.innerHTML = params[i] + ": ";
+				label.textContent = params[i] + ": ";
 
 				let input_field = document.createElement("input");
 				input_field.setAttribute("id", "panel_prop_be_parameters_content" + i);
 				input_field.setAttribute("tabindex", "0");
 				input_field.setAttribute("class", "inline_text_edit");
 				input_field.setAttribute("type", "text");
-				input_field.setAttribute("value", values[i] || default_value);
+				input_field.setAttribute("value", (values[i] !== undefined) ? values[i] : default_value);
 				input_field.setAttribute("default_value", default_value);
 				input_field.setAttribute("param_key", params[i]);
 				if (values[i] == undefined) {
@@ -810,7 +1043,6 @@ UI.Panels.StateProperties = new (function() {
 						|| RC.Controller.isLocked() && RC.Controller.isStateLocked(current_prop_state.getStatePath())
 						|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 						) return;
-					let input_field = default_checkbox.parentNode.parentNode.childNodes[1].firstChild;
 					let param_key = default_checkbox.getAttribute("param_key");
 					let param_value = input_field.value;
 					let behavior_path = current_prop_state.getStatePath();
@@ -973,7 +1205,7 @@ UI.Panels.StateProperties = new (function() {
 				listeners_to_cleanup.push({'element': selectElement, 'listener_type': 'change', 'handler': autonomyChangeHandler});
 
 				let label = document.createElement("td");
-				label.innerHTML = outcome_list_complete[i] + ": ";
+				label.textContent = outcome_list_complete[i] + ": ";
 				let input_field = document.createElement("td");
 				input_field.appendChild(selectElement);
 				let row = document.createElement("tr");
@@ -994,13 +1226,13 @@ UI.Panels.StateProperties = new (function() {
 			document.getElementById("panel_prop_be_input_keys_content").innerHTML = "";
 			for (let i=0; i<input_keys.length; ++i) {
 				let label = document.createElement("td");
-				label.innerHTML = input_keys[i] + ": ";
+				label.textContent = input_keys[i] + ": ";
 
 				let input_field = document.createElement("input");
 				input_field.setAttribute("id", "panel_prop_be_input_keys_content_" + i);
 				input_field.setAttribute("class", "inline_text_edit");
 				input_field.setAttribute("type", "text");
-				input_field.setAttribute("value", input_mapping[i] || input_keys[i]);
+				input_field.setAttribute("value", (input_mapping[i] !== undefined) ? input_mapping[i] : input_keys[i]);
 				input_field.setAttribute("input_key", input_keys[i]);
 				if (input_mapping[i] == undefined) {
 					input_field.setAttribute("style", "text-decoration: line-through; color: rgba(0,0,0,.4);");
@@ -1062,7 +1294,6 @@ UI.Panels.StateProperties = new (function() {
 						|| RC.Controller.isLocked() && RC.Controller.isStateLocked(current_prop_state.getStatePath())
 						|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 						) return;
-					let input_field = default_checkbox.parentNode.parentNode.childNodes[1].firstChild;
 					let input_key = default_checkbox.getAttribute("input_key");
 					let input_value = input_field.value;
 					let behavior_path = current_prop_state.getStatePath();
@@ -1137,7 +1368,7 @@ UI.Panels.StateProperties = new (function() {
 			document.getElementById("panel_prop_be_output_keys_content").innerHTML = "";
 			for (let i=0; i<output_keys.length; ++i) {
 				let label = document.createElement("td");
-				label.innerHTML = output_keys[i] + ": ";
+				label.textContent = output_keys[i] + ": ";
 
 				let input_field = document.createElement("input");
 				input_field.setAttribute("class", "inline_text_edit");
@@ -1308,18 +1539,13 @@ UI.Panels.StateProperties = new (function() {
 			let json_file_dict = {};
 			json_file_dict["package"] = state_definition.getStatePackage();
 			json_file_dict["file"] = file_path;
-			API.post("view_file_source", json_file_dict, (result) => {
-				if (result) {
-					if (result['result']){
-						T.logInfo("State opened for viewing ...");
-						Tools.viewSource(state_type, file_path, result['text']);
-					} else {
-						T.logError("Failed to open the window for viewing source code!");
-					}
-				} else {
-					T.logError("Failed to open the state code!");
-				}
-			});
+			UI.Tools.openFileInSourceViewer(
+				json_file_dict,
+				state_type,
+				file_path,
+				"State opened for viewing ...",
+				"Failed to open the state code!"
+			);
 		} catch (err) {
 			T.logError("Unable to open state in viewer: " + err);
 		}
@@ -1344,14 +1570,13 @@ UI.Panels.StateProperties = new (function() {
 			let json_file_dict = {};
 			json_file_dict["package"] = package_name;
 			json_file_dict["file"] = state_file;
-			API.post("view_file_source", json_file_dict, (result) => {
-				if (result) {
-					console.log(`Behavior '${current_prop_state.getStatePath()}' opened in file viewer.`);
-					Tools.viewSource(current_prop_state.getBehaviorName(), file_path, result['text']);
-				} else {
-					T.logError(`Failed to open the behavior code for '${current_prop_state.getStatePath()}'!`);
-				}
-			});
+			UI.Tools.openFileInSourceViewer(
+				json_file_dict,
+				current_prop_state.getBehaviorName(),
+				file_path,
+				`Behavior '${current_prop_state.getStatePath()}' opened in file viewer.`,
+				`Failed to open the behavior code for '${current_prop_state.getStatePath()}'!`
+			);
 		} catch (err) {
 			T.logError("Unable to open behavior in viewer: " + err);
 		}
@@ -1423,7 +1648,8 @@ UI.Panels.StateProperties = new (function() {
 		// save parameters (after everything else to avoid troubles with generation)
 		let parameter_input = document.getElementById("panel_prop_parameters_content").getElementsByTagName("input");
 		let new_parameter_values = [];
-		for (let input of parameter_input) {
+		for (let i = 0; i < parameter_input.length; ++i) {
+			let input = parameter_input[i];
 			let val = input.value;
 			let valid_var_type = Checking.determineType(val);
 			if (valid_var_type == "unknown"){
@@ -1623,6 +1849,7 @@ UI.Panels.StateProperties = new (function() {
 			) return;
 
 		let container_path = current_prop_state.getStatePath();
+		let insert_idx = current_prop_state.getInputKeys().length;
 		let new_input_key = document.getElementById("input_prop_input_key_add").value;
 		current_prop_state.getInputKeys().push(new_input_key);
 		current_prop_state.getInputMapping().push(new_input_key);
@@ -1646,8 +1873,8 @@ UI.Panels.StateProperties = new (function() {
 			},
 			function() { // redo
 				let container = Behavior.getStatemachine().getStateByPath(container_path);
-				container.getInputKeys().push(new_input_key);
-				container.getInputMapping().push(new_input_key);
+				container.getInputKeys().splice(insert_idx, 0, new_input_key);
+				container.getInputMapping().splice(insert_idx, 0, new_input_key);
 				if (UI.Statemachine.isDataflow())
 					UI.Statemachine.refreshView();
 				if (container == current_prop_state)
@@ -1667,6 +1894,7 @@ UI.Panels.StateProperties = new (function() {
 			) return;
 
 		let container_path = current_prop_state.getStatePath();
+		let insert_idx = current_prop_state.getOutputKeys().length;
 		let new_output_key = document.getElementById("input_prop_output_key_add").value;
 		current_prop_state.getOutputKeys().push(new_output_key);
 		current_prop_state.getOutputMapping().push(new_output_key);
@@ -1690,8 +1918,8 @@ UI.Panels.StateProperties = new (function() {
 			},
 			function() { // redo
 				let container = Behavior.getStatemachine().getStateByPath(container_path);
-				container.getOutputKeys().push(new_output_key);
-				container.getOutputMapping().push(new_output_key);
+				container.getOutputKeys().splice(insert_idx, 0, new_output_key);
+				container.getOutputMapping().splice(insert_idx, 0, new_output_key);
 				if (UI.Statemachine.isDataflow())
 					UI.Statemachine.refreshView();
 				if (container == current_prop_state)
@@ -1715,19 +1943,19 @@ UI.Panels.StateProperties = new (function() {
 			if (to == 'concurrency') {
 				container.setConcurrent(true);
 				container.setPriority(false);
-				document.getElementById("doc_container_type").innerHTML = "Parallel execution of all elements.";
+				document.getElementById("doc_container_type").textContent = "Parallel execution of all elements.";
 			} else if (to == 'priority') {
 				if (concurrent) {
 					container.setConcurrent(false);
 				}
 				container.setPriority(true);
-				document.getElementById("doc_container_type").innerHTML = "Execution supersedes all other containers.";
+				document.getElementById("doc_container_type").textContent = "Execution supersedes all other containers.";
 			} else {
 				if (concurrent) {
 					container.setConcurrent(false);
 				}
 				container.setPriority(false);
-				document.getElementById("doc_container_type").innerHTML = "Sequential execution based on outcomes.";
+				document.getElementById("doc_container_type").textContent = "Sequential execution based on outcomes.";
 			}
 		}
 
@@ -1792,14 +2020,15 @@ UI.Panels.StateProperties = new (function() {
 			if (RC.ROS.isConnected()) {
 				document.getElementById("button_prop_synthesize").removeAttribute("disabled", "disabled");
 				document.getElementById("button_prop_synthesize").setAttribute("title", "Send a request to Behavior Synthesis");
+				loadSynthesisSchema(renderSynthesisSchema);
 			} else {
 				document.getElementById("button_prop_synthesize").setAttribute("disabled", "disabled");
 				document.getElementById("button_prop_synthesize").setAttribute("title", "Requires ROS connection!");
+				clearSynthesisFields();
 			}
 		} else {
 			document.getElementById('panel_prop_sm_synthesis').style.display = "none";
-			document.getElementById('input_prop_synthesis_initial').value = "";
-			document.getElementById('input_prop_synthesis_goal').value = "";
+			clearSynthesisFields();
 		}
 	}
 
@@ -1811,29 +2040,40 @@ UI.Panels.StateProperties = new (function() {
 			|| RC.Controller.isLocked() && RC.Controller.isStateLocked(current_prop_state.getStatePath())
 			|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 			) return;
-		let initial_condition = document.getElementById('input_prop_synthesis_initial').value;
-		let goal = document.getElementById('input_prop_synthesis_goal').value;
+		let goal_payload = buildSynthesisPayload();
+		if (goal_payload == undefined) {
+			T.logError('Unable to build synthesis request payload.');
+			return;
+		}
 		document.getElementById("cb_display_synthesis").checked = false;
 		document.getElementById('panel_prop_sm_synthesis').style.display = "none";
 
 		UI.Statemachine.abortTransition();
 
-		RC.PubSub.requestBehaviorSynthesis(
+		RC.PubSub.requestSynthesisGoal(
+			goal_payload,
 			current_prop_state.getStatePath(),
-			UI.Settings.getSynthesisSystem(),
-			goal,
-			initial_condition,
-			current_prop_state.getOutcomes(),
 			function(result) {
-				document.getElementById('label_synthesis_feedback').value = "This will delete the current content!";
+				document.getElementById('label_synthesis_feedback').textContent = "This will delete the current content!";
 				document.getElementById('panel_prop_sm_synthesis').style.display = "none";
-				document.getElementById('input_prop_synthesis_initial').value = "";
-				document.getElementById('input_prop_synthesis_goal').value = "";
+				clearSynthesisFields();
 			},
 			function(feedback) {
-				document.getElementById('label_synthesis_feedback').value = feedback.status;
+				document.getElementById('label_synthesis_feedback').textContent = feedback.status;
 			}
 		);
+	}
+
+	this.DEBUG_renderSynthesisSchema = function(schema_fields, state) {
+		current_prop_state = state;
+		synthesis_schema_cache = schema_fields;
+		renderSynthesisSchema(schema_fields);
+	}
+
+	this.DEBUG_buildSynthesisPayload = function(schema_fields, state) {
+		current_prop_state = state;
+		synthesis_schema_cache = schema_fields;
+		return buildSynthesisPayload();
 	}
 
 	this.clearChildElements = function(filter='') {
