@@ -17,7 +17,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import UnlessCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from launch_ros.actions import Node
 
@@ -46,9 +46,11 @@ def generate_launch_description():
                                  default_value='8000'
                                  )
 
-    host = DeclareLaunchArgument('host',
-                                description="IP address to bind the FlexBE WebUI server to (default: 127.0.0.1 — localhost)",
-                                default_value='127.0.0.1')
+    host = DeclareLaunchArgument(
+        'host',
+        description='IP address to bind the FlexBE WebUI server to (default: 127.0.0.1 - localhost)',
+        default_value='127.0.0.1'
+    )
 
     clear_cache = DeclareLaunchArgument('clear_cache',
                                         description='Clear existing package data cache and reprocess',
@@ -85,8 +87,8 @@ def generate_launch_description():
             node_args += ['--port', port]
         if host != '':
             node_args += ['--host', host]
-        if clear_cache.lower() == 'true':
-            node_args += ['--clear_cache', 'true']
+        if clear_cache != '':
+            node_args += ['--clear_cache', clear_cache]
 
         if offline.lower() == 'true':
             # Launch either node or server but not both based on the offline argument (default false to launch online node)
@@ -113,7 +115,11 @@ def generate_launch_description():
 
     webui_client = Node(name='flexbe_webui_client', package='flexbe_webui',
                         executable='webui_client',
-                        arguments=['--port', LaunchConfiguration('port'),
+                        arguments=['--url', PythonExpression([
+                                   "'127.0.0.1' if '", LaunchConfiguration('host'),
+                                   "' in ['0.0.0.0', '::', ''] else '", LaunchConfiguration('host'), "'"
+                                   ]),
+                                   '--port', LaunchConfiguration('port'),
                                    '--client_delay', LaunchConfiguration('client_delay')],
                         output='screen',
                         condition=UnlessCondition(LaunchConfiguration('headless')))

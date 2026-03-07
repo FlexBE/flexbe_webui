@@ -17,6 +17,47 @@
 import json
 import os
 import re
+from typing import Any, Dict, List
+
+from ament_index_python import get_package_share_directory
+
+from pydantic import BaseModel, Field, root_validator, validator
+
+DEFAULT_ALLOWED_EDITORS = [
+    'gnome-text-editor',
+    'code',
+    'gedit',
+    'kate',
+    'geany',
+    'subl',
+    'sublime_text',
+]
+ENV_VAR_PATTERN = re.compile(r'\$\{([^}]+)\}')
+
+
+def get_default_config_file_path() -> str:
+    """Return the packaged default JSON configuration path."""
+    candidates = []
+    try:
+        candidates.append(os.path.join(
+            get_package_share_directory('flexbe_webui'),
+            'config',
+            'flexbe_webui_config.json',
+        ))
+    except (LookupError, OSError, RuntimeError, ValueError):
+        pass
+    candidates.append(os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        'config',
+        'flexbe_webui_config.json',
+    ))
+
+    for candidate in candidates:
+        resolved_candidate = os.path.realpath(candidate)
+        if os.path.exists(resolved_candidate):
+            return resolved_candidate
+
+    raise FileNotFoundError('Could not locate packaged flexbe_webui_config.json')
 
 
 def get_default_license_text(default_license):
@@ -63,77 +104,197 @@ def get_default_license_text(default_license):
     return code
 
 
-def update_settings(settings):
-    """Update settings using custom data as needed."""
-    if settings['save_in_source']:
-        if '${' in settings['source_code_root']:
-            # Allow environment variable in file specification"""
-            pattern = r'\$\{([^}]+)\}'
-            matches = re.findall(pattern, settings['source_code_root'])
-            workspace_root = os.getenv(matches[0])
+class WebuiSettings(BaseModel):
+    """Typed, validated settings model for flexbe_webui."""
 
-            # Check if the environment variable is found
-            if workspace_root is not None:
-                print(f"The '{matches[0]}' environment variable is set, update the source code root.", flush=True)
-                # Replace the placeholder with the value of the environment variable
-                settings['source_code_root'] = settings['source_code_root'].replace(f'${{{matches[0]}}}', workspace_root)
-                print(settings['source_code_root'], flush=True)
-            else:
-                print(f"The '{matches[0]}' environment variable is NOT set!  Cannot update the source code root.", flush=True)
-                settings['save_in_source'] = False
+    class Config:
+        """Ignore unknown fields from legacy/external config files."""
 
-        if settings['save_in_source'] and not os.path.exists(settings['source_code_root']):
-            print(f"The '{settings['source_code_root']}' directory does not exist!"
+        extra = 'ignore'
+
+    code_indentation: int = 2
+    collapse_info: bool = True
+    collapse_warn: bool = True
+    collapse_error: bool = False
+    collapse_hint: bool = False
+    commands_enabled: bool = False
+    commands_key: str = 'FlexBE WebUI'
+    default_package: str = 'flexbe_behaviors'
+    dashboard_text_size: float = 86.5
+    dashboard_text_bold: bool = False
+    statemachine_text_size: float = 86.5
+    statemachine_text_bold: bool = True
+    statemachine_text_extra_bold: bool = False
+    transition_line_width_normal: float = 2.0
+    transition_line_width_bold: float = 3.0
+    transition_line_width_extra_bold: float = 4.0
+    allow_editors: List[str] = Field(default_factory=lambda: DEFAULT_ALLOWED_EDITORS.copy())
+    editor_command: str = 'gnome-text-editor -s $FILE'
+    explicit_states: bool = False
+    gridsize: int = 50
+    initialize_flexbe_core: bool = True
+    license: str = 'bsd-3'  # noqa: A003
+    license_file: str = ''
+    pkg_cache_enabled: bool = False
+    runtime_timeout: int = 10
+    server_timeout: float = 0.25
+    save_in_source: bool = True
+    source_code_root: str = '${WORKSPACE_ROOT}/src'
+    stop_behaviors: bool = False
+    structured_request_logging: bool = True
+    synthesis_enabled: bool = False
+    synthesis_topic: str = '/behavior_synthesis'
+    synthesis_type: str = 'synthesis_msgs/BehaviorSynthesisAction'
+    synthesis_system: str = 'system_wide'
+    target_line_length: int = 100
+    text_encoding: str = 'UTF-8'
+    transition_mode: int = 1
+    visualize_whitespace: bool = True
+    license_text: str = ''
+
+    @validator('allow_editors', pre=True)
+    def _normalize_allow_editors(cls, value: Any) -> List[str]:
+        """Normalize editor allowlist input and enforce defaults."""
+        if not isinstance(value, list):
+            value = DEFAULT_ALLOWED_EDITORS
+
+        normalized = []
+        for editor in value:
+            if isinstance(editor, str):
+                name = editor.strip()
+                if name != '':
+                    normalized.append(name)
+
+        if len(normalized) == 0:
+            return DEFAULT_ALLOWED_EDITORS.copy()
+        return normalized
+
+    @validator('dashboard_text_size', 'statemachine_text_size', pre=True)
+    def _normalize_text_size(cls, value: Any) -> float:
+        """Ensure UI text size settings stay in a reasonable range."""
+        try:
+            size = float(value)
+        except (TypeError, ValueError):
+            size = 86.5
+        if size < 50.0:
+            return 50.0
+        if size > 150.0:
+            return 150.0
+        return size
+
+    @validator('server_timeout', pre=True)
+    def _normalize_server_timeout(cls, value: Any) -> float:
+        """Keep short server wait timeouts in a sensible range."""
+        try:
+            timeout = float(value)
+        except (TypeError, ValueError):
+            timeout = 0.25
+        if timeout < 0.05:
+            return 0.05
+        if timeout > 10.0:
+            return 10.0
+        return round(timeout, 2)
+
+    @validator('transition_line_width_normal', 'transition_line_width_bold',
+               'transition_line_width_extra_bold', pre=True)
+    def _normalize_transition_line_width(cls, value: Any) -> float:
+        """Ensure transition line widths remain in a usable range."""
+        try:
+            width = float(value)
+        except (TypeError, ValueError):
+            width = 2.0
+        if width < 1.0:
+            return 1.0
+        if width > 20.0:
+            return 20.0
+        return width
+
+    @root_validator
+    def _normalize_transition_line_width_order(cls, values: Dict[str, Any]):
+        """Keep transition widths ordered: normal < bold < extra bold."""
+        epsilon = 0.1
+        normal = float(values.get('transition_line_width_normal', 2.0))
+        bold = float(values.get('transition_line_width_bold', 3.0))
+        extra = float(values.get('transition_line_width_extra_bold', 4.0))
+
+        normal = min(max(normal, 1.0), 19.8)
+        bold = min(max(bold, 1.1), 19.9)
+        extra = min(max(extra, 1.2), 20.0)
+
+        if bold <= normal:
+            bold = min(19.9, normal + epsilon)
+        if extra <= bold:
+            extra = min(20.0, bold + epsilon)
+
+        if extra <= bold:
+            extra = 20.0
+            bold = min(bold, 19.9)
+            if bold <= normal:
+                normal = max(1.0, bold - epsilon)
+
+        values['transition_line_width_normal'] = round(normal, 1)
+        values['transition_line_width_bold'] = round(bold, 1)
+        values['transition_line_width_extra_bold'] = round(extra, 1)
+        return values
+
+    @validator('license_file', 'source_code_root', pre=True)
+    def _normalize_string_fields(cls, value: Any) -> str:
+        """Ensure path-like settings are always normalized strings."""
+        if value is None:
+            return ''
+        return str(value)
+
+    @root_validator
+    def _resolve_paths_and_license(cls, values: Dict[str, Any]):
+        """Apply source path and license-file dependent settings."""
+        save_in_source = bool(values.get('save_in_source', False))
+        source_code_root = values.get('source_code_root', '')
+
+        if save_in_source and '${' in source_code_root:
+            matches = ENV_VAR_PATTERN.findall(source_code_root)
+            if len(matches) > 0:
+                workspace_root = os.getenv(matches[0])
+                if workspace_root is not None:
+                    print(f"The '{matches[0]}' environment variable is set, update the source code root.", flush=True)
+                    source_code_root = source_code_root.replace(f'${{{matches[0]}}}', workspace_root)
+                    values['source_code_root'] = source_code_root
+                    print(source_code_root, flush=True)
+                else:
+                    print(f"The '{matches[0]}' environment variable is NOT set!  Cannot update the source code root.",
+                          flush=True)
+                    values['save_in_source'] = False
+                    save_in_source = False
+
+        if save_in_source and not os.path.exists(source_code_root):
+            print(f"The '{source_code_root}' directory does not exist!"
                   f'  Cannot save behaviors in the source code root.', flush=True)
-            settings['save_in_source'] = False
+            values['save_in_source'] = False
 
-    # Define license text to use in saved behaviors
-    settings['license_text'] = get_default_license_text(settings['license'])
-    if settings['license_file'] is not None and settings['license_file'] != '':
-        if os.path.exists(settings['license_file']):
-            with open(settings['license_file']) as fin:
-                lines = [f'{line.strip()}' if line.strip().startswith('#') else f'# {line.strip()}' for line in fin.readlines()]
-                settings['license_text'] = '\n'.join(lines) + '\n'
-                print(f"Using custom license text:\n{settings['license_text']}\n", flush=True)
-        else:
-            print(f"Cannot load custom license text from '{settings['license_file']}'"
-                  f"  use default license:\n{settings['license']}\n", flush=True)
+        license_name = str(values.get('license', 'bsd-3'))
+        values['license_text'] = get_default_license_text(license_name)
+        license_file = str(values.get('license_file', ''))
+        if license_file != '':
+            if os.path.exists(license_file):
+                with open(license_file) as fin:
+                    lines = [f'{line.strip()}' if line.strip().startswith('#')
+                             else f'# {line.strip()}' for line in fin.readlines()]
+                    values['license_text'] = '\n'.join(lines) + '\n'
+                    print(f"Using custom license text:\n{values['license_text']}\n", flush=True)
+            else:
+                print(f"Cannot load custom license text from '{license_file}'"
+                      f'  use default license:\n{license_name}\n', flush=True)
+        return values
 
-    return settings
+
+def update_settings(settings: Dict[str, Any]):
+    """Validate and normalize settings via typed model."""
+    validated = WebuiSettings.parse_obj(settings)
+    return validated.dict()
 
 
 def load_settings(json_dict=None):
     """Load settings for the flexbe_webui."""
-    # default settings
-    settings = {
-        'code_indentation': 2,
-        'collapse_info': True,
-        'collapse_warn': True,
-        'collapse_error': False,
-        'collapse_hint': False,
-        'commands_enabled': False,
-        'commands_key': 'FlexBE WebUI',
-        'default_package': 'flexbe_behaviors',
-        'editor_command': 'gedit --new-window $FILE +$LINE',
-        'explicit_states': False,
-        'gridsize': 50,
-        'initialize_flexbe_core': True,  # Use latest initialization code
-        'license': 'bsd-3',               # Allow Apache-2, BSD-3, or Custom
-        'license_file': '',              # or, full file path to custom license file
-        'pkg_cache_enabled': False,
-        'runtime_timeout': 10,
-        'save_in_source': False,  # Save behaviors source code folders as well as install folder
-        'source_code_root': '${WORKSPACE_ROOT}/src',
-        'stop_behaviors': False,  # restrict execution (stop externally started behaviors)
-        'synthesis_enabled': False,
-        'synthesis_topic': '/behavior_synthesis',
-        'synthesis_type': 'synthesis_msgs/BehaviorSynthesisAction',
-        'synthesis_system': 'system_wide',
-        'target_line_length': 100,
-        'text_encoding': 'UTF-8',
-        'transition_mode': 1,
-        'visualize_whitespace': True,
-    }
+    settings: Dict[str, Any] = {}
 
     if json_dict is not None:
         if 'file_name' in json_dict:
@@ -144,14 +305,25 @@ def load_settings(json_dict=None):
             try:
                 with open(file_path, 'r') as fin:
                     json_settings = json.load(fin)
+                if not isinstance(json_settings, dict):
+                    raise ValueError(f"Configuration file '{file_path}' must contain a JSON object.")
                 settings.update(json_settings)
-            except Exception as exc:
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                 print('\x1b[91m Failed to load settings!\x1b[0m', flush=True)
                 raise exc
         else:
             print('\x1b[93mNo file name provided - using default FlexBE configuration.\x1b[0m', flush=True)
     else:
-        print('using default FlexBE WebUI configuration.', flush=True)
+        file_path = get_default_config_file_path()
+        print(f"Load default configuration settings from '{file_path}'", flush=True)
+        try:
+            with open(file_path, 'r') as fin:
+                json_settings = json.load(fin)
+            if not isinstance(json_settings, dict):
+                raise ValueError(f"Configuration file '{file_path}' must contain a JSON object.")
+            settings.update(json_settings)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            print('\x1b[91m Failed to load default settings!\x1b[0m', flush=True)
+            raise exc
 
-    update_settings(settings)
-    return settings
+    return update_settings(settings)

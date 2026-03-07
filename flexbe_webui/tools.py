@@ -78,45 +78,30 @@ def highlight_code(code, visualize_whitespace=True):
 
     if visualize_whitespace:
         try:
-            # Use regex to extract the relevant code part from the HTML
-            pattern = re.compile(r'(.*?)(<div class="code">.*?</table></body>)(.*)', re.DOTALL)
-            match = pattern.search(highlighted_code)
-            if match:
-                before_code = match.group(1)
-                code_part = match.group(2)
-                after_code = match.group(3)
+            start_marker = '<div class="code">'
+            end_marker = '</table></div>'
+            start_ndx = highlighted_code.find(start_marker)
+            end_ndx = highlighted_code.find(end_marker, start_ndx if start_ndx >= 0 else 0)
+            if start_ndx >= 0 and end_ndx >= 0:
+                end_ndx += len(end_marker)
+                before_code = highlighted_code[:start_ndx]
+                code_part = highlighted_code[start_ndx:end_ndx]
+                after_code = highlighted_code[end_ndx:]
 
                 print('\x1b[93mUpdating code part to visualize whitespaces.\x1b[0m', flush=True)
-                # Replace whitespace characters in the code part
-                lines = code_part.split('\n')
-                new_lines = []
-                for line in lines:
-                    # Process line-by-line and update whitespace not part of xml tag
-                    inside_xml = False
-                    ndx = 0
-                    while ndx < len(line):
-                        if line[ndx] == '<':
-                            if line[ndx:(ndx + 5)] == '<span':
-                                inside_xml = True
-                                ndx += 4
-                        elif line[ndx] == '>':
-                            if line[max(0, ndx - 6):(ndx + 1)] == '</span>':
-                                inside_xml = False
-                        if not inside_xml:
-                            if line[ndx] == ' ':
-                                line = line[:ndx] + '·' + line[(ndx + 1):]
-                            elif line[ndx] == '\t':
-                                line = line[:ndx] + '→\t' + line[(ndx + 1):]
-                                ndx += 1  # skip added character
-                        ndx += 1  # process the next character
-                    new_lines.append(line)
-                code_part = '\n'.join(new_lines)
+                # Replace whitespace characters only in text nodes (outside HTML tags).
+                parts = re.split(r'(<[^>]+>)', code_part)
+                for i, part in enumerate(parts):
+                    if part.startswith('<') and part.endswith('>'):
+                        continue
+                    parts[i] = part.replace(' ', '·').replace('\t', '→\t')
+                code_part = ''.join(parts)
                 # Reassemble the HTML with the modified code part
                 highlighted_code = before_code + code_part + after_code
             else:
                 print('cannot determine code block to visualize whitespace!', flush=True)
 
-        except Exception as exc:
+        except (TypeError, ValueError, RuntimeError, re.error) as exc:
             print(f'Failed to process whitespace: {type(exc)} - {exc}', flush=True)
 
     return highlighted_code
@@ -221,7 +206,7 @@ def format_state_code_string(code_string, target_line_length, ws=' '):
     formatted_lines = []
 
     for line in lines:
-        if len(line) > target_line_length and any([char in line for char in '({[<']):
+        if len(line) > target_line_length and any(char in line for char in '({[<'):
             formatted_lines.extend(format_line(line, ws[:1]))
         else:
             formatted_lines.append(line.rstrip())

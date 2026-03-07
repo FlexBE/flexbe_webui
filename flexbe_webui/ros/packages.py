@@ -36,14 +36,14 @@ def get_packages() -> Dict[str, PackageData]:
         python_path = None
         try:
             python_path = importlib.import_module(name).__path__[-1]
-        except Exception:
+        except (ImportError, ModuleNotFoundError, AttributeError):
             editable = False
         try:
             pkg_data = PackageData(name=name, path=path, python_path=python_path, editable=editable)
             if has_behaviors(pkg_data) or has_states(pkg_data):
                 print(f'--> {name} ({path}) is a FlexBE package!', flush=True)
                 packages[name] = pkg_data
-        except Exception as exc:
+        except (OSError, ValueError, ET.ParseError, AttributeError) as exc:
             print(f'  get_packages: ERROR for {name} ({path}) :'
                   f' {exc}', flush=True)
     print(f'\x1b[93mFound {len(packages)} FlexBE packages '

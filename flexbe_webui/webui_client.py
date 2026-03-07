@@ -26,13 +26,44 @@ from threading import Thread
 from PySide6.QtCore import QTimer, QUrl, Qt, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow
 
 from ament_index_python.packages import get_package_share_directory
 
 import websockets
+
+
+class FlexBEAuthInterceptor(QWebEngineUrlRequestInterceptor):
+    """Attach API token header to requests targeting this WebUI server."""
+
+    def __init__(self, host, port, api_token):
+        """Store server endpoint and token used for outgoing API calls."""
+        super().__init__()
+        self._host = host
+        self._port = int(port)
+        self._token = api_token.strip()
+
+    def interceptRequest(self, info):
+        """Inject authorization headers for requests to configured server."""
+        if not self._token:
+            return
+
+        request_url = info.requestUrl()
+        request_host = request_url.host()
+        request_port = request_url.port()
+
+        if request_host != self._host:
+            return
+
+        if request_port not in (-1, self._port):
+            return
+
+        bearer_value = f'Bearer {self._token}'.encode('utf-8')
+        token_value = self._token.encode('utf-8')
+        info.setHttpHeader(b'Authorization', bearer_value)
+        info.setHttpHeader(b'X-API-Token', token_value)
 
 
 class FlexBEMainWindow(QMainWindow):
@@ -43,6 +74,13 @@ class FlexBEMainWindow(QMainWindow):
     def __init__(self, args):
         """Initialize WebViewer instance."""
         super().__init__()
+
+        self._api_token = os.getenv('FLEXBE_WEBUI_API_TOKEN', '').strip()
+        if self._api_token:
+            print('\x1b[93mWebUI client API token auth enabled.\x1b[0m', flush=True)
+
+        self._auth_interceptor = FlexBEAuthInterceptor(args.url, args.port, self._api_token)
+        QWebEngineProfile.defaultProfile().setUrlRequestInterceptor(self._auth_interceptor)
 
         self._browser = FlexBEWebView(args)
         self._browser.setPage(FlexBEWebEnginePage(self._browser, verbose=args.verbose,
@@ -77,6 +115,9 @@ class FlexBEMainWindow(QMainWindow):
     def _check_server_online(self):
         """Verify server is online."""
         request = QNetworkRequest(QUrl(f'{self._url}/api/v1/ready'))
+        if self._api_token:
+            request.setRawHeader(b'Authorization', f'Bearer {self._api_token}'.encode('utf-8'))
+            request.setRawHeader(b'X-API-Token', self._api_token.encode('utf-8'))
         self._network_manager.get(request)
 
     def _handle_response(self, reply):
@@ -131,7 +172,7 @@ class FlexBEMainWindow(QMainWindow):
         # print('Running asyncio event loop for shutdown listener ...', flush=True)
         try:
             self._async_event_loop.run_until_complete(self._listen_for_shutdown())
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError, TypeError) as exc:
             print(f'Exception in shutdown listener event loop: {exc}', flush=True)
         finally:
             print('Shutdown listener event loop clean up ...', flush=True)
@@ -169,7 +210,7 @@ class FlexBEMainWindow(QMainWindow):
                 except asyncio.TimeoutError:
                     # Handle the timeout case (e.g., set message to None or continue)
                     message = None
-                except Exception as exc:
+                except (RuntimeError, OSError, ValueError, TypeError) as exc:
                     print(f'Unknown exception : {exc}', flush=True)
         print('Done with shutdown listener', flush=True)
 
@@ -230,7 +271,7 @@ class FlexBEWebView(QWebEngineView):
         try:
             window = self._externals.pop(window_id)
             del window
-        except Exception:
+        except (KeyError, RuntimeError):
             print(f"Failed to delete window '{window_id}'", flush=True)
 
 
@@ -275,6 +316,16 @@ class ExternalMainWindow(QMainWindow):
 
 def main(args=None):
     """Run main loop."""
+    def parse_bool(value):
+        if isinstance(value, bool):
+            return value
+        value = str(value).strip().lower()
+        if value in ('true', '1', 'yes', 'y', 'on'):
+            return True
+        if value in ('false', '0', 'no', 'n', 'off'):
+            return False
+        raise argparse.ArgumentTypeError(f'Invalid boolean value: {value}')
+
     parser = argparse.ArgumentParser(description='FlexBE WebUI Client')
     parser.add_argument('--url', type=str, default='127.0.0.1', help="FlexBE WebUI Server URL (default='127.0.0.1')")
     parser.add_argument('--port', type=str, default='8000', help="FlexBE WebUI Server port (default='8000')")
@@ -282,28 +333,30 @@ def main(args=None):
     parser.add_argument('--height', type=int, default=800, help='UI window height (default=800)')
     parser.add_argument('--min_width', type=int, default=1000, help='Minimum UI window width (default=1000)')
     parser.add_argument('--min_height', type=int, default=900, help='Minimum UI window height (default=900)')
-    parser.add_argument('--clear_cache', type=bool, default=True, help='Clear JavaScript cache (default=True)')
+    parser.add_argument('--clear_cache', type=parse_bool, nargs='?', const=True, default=False,
+                        help='Clear JavaScript cache (default=False)')
     parser.add_argument('--client_delay', type=float, default=0.0, help='Delay client startup (default=0.0')
-    parser.add_argument('--verbose', type=bool, default=True, help='Verbose output (default=True)')
+    parser.add_argument('--verbose', type=parse_bool, nargs='?', const=True, default=True,
+                        help='Verbose output (default=True)')
     parser.add_argument('--debug', action='store_true',
                         help='Show Javascript debug lines with verbose output (default=False)')
     parser.add_argument('--flush', action='store_true', help='Flush python outputs immediately (default=False)')
     parser.add_argument('--qt_software', action='store_true', help='Use QT software rendering (default=False)')
     parser.add_argument('--disable_gpu', action='store_true', help='Disable QT GPU rendering (default=False)')
 
-    args, unknown = parser.parse_known_args()
+    args, unknown = parser.parse_known_args(args=args)
 
     if args.qt_software:
-        os.environ["QT_QUICK_BACKEND"] = 'software'
+        os.environ['QT_QUICK_BACKEND'] = 'software'
         print(f"Using QT_QUICK_BACKEND='{os.environ.get('QT_QUICK_BACKEND')}' rendering (instead of GPU)", flush=True)
 
     if args.disable_gpu:
-        existing_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").strip()
-        disable_flags = "--disable-gpu --disable-gpu-compositing"
-        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
-            f"{existing_flags} {disable_flags}".strip() if existing_flags else disable_flags
+        existing_flags = os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS', '').strip()
+        disable_flags = '--disable-gpu --disable-gpu-compositing'
+        os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (
+            f'{existing_flags} {disable_flags}'.strip() if existing_flags else disable_flags
         )
-        print(f"Disable GPU for QT WebEngine Chromium rendering", flush=True)
+        print('Disable GPU for QT WebEngine Chromium rendering', flush=True)
 
     if args.client_delay > 0.0:
         start = time.time()
@@ -339,7 +392,9 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print(f'Keyboard interrupt request at {datetime.now()} - ! Shut the webui client down!', flush=True)
-    except Exception as exc:
+    except BaseException as exc:  # noqa: B902
+        if isinstance(exc, (SystemExit, KeyboardInterrupt)):
+            raise
         print(f'Exception in executor at {datetime.now()} - ! {type(exc)}\n  {exc}', flush=True)
         import traceback
         print(f"{traceback.format_exc().replace('%', '%%')}", flush=True)
