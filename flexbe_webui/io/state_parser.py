@@ -18,14 +18,14 @@ import importlib
 import inspect
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 from flexbe_core import EventState
 
 from . import StateDefinition
 
 
-def parse_state_folder(folder: str, import_path_prefix: str = None) -> List[StateDefinition]:
+def parse_state_folder(folder: str, import_path_prefix: str = None, errors: Optional[List[str]] = None) -> List[StateDefinition]:
     """Parse the state folder."""
     state_defs = []
     if folder is None or folder == '':
@@ -38,11 +38,14 @@ def parse_state_folder(folder: str, import_path_prefix: str = None) -> List[Stat
             continue
         file_path = os.path.join(folder, file_name)
         if os.path.isdir(file_path):
-            state_defs.extend(parse_state_folder(file_path, import_path_prefix))
+            state_defs.extend(parse_state_folder(file_path, import_path_prefix, errors))
         elif import_path_prefix is not None and os.path.splitext(file_name)[-1] == '.py':
             import_path = file_path[:-3].replace(import_path_prefix + '/', '')
             import_path = import_path.replace('/', '.')
-            state_defs.extend(parse_state(import_path, file_path) or [])
+            result = parse_state(import_path, file_path)
+            if result is None and errors is not None:
+                errors.append(f"Skipped states from '{import_path}' ({file_path})")
+            state_defs.extend(result or [])
     return state_defs
 
 
@@ -85,7 +88,7 @@ def parse_state(import_path: str, file_path: str) -> List[StateDefinition]:
                 cls(*args)  # pass variable names for resolving symbols later
             except NotImplementedError:  # this error type is expected
                 pass  # we do nothing because state_def has been updated already
-            except Exception as exc:  # any other error is passed onwards
+            except (TypeError, ValueError, AttributeError, RuntimeError) as exc:  # any other error is passed onwards
                 raise Exception(
                     f"Cannot instantiate state '{cls.__name__}' to determine interface, "
                     "consider removing any code before 'super' in '__init__'. "
@@ -112,6 +115,6 @@ def parse_state(import_path: str, file_path: str) -> List[StateDefinition]:
         return state_defs
     except ImportError as exc:
         print(f'Failed to import {import_path} ({str(exc)}) ', file=sys.stderr, flush=True)
-    except Exception as exc:
+    except (TypeError, ValueError, AttributeError, RuntimeError) as exc:
         print(f'Failed to process {import_path} ({str(exc)}) ', file=sys.stderr, flush=True)
     return None

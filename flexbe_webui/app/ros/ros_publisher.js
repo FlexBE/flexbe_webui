@@ -9,36 +9,33 @@ ROS.Publisher = function(topicIn, msg_typeIn, latched=false) {
 	dict['topic'] = topic;
 	dict['msg_type'] = msg_type;
 	dict['latched'] = LATCHED;
-	API.post('create_publisher', dict, (result) => {
-		if (result) {
+	API.postFlag('create_publisher', dict, () => {
 			T.logInfo("Created publisher for '" + topic + "' ( " + msg_type + ") ");
-		} else {
+		}, error => {
 			T.logError("Failed to create publisher for '" + topic + "' ( " + msg_type + ") ");
-		}
-	});
+			T.logInfo(error);
+		});
 
 
 	that.publish = function(data) {
 		// console.log("Post publish request for '" + topic + "' ( " + msg_type + ") ... ");
-		message = data || {};
+		let message = data || {};
 		var dict2 = {'req': message, 'topic': topic};
-		API.post('publish', dict2, (result) => {
-			if (!result) {
-				T.logError("Failed to publish message for '" + topic + "'!");
-			}
+		API.postFlag('publish', dict2, () => {}, error => {
+			T.logError("Failed to publish message for '" + topic + "'!");
+			T.logInfo(error);
 		});
 
 	}
 
 	that.close = function() {
 		console.log(`\x1b[91mRequest close for publisher to '${topic}' (${msg_type}) ...\x1b[0m`);
-		API.post('close_publisher', topic, (result) => {
-			if (result) {
+		API.postFlag('close_publisher', topic, () => {
 				console.log(`\x1b[91mClosed publisher for '${topic}' \x1b[0m`);
-			} else {
+			}, error => {
 				T.logError("Failed to create publisher for '" + topic + "' ( " + msg_type + ") ");
-			}
-		});
+				T.logInfo(error);
+			});
 	}
 
 

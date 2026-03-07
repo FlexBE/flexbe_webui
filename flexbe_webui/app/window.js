@@ -1,3 +1,5 @@
+let beforeUnloadHandlerRegistered = false;
+
 window.onload = async () => {
 	console.log(`Loading UI window ...`);
 	Behavior.resetBehavior();
@@ -15,18 +17,23 @@ window.onload = async () => {
 	console.log(`Initialize controller ...`);
 	RC.Controller.initialize();
 
-	API.get("ready", ready_result => {
-		console.log(`${JSON.stringify(ready_result)}`);
-		const online_mode = ready_result.online_mode;
-		if (ready_result.status == 'ok'){
-			console.log(`\x1b[92mFlexBE WebUI Server is ready (online=${online_mode})!\x1b[0m`);
-		} else {
-			console.log(`\x1b[91mFlexBE WebUI Server returned unexpected status ${ready_result.status}\x1b[0m`);
+	API.getData("ready", ready_payload => {
+		if (ready_payload.status != 'ok') {
+			console.log(`\x1b[91mFlexBE WebUI Server readiness check failed: ${JSON.stringify(ready_payload)}\x1b[0m`);
+			RC.ROS.setOfflineMode();
+			T.logError("Unable to verify server readiness. Running in offline mode.");
+			UI.Settings.setRosProperties('');
+			UI.RuntimeControl.setRosProperties('');
+			return;
 		}
+		console.log(`${JSON.stringify(ready_payload)}`);
+		const online_mode = ready_payload.online_mode;
+		console.log(`\x1b[92mFlexBE WebUI Server is ready (online=${online_mode})!\x1b[0m`);
 
 		// Initialize runtime control if not in offline (standalone) mode
 		if (online_mode) {
 			// console.log(`Calling RC.ROS.trySetupConnection ...`);
+			RC.ROS.clearOfflineMode();
 			RC.ROS.trySetupConnection();
 		} else {
 			RC.ROS.setOfflineMode();
@@ -34,6 +41,12 @@ window.onload = async () => {
 			UI.Settings.setRosProperties('');
 			UI.RuntimeControl.setRosProperties('');
 		}
+	}, error => {
+		console.log(`\x1b[91mFlexBE WebUI Server readiness check failed: ${error}\x1b[0m`);
+		RC.ROS.setOfflineMode();
+		T.logError("Unable to verify server readiness. Running in offline mode.");
+		UI.Settings.setRosProperties('');
+		UI.RuntimeControl.setRosProperties('');
 	});
 
 	// Restore local settings (including statelib)
@@ -46,14 +59,17 @@ window.onload = async () => {
 	UI.Dashboard.setupTabHandling();
 
 	// Capture the beforeunload event to confirm shutdown
-	window.addEventListener('beforeunload', function (event) {
-		// Call the custom confirm function
-		var confirmExit = UI.Tools.confirmUIExit();
-		if (!confirmExit) {
-			// Prevent the default action (closing the window)
-			event.preventDefault();
-		}
-	});
+	if (!beforeUnloadHandlerRegistered) {
+		window.addEventListener('beforeunload', function (event) {
+			// Call the custom confirm function
+			var confirmExit = UI.Tools.confirmUIExit();
+			if (!confirmExit) {
+				// Prevent the default action (closing the window)
+				event.preventDefault();
+			}
+		});
+		beforeUnloadHandlerRegistered = true;
+	}
 
 	console.log(`\x1b[95m  Active element is '${document.activeElement ? document.activeElement.id : 'undefined'}'\x1b[0m`);
 }

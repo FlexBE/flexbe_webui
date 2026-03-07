@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Base model class."""
+"""Base model classes."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -117,3 +117,49 @@ class Behavior(BaseModel):
     manual_code_init: str
     manual_code_create: str
     manual_code_func: str
+
+
+class FileRequest(BaseModel):
+    """Request model for source-view operations."""
+
+    package: str
+    file: str
+    manifest_path: Optional[str] = None
+
+
+class OpenFileEditorRequest(FileRequest):
+    """Request model for editor-open operations."""
+
+    line: Optional[str] = ''
+
+
+class BehaviorCodeGeneratorRequest(BaseModel):
+    """Request model for behavior code generation."""
+
+    ws: str
+    package_name: str
+    file_name: str
+    save_as: bool = False
+    explicit_package: bool
+    behavior_names: List[str]
+    behavior: Dict[str, Any]
+
+
+class ActionClientRequest(BaseModel):
+    """Request model for action client creation."""
+
+    topic: str
+    action_type: str
+
+
+class ActionSchemaRequest(BaseModel):
+    """Request model for action schema introspection."""
+
+    action_type: str
+
+
+class SendActionGoalRequest(BaseModel):
+    """Request model for action goal submission."""
+
+    goal: Dict[str, Any]
+    topic: str

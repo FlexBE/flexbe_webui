@@ -13,6 +13,7 @@ RC.ROS = new (function() {
 
 	var setupConnection = function(node_namespace) {
 		if (node_namespace == undefined) return;
+		offline = false;
 		namespace = node_namespace;
 		T.logInfo("ROS connection running!");
 		UI.Settings.setRosProperties(namespace);
@@ -35,6 +36,10 @@ RC.ROS = new (function() {
 
 	this.setOfflineMode = function() {
 		offline = true;
+	}
+
+	this.clearOfflineMode = function() {
+		offline = false;
 	}
 
 	this.isOfflineMode = function() {

@@ -58,7 +58,7 @@ class BehaviorDefinition(BaseModel):
 class ParameterDefinition(BaseModel):
     """Parameter definition information."""
 
-    type: str
+    type: str  # noqa: A003
     name: str
     default: str
     label: Optional[str] = None

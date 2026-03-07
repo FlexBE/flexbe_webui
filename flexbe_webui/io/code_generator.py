@@ -105,7 +105,6 @@ class CodeGenerator:
 
     def generate_license_text(self, license_text):
         """Generate the license text."""
-        # @todo - make the license configurable
         code = ''
         code += '# Copyright ' + str(self.get_year_from_creation_date()) + ' ' + self.author + '\n'
         code += '#\n'
@@ -138,7 +137,7 @@ class CodeGenerator:
             try:
                 date_object = datetime.datetime.fromisoformat(date_string)
                 year = int(date_object.year)
-            except Exception:
+            except (TypeError, ValueError):
                 # Search for 4 digit integer
                 items = re.split(r'(?<=\D),\s*|\s*,(?=\D)', date_string)
                 year = None
@@ -147,7 +146,7 @@ class CodeGenerator:
                         year = int(item)
                         if year > 2000:
                             break
-                    except Exception:
+                    except (TypeError, ValueError):
                         pass
             if year is not None and year > 2000:
                 return year
@@ -164,16 +163,16 @@ class CodeGenerator:
                             year += 2000
                         elif 2000 <= year < 2500:
                             return year
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError, IndexError):
                         pass
                     return None
                 for delimiter in (' ', ',', '-'):
                     year = _split_year(date_string, delimiter)
                     if year is not None:
                         return year
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 pass
-        except Exception as exc:
+        except (TypeError, ValueError, AttributeError, IndexError) as exc:
             print(f'getYearFromCreationDate Error: <{self.creation_date}>{exc}<', flush=True)
 
         print(f'   Invalid creation date=<{self.creation_date}> - use current time!', flush=True)
@@ -205,6 +204,9 @@ class CodeGenerator:
         import_list.append('from flexbe_core import PriorityContainer')
         if self.initialize_flexbe_core:
             import_list.append('from flexbe_core import initialize_flexbe_core')
+        else:
+            import_list.append('from flexbe_core import StateLogger')
+            import_list.append('from flexbe_core.proxy import initialize_proxies')
 
         for imp_state in imported_states:
             try:
@@ -231,7 +233,7 @@ class CodeGenerator:
                     if not self.initialize_flexbe_core:
                         init_statement = (self.ws + self.ws + imp_state.state_pkg + '__'
                                           + imp_state.state_class + '.initialize_ros(node)')
-            except Exception as exc:
+            except (TypeError, ValueError, AttributeError) as exc:
                 print(f'CodeGenerator: {exc}', flush=True)
                 print(imp_state, flush=True)
                 print(30 * '=', flush=True)

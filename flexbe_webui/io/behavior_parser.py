@@ -25,7 +25,8 @@ from . import BehaviorDefinition, ParameterDefinition
 
 def parse_behavior_folder(folder: str, base_path: str,
                           editable: bool,
-                          encoding: str) -> List[BehaviorDefinition]:
+                          encoding: str,
+                          errors: Optional[List[str]] = None) -> List[BehaviorDefinition]:
     """Parse behavior folder."""
     # print(f'Parsing behavior folder {folder} from {base_path} ...', flush=True)
 
@@ -34,7 +35,7 @@ def parse_behavior_folder(folder: str, base_path: str,
         file_path = os.path.join(folder, file_name)
         if os.path.isdir(file_path):
             # Recurse into subfolder
-            behavior_defs.extend(parse_behavior_folder(file_path, base_path, editable, encoding))
+            behavior_defs.extend(parse_behavior_folder(file_path, base_path, editable, encoding, errors))
             continue
 
         try:
@@ -48,7 +49,7 @@ def parse_behavior_folder(folder: str, base_path: str,
 
                 try:
                     behavior = parse_behavior_manifest_xml(file_path, base_path, editable, encoding)
-                except Exception as exc:
+                except (OSError, ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
                     print(f"Exception parsing behavior '{file_name}':\n{exc}", flush=True)
                     raise Exception(f"Error in '{file_path}") from exc
 
@@ -56,8 +57,10 @@ def parse_behavior_folder(folder: str, base_path: str,
                     continue
                 # print(30*'=', '\nmanifest path=<', behavior.manifest_path, '>\n', 30*'=', flush=True)
                 behavior_defs.append(behavior)
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
             print(f"\x1b[91mSkipping behavior '{name}' due to '{exc}'!\x1b[0m")
+            if errors is not None:
+                errors.append(f"Skipped behavior '{name}' in '{folder}': {exc}")
     return behavior_defs
 
 
@@ -107,7 +110,7 @@ def parse_behavior_manifest_py(file_path: str, python_path: str,
             params=param_list,
             contains=contains_list,
         )
-    except Exception as exc:
+    except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         print(f"\x1b[91mError parsing '{file_path}' in '{python_path}' - skip!\x1b[0m")
         print(exc, flush=True)
         return None
@@ -151,15 +154,8 @@ def parse_behavior_manifest_xml(manifest_path: str,
         print(f'Parsing behavior xml manifest {manifest_path} ...', flush=True)
         # print(f"    path='{codefile_path}' file='{codefile_name}' class='{class_name}'", flush=True)
 
-        if behavior_xml.findall('params') is not None:
-            param_list = parse_manifest_xml_parameters(behavior_xml.findall('params'))
-        else:
-            param_list = []
-
-        if behavior_xml.findall('contains') is not None:
-            contains_list = parse_manifest_xml_contains(behavior_xml.findall('contains'))
-        else:
-            contains_list = []
+        param_list = parse_manifest_xml_parameters(behavior_xml.findall('params'))
+        contains_list = parse_manifest_xml_contains(behavior_xml.findall('contains'))
 
         # code_file = os.path.join(codefile_path.replace('.', '/'), codefile_name + '.py')
         code_file = os.path.join(codefile_path, codefile_name + '.py')
@@ -182,7 +178,7 @@ def parse_behavior_manifest_xml(manifest_path: str,
             params=param_list,
             contains=contains_list
         )
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
         print(f"\x1b[91mError parsing '{manifest_path}' - skip!\x1b[0m")
         print(exc, flush=True)
         return None
@@ -208,9 +204,8 @@ def parse_manifest_xml_parameters(params_xml):
                     label=element.attrib['label'],
                     hint=element.attrib['hint'],
                     additional=additional))
-            except Exception as exc:
-                print(f'\n\n****\nTODO - parse XML manifest parameters! {type(params_xml)}', flush=True)
-                print(f'Error processing manifest_xml_parameters : {exc}')
+            except (TypeError, ValueError, KeyError, AttributeError) as exc:
+                print(f'Failed to parse XML manifest parameter entry: {exc}', flush=True)
                 print(ET.tostring(element, encoding='utf8').decode('utf8'), flush=True)
                 break
     return params_list
@@ -222,10 +217,8 @@ def parse_manifest_xml_contains(xml_elements):
     for element in xml_elements:
         try:
             contains_list.append(element.attrib['name'])
-        except Exception as exc:
-            print('\n\n****\nTODO - parse XML parse_manifest_xml_contains parameters! '
-                  f'{type(xml_elements)}', flush=True)
-            print(f'Error processing parse_manifest_xml_contains : {exc}')
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            print(f'Failed to parse XML manifest contains entry: {exc}', flush=True)
             print(ET.tostring(element, encoding='utf8').decode('utf8'), flush=True)
             break
     return contains_list

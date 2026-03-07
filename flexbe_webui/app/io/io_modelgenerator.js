@@ -253,7 +253,7 @@ IO.ModelGenerator = new (function() {
 			'outcomes', 'transitions', 'autonomy',
 			'userdata_keys', 'userdata_remapping'];
 		var missing_properties = [];
-		for (property of required_properties) {
+		for (let property of required_properties) {
 			if (!states[0].hasOwnProperty(property)) {
 				missing_properties.push(property);
 			}

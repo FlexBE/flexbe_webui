@@ -13,13 +13,12 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 		var dict = {};
 		dict['topic'] = topic;
 		dict['msg_type'] = msg_type;
-		API.post('create_subscriber', dict, (result) => {
-			if (result) {
+		API.postFlag('create_subscriber', dict, () => {
 				T.logInfo("Created subscriber for '" + topic +"' (" + msg_type + ") at " + wsProto + "//" + wsHost);
-			} else {
+			}, error => {
 				T.logWarn("Failed to create subscriber for '" + topic +"' (" + msg_type + ")");
-			}
-		});
+				T.logInfo(error);
+			});
 	};
 
 	var buffer = "";
@@ -34,7 +33,7 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 
 				if (obj == null) obj = undefined;
 				if (idx != 0) {
-					var exec_cb = function(o) { setTimeout(callback(o), 0); };
+					var exec_cb = function(o) { setTimeout(function() { callback(o); }, 0); };
 					buffer = buffer.slice(idx);
 					try_parse = true;
 					exec_cb(obj);
@@ -47,7 +46,7 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 				console.log('event.data <' + JSON.stringify(event.data) + '>');
 				console.log('buffer:<' + buffer + '>' + idx);
 				if (err.hasOwnProperty('name') && err.name == "SyntaxError" && err.hasOwnProperty('at')) {
-					buffer.slice(err.at);
+					buffer = buffer.slice(err.at);
 					try_parse = true;
 				}
 			}
@@ -57,13 +56,13 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 
 	that.close = function() {
 		console.log(`\x1b[91mOn close for subscription to '${topic}' (${msg_type}) ...\x1b[0m`);
-		API.post('close_subscriber', topic, (result) => {
-			if (result) {
+		ws.close();
+		API.postFlag('close_subscriber', topic, () => {
 				console.log(`\x1b[91mClosed subscriber for '${topic}' \x1b[0m`);
-			} else {
+			}, error => {
 				T.logError("Failed to close subscriber for '" + topic + "' ( " + msg_type + ") ");
-			}
-		});
+				T.logInfo(error);
+			});
 	}
 
 };

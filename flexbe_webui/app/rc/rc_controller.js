@@ -334,7 +334,7 @@ RC.Controller = new (function() {
 	this.onboardTimeout = 10; // seconds (this is only the default value, actual value set by settings)
 
 	this.isCurrentState = function(state_to_check, include_path) {
-		if (current_state_path == undefined) return false;
+		if (current_state_path == undefined || state_to_check == undefined) return false;
 
 		return current_state_path == state_to_check.getStatePath()
 			|| include_path && current_state_path.startsWith(state_to_check.getStatePath() + "/");
@@ -346,14 +346,12 @@ RC.Controller = new (function() {
 
 	this.updateCurrentStatePath = function(state_path) {
 		if (current_state_path != state_path) {
-			if (!current_state_path.startsWith(state_path + '/')) {
-				// only process if change of state on same level or deeper
-				// ignore change if going from deeper to shallower
-				current_state_path = state_path;
-				vis_update_required = true;
-				// Process in timer in case of rapid changes
-				if (vis_update_timer == undefined) vis_update();
-			}
+			current_state_path = state_path;
+			vis_update_required = true;
+			// Let the runtime viewer decide whether the new path changes the
+			// currently displayed level; the controller should not drop valid
+			// shallower-path updates when containers exit.
+			if (vis_update_timer == undefined) vis_update();
 		}
 	}
 

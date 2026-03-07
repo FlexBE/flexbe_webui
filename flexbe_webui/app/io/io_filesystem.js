@@ -47,8 +47,8 @@ IO.Filesystem = new (function() {
 	}
 
 	this.checkFolderExists = function(parent_path, name, callback) {
-		fs.stat(path.join(parent_path, name), (stats) => {
-			callback(stats.isDirectory());
+		fs.stat(path.join(parent_path, name), (err, stats) => {
+			callback(err == undefined && stats.isDirectory());
 		});
 	}
 

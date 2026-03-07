@@ -67,11 +67,11 @@ IO.BehaviorLoader = new (function() {
 
 		resetEditor();
 
-		T.logInfo("Loading behavior ...");
-		T.logInfo("Manifest path: " + manifest.manifest_path);
-		T.logInfo("Behavior path: " + manifest.codefile_path);
-		T.logInfo("Behavior name: " + manifest.codefile_name);
-		T.logInfo("Parsing sourcecode...");
+		T.logInfo("Loading behavior...");
+		T.logInfo("Manifest: " + manifest.manifest_path);
+		T.logInfo("Code: " + manifest.codefile_path);
+		T.logInfo("Behavior: " + manifest.codefile_name);
+		T.logInfo("Parsing source code...");
 		parseCode(manifest.codefile_content, manifest, callback);
 	}
 
@@ -81,6 +81,9 @@ IO.BehaviorLoader = new (function() {
 			callback(parsingResult);
 		} catch (err) {
 			T.logError("Failed to parse behavior interface of " + behavior_data.name + ": " + err);
+			process.nextTick(() => {
+				callback(undefined);
+			});
 			return;
 		}
 	}
@@ -90,6 +93,9 @@ IO.BehaviorLoader = new (function() {
 		var package_name = names.rosnode_name;
 		ROS.getPackagePythonPath(package_name, (folder_path) => {
 			if (folder_path == undefined) {
+				process.nextTick(() => {
+					callback();
+				});
 				return;
 			}
 			var file_path = `${folder_path}/${names.file_name}`;
@@ -119,6 +125,7 @@ IO.BehaviorLoader = new (function() {
 
 	this.parseBehaviorSM = function(manifest, callback) {
 		console.log(`\x1b[92mPreparing sourcecode of behavior '${manifest.name}'\x1b[0m`);
+		let parsingResult;
 		try {
 			parsingResult = IO.CodeParser.parseCode(manifest.codefile_content);
 		} catch (err) {
