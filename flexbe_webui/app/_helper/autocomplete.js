@@ -47,10 +47,10 @@ const Autocomplete = new (function() {
 						}
 					}
 					return false;
-				}).map(function(el) {
-					return {text: el.key, hint: "(" + el.value + ")", fill: prefix + "." + entry};
+					}).map(function(el) {
+						return {text: el.key, hint: "(" + el.value + ")", fill: prefix + "." + el.key};
 
-				}));
+					}));
 			} else {
 				// console.log(`\x1b[94m   entry ${entry} already includes userdata prefix! \x1b[0m`);
 			}
@@ -79,12 +79,33 @@ const Autocomplete = new (function() {
 		return value_list;
 	}
 
+	this.generateStateParameterList = function(entry) {
+		if (entry == undefined || entry == "") return [];
+		let value_list = [];
+
+		value_list = value_list.concat(Behavior.getPrivateVariables()
+		.filter(function(el) {
+			return el.key.startsWith(entry);
+		}).map(function(el) {
+			return {text: el.key, hint: " = " + el.value.replace(/"/g, '&quot;'), fill: el.key};
+		}));
+
+		value_list = value_list.concat(Behavior.getBehaviorParameters()
+		.filter(function(el) {
+			return el.name.startsWith(entry);
+		}).map(function(el) {
+			return {text: el.name, hint: "parameter", fill: "self." + el.name};
+		}));
+
+		return value_list;
+	}
+
 	this.generateInputUserdata = function(entry, state) {
 		if (entry == undefined || state == undefined) return [];
 		let value_list = [];
 		let already_offered = [];
 		let container = state.getContainer();
-		let container_input = (container.getStateName == "")?
+		let container_input = (container.getStateName() == "")?
 				Behavior.getDefaultUserdata().map(function (el) { return el.key; }) :
 				container.getInputKeys();
 
@@ -121,7 +142,7 @@ const Autocomplete = new (function() {
 			return !already_offered.contains(el.key);
 		}).map(function(el) {
 			already_offered.push(el.key);
-			return {text: el.key, hint: (container.getStateName == "")? "available" : "behavior userdata", fill: el.key};
+			return {text: el.key, hint: (container.getStateName() == "")? "available" : "behavior userdata", fill: el.key};
 		}));
 
 		return value_list.filter(function (el) { return el.text.startsWith(entry); });
@@ -132,10 +153,10 @@ const Autocomplete = new (function() {
 		let value_list = [];
 		let already_offered = [];
 		let container = state.getContainer();
-		let container_input = (container.getStateName == "")?
+		let container_input = (container.getStateName() == "")?
 				Behavior.getDefaultUserdata().map(function (el) { return el.key; }) :
 				container.getInputKeys();
-		let container_output = (container.getStateName == "")?
+		let container_output = (container.getStateName() == "")?
 				Behavior.getInterfaceOutputKeys() :
 				container.getOutputKeys();
 
@@ -180,7 +201,7 @@ const Autocomplete = new (function() {
 			return !already_offered.contains(el.key);
 		}).map(function(el) {
 			already_offered.push(el.key);
-			return {text: el.key, hint: (container.getStateName == "")? "override" : "behavior userdata", fill: el.key};
+			return {text: el.key, hint: (container.getStateName() == "")? "override" : "behavior userdata", fill: el.key};
 		}));
 
 		return value_list.filter(function (el) { return el.text.startsWith(entry); });

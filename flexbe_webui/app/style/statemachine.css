@@ -1,8 +1,8 @@
 #statemachine {
 	position: absolute;
-	top: 80px;
+	top: var(--toolbar-height);
 	left: calc(100% + 50px);
-	height: calc(100% - 80px);
+	height: calc(100% - var(--toolbar-height));
 	width: 100%;
 	transition: all 0.5s ease;
 }
@@ -13,4 +13,8 @@
 	padding: 0;
 	border: none;
 	background-color: #eee;
+}
+
+#drawing_area.statemachine-text-bold text {
+	font-weight: 700 !important;
 }

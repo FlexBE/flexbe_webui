@@ -38,12 +38,32 @@ WS.Behaviorlib = new (function() {
 	this.updateEntry = function(be_entry, callback) {
 		console.log("WS.BehaviorLib updateEntry for " +  be_entry.getBehaviorManifest().name + " ...")
 		IO.BehaviorLoader.loadBehaviorInterface(be_entry.getBehaviorManifest(), function(ifc) {
+			if (ifc == undefined) {
+				if (callback != undefined) {
+					callback(undefined);
+				}
+				return;
+			}
 			if (be_entry.getBehaviorManifest().class_name != ifc.class_name) {
-				T.logwarn("Inconsistent class name for: " + be_entry.getBehaviorManifest().class_name + " / " + ifc.class_name);
+				T.logWarn("Inconsistent class name for: " + be_entry.getBehaviorManifest().class_name + " / " + ifc.class_name);
+				if (callback != undefined) {
+					callback(undefined);
+				}
 				return;
 			}
 			behaviorlib.remove(be_entry);
-			behaviorlib.push(new WS.BehaviorStateDefinition(be_entry.getBehaviorManifest(), ifc.smi_outcomes, ifc.smi_input, ifc.smi_output, callback));
+			let updated_entry = new WS.BehaviorStateDefinition(
+				be_entry.getBehaviorManifest(),
+				ifc.smi_outcomes,
+				ifc.smi_input,
+				ifc.smi_output,
+				function() {
+					if (callback != undefined) {
+						callback(updated_entry);
+					}
+				}
+			);
+			behaviorlib.push(updated_entry);
 		});
 	}
 

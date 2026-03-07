@@ -44,8 +44,8 @@ UI.Menu = new (function() {
 
 	this.setFocus = function(target) {
 		for (let i=0; i<keys.length; ++i) {
-			key = keys[i];
-			active = (key == target)? "_active" : "";
+			let key = keys[i];
+			let active = (key == target)? "_active" : "";
 			document.getElementById("button_to_" + key).setAttribute("class", "category_button" + active);
 			document.getElementById("button_to_" + key).children[0].setAttribute("src", "img/" + key + active + ".png");
 		}
@@ -113,13 +113,13 @@ UI.Menu = new (function() {
 	];
 
 	var setMenuButtons = function(config) {
-		panel = document.getElementById("title_button_panel");
+		let panel = document.getElementById("title_button_panel");
 		panel.innerHTML = "";
 		that.clearChildElements();
 		for (let c=0; c<config.length; ++c) {
-			column = document.createElement("div");
+			let column = document.createElement("div");
 			column.setAttribute("class", "tool_category");
-			table = document.createElement("table");
+			let table = document.createElement("table");
 			table.setAttribute("cellspacing", "0");
 			table.setAttribute("cellpadding", "0");
 			for (let r=0; r<config[c].length; ++r) {
@@ -157,6 +157,9 @@ UI.Menu = new (function() {
 	this.isPageSettings = function() { return current_page == "se"; }
 
 	this.configureKeybindings = function() {
+		let bindShortcut = (typeof Mousetrap.bindGlobal === "function")
+			? Mousetrap.bindGlobal.bind(Mousetrap)
+			: Mousetrap.bind.bind(Mousetrap);
 		[[button_config_db, that.isPageDashboard],
 		 [button_config_sm, that.isPageStatemachine],
 		 [button_config_rc, that.isPageControl],
@@ -165,7 +168,7 @@ UI.Menu = new (function() {
 			element[0].forEach(function(column) {
 				column.forEach(function(button) {
 					if (button[3] == undefined) return;
-					Mousetrap.bindGlobal(button[3], function(evt) {
+					bindShortcut(button[3], function(evt) {
 						evt.preventDefault();
 						if (!button[4] && !element[1]()) {
 							console.log(`\x1b[93mIgnoring ${button[3]} on this page!\x1b[0m`);
@@ -317,14 +320,9 @@ UI.Menu = new (function() {
 			json_file_dict["editor"] = editor_command;
 			json_file_dict["package"] = package_name;
 			json_file_dict["file"] = names.file_name;
+			json_file_dict["manifest_path"] = names.manifest_path;
 			json_file_dict["line"] = ''; // Not using line for now
-			API.post("open_file_editor", json_file_dict, (result) => {
-				if (result) {
-					T.logInfo("Behavior opened in file editor.");
-				} else {
-					T.logError("Failed to open the behavior code!");
-				}
-			});
+			UI.Tools.openFileInEditor(json_file_dict, "Behavior opened in file editor.", "Failed to open the behavior code!");
 		} catch (err) {
 			T.logError("Unable to open behavior in editor: " + err);
 		}
@@ -346,14 +344,14 @@ UI.Menu = new (function() {
 			let json_file_dict = {};
 			json_file_dict["package"] = package_name;
 			json_file_dict["file"] = names.file_name;
-			API.post("view_file_source", json_file_dict, (result) => {
-				if (result) {
-					console.log("\x1b[94mBehavior opened in file viewer.\x1b[0m");
-					Tools.viewSource(names.behavior_name, `${package_name}/${names.file_name}`, result['text']);
-				} else {
-					T.logError("Failed to open the behavior code!");
-				}
-			});
+			json_file_dict["manifest_path"] = names.manifest_path;
+			UI.Tools.openFileInSourceViewer(
+				json_file_dict,
+				names.behavior_name,
+				`${package_name}/${names.file_name}`,
+				"Behavior opened in file viewer.",
+				"Failed to open the behavior code!"
+			);
 		} catch (err) {
 			T.logError("Unable to open behavior in editor: " + err);
 		}
@@ -446,12 +444,14 @@ UI.Menu = new (function() {
 		UI.Panels.Terminal.toggle();
 	}
 
-	this.saveBehaviorClicked = function() {
+	this.saveBehaviorClicked = async function() {
+		let validation_report = {fatal_errors: [], warnings: []};
 		let check_error_string = undefined;
 		if (Behavior.isReadonly()) {
 			check_error_string = "behavior has been loaded from a read-only file";
 		} else {
-			check_error_string = Checking.checkBehavior();
+			validation_report = Checking.checkBehaviorReport();
+			check_error_string = validation_report.fatal_errors[0];
 		}
 		if (check_error_string != undefined) {
 			T.clearLog();
@@ -459,12 +459,37 @@ UI.Menu = new (function() {
 			T.logError("Unable to save behavior: " + check_error_string);
 			return;
 		}
-		let warnings = Checking.warnBehavior();
-		IO.BehaviorSaver.saveStateMachine();
+		let save_as = false;
+		let behavior_file_name = Behavior.getFileName();
+		let current_behavior_name = Behavior.getBehaviorName();
+		if (behavior_file_name != undefined && current_behavior_name != undefined && current_behavior_name.trim() != '') {
+			let current_file_base = behavior_file_name.replace(/\.py$/i, '');
+			let desired_file_base = current_behavior_name.toLowerCase().replace(/[^\w]/g, "_") + '_sm';
+			if (current_file_base != desired_file_base) {
+				let old_target = current_file_base;
+				let new_target = desired_file_base;
+				let choice = await UI.Tools.customSaveWithRenameDecision(
+					"Behavior name changed from current file identity.\n\n"
+					+ "Choose how to save:\n"
+					+ `Save: keep current file name:\n${old_target}\n\n`
+					+ `Save As: use new file name:\n${new_target}`
+				);
+				if (choice === 'cancel') {
+					T.logInfo("Save canceled.");
+					return;
+				}
+				save_as = (choice === 'save_as');
+				if (!save_as) {
+					T.logWarn("Saving to existing file name; behavior display name differs from file identity.");
+				}
+			}
+		}
 
-		warnings.forEach(function(w) {
-			T.logWarn("Warning: " + w);
-		});
+		IO.BehaviorSaver.saveStateMachine({save_as: save_as});
+
+		if (validation_report.warnings.length > 0) {
+			T.logWarn(`Saving with ${validation_report.warnings.length} non-fatal validation warning(s).`);
+		}
 		ActivityTracer.addSave();
 	}
 
@@ -532,17 +557,15 @@ UI.Menu = new (function() {
 		T.clearLog();
 		T.show();
 		T.logInfo("Performing behavior checks...");
-		let error_string = Checking.checkBehavior();
-		if (error_string != undefined) {
-			T.logError("Found error: " + error_string);
+		let validation_report = Checking.checkBehaviorReport();
+		if (validation_report.fatal_errors.length > 0) {
+			T.logError("Found error: " + validation_report.fatal_errors[0]);
 		} else {
-			// generate warnings
-			let warnings = Checking.warnBehavior();
-			warnings.forEach(function(w) {
-				T.logWarn("Warning: " + w);
-			});
-
-			T.logInfo("Behavior is valid!");
+			if (validation_report.warnings.length > 0) {
+				T.logWarn(`Behavior is valid with ${validation_report.warnings.length} non-fatal warning(s).`);
+			} else {
+				T.logInfo("Behavior is valid!");
+			}
 		}
 	}
 
@@ -666,7 +689,8 @@ UI.Menu = new (function() {
 			}
 			return;
 		} else if (event.key == 'Enter' || event.key == ' ') {
-			if (event.target.id.startsWith('tool_button ') || event.target.id.startsWith()) {
+			if (event.target.id.startsWith('tool_button ')
+				|| event.target.id.startsWith('button_to_')) {
 				// Select this element on keydown (before something shifts focus)
 				event.preventDefault(); // Prevent the default action
 				event.stopPropagation(); // Stop the event from propagating to other handlers

@@ -255,7 +255,7 @@ UI.Panels.SelectBehavior = new (function() {
 			let m = b.getBehaviorManifest();
 			be_list_displayed.push(b);
 
-			behavior_div = document.createElement("div");
+			let behavior_div = document.createElement("div");
 			behavior_div.setAttribute("class", "panel_select_behavior_selection_behavior");
 			behavior_div.setAttribute("id", `panel_select_behavior_selection_behavior_${prior_length + index}`);
 			behavior_div.setAttribute("tabindex", "0");

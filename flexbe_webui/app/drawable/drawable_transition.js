@@ -2,6 +2,12 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 	var that = this;
 
 	var paper = target_paper;
+	var text_font_size = Drawable.Helper.scaled(10, 8);
+	var text_padding_x = Drawable.Helper.scaled(14, 10);
+	var text_padding_y = Drawable.Helper.scaled(10, 8);
+	var endpoint_radius = Drawable.Helper.scaled(5, 3);
+	var edge_offset = Drawable.Helper.scaled(1, 1);
+	var label_init_x_offset = Drawable.Helper.scaled(10, 6);
 	var transition_colors = ['#998', '#99f', '#9d9', '#faa'];
 	var transition_text_colors = ['#554', '#559', '#585', '#966'];
 	var transition_highlight_color = '#FC5'
@@ -29,20 +35,19 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 	const to = transition_obj.getTo()? drawings.findElement(function(element) {
 		return element.obj instanceof State && element.obj.getStateName() == transition_obj.getTo().getStateName();
 	}).drawing : UI.Statemachine.getMousePos();
-	line = undefined;
 
 	var bb1 = from.getBBox(),
 		bb2 = to.getBBox();
 
-	var cornersFrom = [{x: bb1.x - 1, y: bb1.y - 1}, //top left
-	{x: bb1.x - 1, y: bb1.y + bb1.height + 1}, //bottom left
-	{x: bb1.x + bb1.width + 1, y: bb1.y + bb1.height + 1}, //bottom right
-	{x: bb1.x + bb1.width + 1, y: bb1.y - 1}]; //top right
+	var cornersFrom = [{x: bb1.x - edge_offset, y: bb1.y - edge_offset}, //top left
+	{x: bb1.x - edge_offset, y: bb1.y + bb1.height + edge_offset}, //bottom left
+	{x: bb1.x + bb1.width + edge_offset, y: bb1.y + bb1.height + edge_offset}, //bottom right
+	{x: bb1.x + bb1.width + edge_offset, y: bb1.y - edge_offset}]; //top right
 
-	var cornersTo = [{x: bb2.x - 1, y: bb2.y - 1}, //top left
-	{x: bb2.x - 1, y: bb2.y + bb2.height + 1}, //bottom left
-	{x: bb2.x + bb2.width + 1, y: bb2.y + bb2.height + 1}, //bottom right
-	{x: bb2.x + bb2.width + 1, y: bb2.y - 1}]; //top right
+	var cornersTo = [{x: bb2.x - edge_offset, y: bb2.y - edge_offset}, //top left
+	{x: bb2.x - edge_offset, y: bb2.y + bb2.height + edge_offset}, //bottom left
+	{x: bb2.x + bb2.width + edge_offset, y: bb2.y + bb2.height + edge_offset}, //bottom right
+	{x: bb2.x + bb2.width + edge_offset, y: bb2.y - edge_offset}]; //top right
 
 	var moveEndPoints = function() {
 		if(!clicked){
@@ -117,14 +122,14 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 		}
 	}
 
-	var	p = [{x: bb1.x + bb1.width / 2, y: bb1.y - 1},
-		{x: bb1.x + bb1.width / 2, y: bb1.y + bb1.height + 1},
-		{x: bb1.x - 1, y: bb1.y + bb1.height / 2},
-		{x: bb1.x + bb1.width + 1, y: bb1.y + bb1.height / 2},
-		{x: bb2.x + bb2.width / 2, y: bb2.y - 1},
-		{x: bb2.x + bb2.width / 2, y: bb2.y + bb2.height + 1},
-		{x: bb2.x - 1, y: bb2.y + bb2.height / 2},
-		{x: bb2.x + bb2.width + 1, y: bb2.y + bb2.height / 2}],
+	var	p = [{x: bb1.x + bb1.width / 2, y: bb1.y - edge_offset},
+		{x: bb1.x + bb1.width / 2, y: bb1.y + bb1.height + edge_offset},
+		{x: bb1.x - edge_offset, y: bb1.y + bb1.height / 2},
+		{x: bb1.x + bb1.width + edge_offset, y: bb1.y + bb1.height / 2},
+		{x: bb2.x + bb2.width / 2, y: bb2.y - edge_offset},
+		{x: bb2.x + bb2.width / 2, y: bb2.y + bb2.height + edge_offset},
+		{x: bb2.x - edge_offset, y: bb2.y + bb2.height / 2},
+		{x: bb2.x + bb2.width + edge_offset, y: bb2.y + bb2.height / 2}],
 		d = {}, dis = [];
 
 	var x1, y1, x2, y2;
@@ -159,14 +164,14 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 			y2 = transition_obj.getEnd().y;
 			let i = 1;
 			let j = 5;
-			if(x1 == bb1.x - 1) i = 2;
-			else if(x1 == bb1.x + bb1.width + 1) i = 3;
-			else if (y1 == bb1.y - 1) i = 0;
+			if(x1 == bb1.x - edge_offset) i = 2;
+			else if(x1 == bb1.x + bb1.width + edge_offset) i = 3;
+			else if (y1 == bb1.y - edge_offset) i = 0;
 			else i = 1;
 
-			if(x2 == bb2.x - 1) j = 6;
-			else if(x2 == bb2.x + bb2.width + 1) j = 7;
-			else if (y2 == bb2.y - 1) j = 4;
+			if(x2 == bb2.x - edge_offset) j = 6;
+			else if(x2 == bb2.x + bb2.width + edge_offset) j = 7;
+			else if (y2 == bb2.y - edge_offset) j = 4;
 			else j = 5;
 
 			res = [i, j];
@@ -178,9 +183,9 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 			y1 = transition_obj.getBeginning().y;
 			let i = 1;
 
-			if(x1 == bb1.x - 1) i = 2;
-			else if(x1 == bb1.x + bb1.width + 1) i = 3;
-			else if (y1 == bb1.y - 1) i = 0;
+			if(x1 == bb1.x - edge_offset) i = 2;
+			else if(x1 == bb1.x + bb1.width + edge_offset) i = 3;
+			else if (y1 == bb1.y - edge_offset) i = 0;
 			else i = 1;
 
 			for (let j = 4; j < 8; j++) {
@@ -214,9 +219,9 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 
 			let j = 5;
 
-			if(x2 == bb2.x - 1) j = 6;
-			else if(x2 == bb2.x + bb2.width + 1) j = 7;
-			else if (y2 == bb2.y - 1) j = 4;
+			if(x2 == bb2.x - edge_offset) j = 6;
+			else if(x2 == bb2.x + bb2.width + edge_offset) j = 7;
+			else if (y2 == bb2.y - edge_offset) j = 4;
 			else j = 5;
 
 			for (let i = 0; i < 4; i++) {
@@ -324,7 +329,8 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 		}
 	}
 	var line = paper.path(path)
-		.attr({stroke: color, fill: "none", 'arrow-end': 'classic-wide-long', 'stroke-width': highlight? 4 : 2});
+		.attr({stroke: color, fill: "none", 'arrow-end': 'classic-wide-long',
+			   'stroke-width': Drawable.Helper.getTransitionStrokeWidth(highlight)});
 
 	var clicked = false;
 	if (!readonly) line
@@ -362,9 +368,10 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 
 		// Draw outcome text (centered by default)
 		text_obj = paper.text(center.x, center.y, transition_obj.getOutcome())
-			.attr({'font-size': 10, stroke: 'none',
+			.attr({'font-size': text_font_size,
+				   stroke: 'none',
 				   'font-family': 'Arial,Helvetica,sans-serif',
-				   'font-weight': 400,
+				   'font-weight': Drawable.Helper.getTextWeight(),
 				   fill: text_color});
 
 		if (!readonly){
@@ -379,8 +386,8 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 		var textbb = text_obj.getBBox();
 		var text_bg = paper.ellipse(center.x, // center x
 									center.y, // center y
-									(textbb.width  + 14) / 2,  // radius x
-									(textbb.height + 10) / 2) // radius y
+									(textbb.width  + text_padding_x) / 2,  // radius x
+									(textbb.height + text_padding_y) / 2) // radius y
 			.attr({'fill': 'rgba(100%, 100%, 100%, 80%)', 'stroke': color});
 
 		if (!readonly){
@@ -392,7 +399,7 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 
 			// Store data for later in case we start to drag (but not until then)
 			if (transition_obj.getX() == undefined) {
-				text_bg.data("set_x", Math.floor(bbox.x + bbox.width / 2 + 10));
+				text_bg.data("set_x", Math.floor(bbox.x + bbox.width / 2 + label_init_x_offset));
 			}
 			if (transition_obj.getY() == undefined) {
 				text_bg.data("set_y",Math.floor(bbox.y + bbox.height / 2));
@@ -405,7 +412,7 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 	text_set.attr();
 	set_obj.push(text_set);
 	if (!(UI.Statemachine.isConnecting())){
-		var begin = paper.ellipse(x1, y1, 5, 5)
+		var begin = paper.ellipse(x1, y1, endpoint_radius, endpoint_radius)
 			.attr({'fill': 'rgba(100%, 100%, 100%, 80%)', 'stroke': color, opacity: 0})
 			.data("corners", cornersFrom);
 			/*.click(function(){
@@ -415,7 +422,7 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 					y: begin.attr("cy")
 				});
 			});*/
-		var end = paper.ellipse(x2, y2, 5, 5)
+		var end = paper.ellipse(x2, y2, endpoint_radius, endpoint_radius)
 			.attr({'fill': 'rgba(100%, 100%, 100%, 80%)', 'stroke': color, opacity: 0})
 			.data("corners", cornersTo);
 			/*.click(function(){
@@ -509,7 +516,7 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 	this.calcShiftHeight = function() {
 		return (that.drawing[1].getBBox().height + merge_clients.reduce(function(h, c) {
 			return h + c.drawing[1].getBBox().height;
-		}, 0)) / 2 + 1;
+		}, 0)) / 2 + edge_offset;
 	}
 
 };

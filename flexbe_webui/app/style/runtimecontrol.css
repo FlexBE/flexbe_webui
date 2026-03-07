@@ -1,8 +1,8 @@
 #runtimecontrol {
 	position: absolute;
-	top: 80px;
+	top: var(--toolbar-height);
 	left: calc((100% + 50px)*2);
-	height: calc(100% - 80px);
+	height: calc(100% - var(--toolbar-height));
 	width: 100%;
 	padding-top: 10px;
 	transition: all 0.5s ease;
@@ -141,10 +141,15 @@
 	display: inline-block;
 	border: none;
 	border-left: 1px solid black;
-	font: 10pt monospace;
+	font-family: monospace;
+	font-size: 1em;
 	color: #333;
 	background-color: #eee;
 	padding: 2px;
 	padding-left: 6px;
 	cursor: text;
+}
+
+#runtime_state_display.statemachine-text-bold text {
+	font-weight: 700 !important;
 }

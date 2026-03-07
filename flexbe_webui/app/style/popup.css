@@ -1,9 +1,9 @@
 .sidepanel {
 	position: absolute;
-	top: 80px;
+	top: var(--toolbar-height);
 	right: -360px;
 	width: 350px;
-	height: calc(100% - 90px);
+	height: calc(100% - (var(--toolbar-height) + 10px));
 	background-color: white;
 	border-left: 1px solid black;
 	padding: 5px 0px;
@@ -46,7 +46,7 @@
 
 .inline_text_edit_readonly {
 	font-family: monospace;
-	font-size: 9pt;
+	font-size: 1em;
 	border: 1px solid rgba(0, 0, 0, 0);
 	background-color: rgba(0, 0, 0, 0);
 	padding: 2px;
@@ -56,7 +56,7 @@
 
 .inline_function_text_readonly {
 	font-family: monospace;
-	font-size: 9pt;
+	font-size: 1em;
 	border: 1px solid rgba(0, 0, 0, 0);
 	background-color: rgba(0, 0, 0, 0);
 	padding: 2px;
@@ -66,7 +66,7 @@
 
 .inline_text_edit {
 	font-family: monospace;
-	font-size: 9pt;
+	font-size: 1em;
 	border: 1px solid rgba(0, 0, 0, 0);
 	border-bottom: 1px dotted rgba(0, 0, 0, 0.4);
 	background-color: rgba(0, 0, 0, 0);
@@ -82,7 +82,7 @@
 
 .select_box {
 	font-family: monospace;
-	font-size: 9pt;
+	font-size: 1em;
 	border: 1px solid rgba(0, 0, 0, 0);
 	border-bottom: 1px dotted rgba(0, 0, 0, 0.4);
 	background-color: rgba(0, 0, 0, 0);
@@ -251,7 +251,7 @@
 	display: none;
 	opacity: 0;
 	left: calc(50% - 265px);
-	bottom: 80px;
+	bottom: var(--toolbar-height);
 	width: 500px;
 	margin: 0;
 	padding: 15px;

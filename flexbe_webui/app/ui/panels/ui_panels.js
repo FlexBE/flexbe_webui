@@ -108,7 +108,7 @@ UI.Panels = new (function() {
 		that.hideAddState();
 		that.hideSelectBehavior();
 		that.hideProperties();
-		T.hide();
+		that.hideTerminal();
 		activePanel = that.NO_PANEL;
 	}
 

@@ -4,6 +4,64 @@ Drawable.Helper = new (function() {
 	var ox = 0, oy = 0, lx = 0, ly = 0;
 	var traversed_positions = [];
 
+	var getRenderConfig = function() {
+		try {
+			if (UI.Statemachine && UI.Statemachine.getRenderConfig) {
+				return UI.Statemachine.getRenderConfig();
+			}
+		} catch (err) {
+			// Fall through to defaults.
+		}
+		return {
+			gridsize: 50,
+			text_scale: 1.0,
+			text_weight: 400,
+			transition_line_width_normal: 2.0,
+			transition_line_width_bold: 3.0,
+			transition_line_width_extra_bold: 4.0,
+		};
+	}
+
+	this.getTextScale = function() {
+		return getRenderConfig().text_scale;
+	}
+
+	this.scaled = function(value, min_value) {
+		var scaled_value = Math.round(value * that.getTextScale());
+		if (min_value != undefined) {
+			return Math.max(min_value, scaled_value);
+		}
+		return scaled_value;
+	}
+
+	this.getTextWeight = function() {
+		return getRenderConfig().text_weight;
+	}
+
+	this.getTransitionStrokeWidth = function(highlight) {
+		var config = getRenderConfig();
+		var base_width = config.transition_line_width_normal;
+		if (config.text_weight >= 900) {
+			base_width = config.transition_line_width_extra_bold;
+		} else if (config.text_weight >= 700) {
+			base_width = config.transition_line_width_bold;
+		}
+		if (!isFinite(base_width) || base_width <= 0) {
+			base_width = 2;
+		}
+		return highlight ? (base_width + 2) : base_width;
+	}
+
+	this.getNodeStrokeWidth = function(highlight) {
+		// Keep box/oval borders visually lighter than transition lines.
+		var base_width = that.getTransitionStrokeWidth(false) * 0.6;
+		base_width = Math.min(Math.max(base_width, 1.0), 8.0);
+		if (highlight) {
+			base_width += 0.6;
+		}
+		return parseFloat(base_width.toFixed(1));
+	}
+
 	this.intersectsAnyOther = function(target_drawing, target_object) {
 		// var intersects = false;
 		const drawings = UI.Statemachine.getAllDrawings().filter(function (element) {
@@ -77,7 +135,7 @@ Drawable.Helper = new (function() {
 	}
 
 	this.snapToCenter = function(x, y, w, h) {
-		var gridsize = UI.Settings.getGridsize();
+		var gridsize = getRenderConfig().gridsize;
 		var offset = {x: UI.Statemachine.getPanShift().x % gridsize, y: UI.Statemachine.getPanShift().y % gridsize};
 		return {
 			x: Raphael.snapTo(gridsize, x, gridsize / 2 + 1) - w/2 + gridsize + offset.x,

@@ -138,9 +138,9 @@ UI.Panels.AddState = new (function() {
 		});
 
 		for (let i=0; i<type_list.length; ++i) {
-			state_def = WS.Statelib.getFromLib(type_list[i]);
+			let state_def = WS.Statelib.getFromLib(type_list[i]);
 
-			state_div = document.createElement("div");
+			let state_div = document.createElement("div");
 			state_div.setAttribute("id", "class_select_" + state_def.getStatePackage() + "_" + state_def.getStateClass());
 			state_div.setAttribute("class", "panel_class_select_class");
 			state_div.setAttribute("value", type_list[i]);
@@ -175,6 +175,7 @@ UI.Panels.AddState = new (function() {
 
 	this.show = function() {
 		that.clearChildElements();
+		let panel_class_select = document.getElementById('panel_class_select');
 		panel_class_select.innerHTML = "";
 		statelib = WS.Statelib.getTypeList();
 		that.displayStateTypes(statelib);

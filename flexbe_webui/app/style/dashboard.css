@@ -1,8 +1,8 @@
 #dashboard {
 	position: absolute;
-	top: 80px;
+	top: var(--toolbar-height);
 	left: 0;
-	height: calc(100% - 100px);
+	height: calc(100% - (var(--toolbar-height) + 20px));
 	width: 100%;
 	padding-top: 10px;
 	padding-bottom: 10px;
@@ -49,11 +49,18 @@
 .input_field {
 	width: 100%;
 	font-family: arial;
+	font-size: 1em;
 }
 .input_text {
 	width: calc(100% - 2px);
 	font-family: arial;
+	font-size: 1em;
 	resize: vertical;
+}
+
+#dashboard select,
+#dashboard textarea {
+	font-size: 1em;
 }
 
 .box_table {
@@ -130,7 +137,7 @@
 	resize: none;
 	z-index: 1; /* Sit on top */
 	left: 0;
-	top: 80px;
+	top: var(--toolbar-height);
 	width: 100%;
 	height: 100%;
 	background-color: rgb(0,0,0); /* Fallback color */

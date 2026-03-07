@@ -7,6 +7,206 @@ UI.Dashboard = new (function() {
 	var listeners_to_cleanup = [];
 	var parameter_flip_focus = undefined;
 
+	var tupleUsesDoubleQuotes = function(value) {
+		if (typeof value !== "string") {
+			return false;
+		}
+		let trimmed = value.trim();
+		if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) {
+			return false;
+		}
+		let body = trimmed.slice(1, -1);
+		let quote = undefined;
+		let escaped = false;
+		for (let i = 0; i < body.length; i++) {
+			let ch = body[i];
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (ch === "\\") {
+				escaped = true;
+				continue;
+			}
+			if (quote !== undefined) {
+				if (ch === quote) {
+					quote = undefined;
+				}
+				continue;
+			}
+			if (ch === "'" || ch === "\"") {
+				if (ch === "\"") {
+					return true;
+				}
+				quote = ch;
+			}
+		}
+		return false;
+	}
+
+	var normalizeTupleLiteral = function(value) {
+		if (typeof value !== "string") {
+			return value;
+		}
+		let trimmed = value.trim();
+		if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) {
+			return value;
+		}
+		let body = trimmed.slice(1, -1);
+		let body_trimmed = body.trim();
+		if (body_trimmed === "" || body_trimmed.endsWith(",")) {
+			return trimmed;
+		}
+
+		let items = [];
+		let current = "";
+		let quote = undefined;
+		let escaped = false;
+		for (let i = 0; i < body.length; i++) {
+			let ch = body[i];
+			if (escaped) {
+				current += ch;
+				escaped = false;
+				continue;
+			}
+			if (ch === "\\") {
+				current += ch;
+				escaped = true;
+				continue;
+			}
+			if (quote !== undefined) {
+				current += ch;
+				if (ch === quote) {
+					quote = undefined;
+				}
+				continue;
+			}
+			if (ch === "'" || ch === "\"") {
+				current += ch;
+				quote = ch;
+				continue;
+			}
+			if (ch === ",") {
+				items.push(current.trim());
+				current = "";
+				continue;
+			}
+			current += ch;
+		}
+		if (quote !== undefined || escaped) {
+			return trimmed;
+		}
+		if (current.trim() !== "") {
+			items.push(current.trim());
+		}
+		if (items.length === 1) {
+			return `(${items[0]},)`;
+		}
+		return trimmed;
+	}
+
+	var isValidTupleLiteral = function(value) {
+		if (typeof value !== "string") {
+			return false;
+		}
+		let trimmed = value.trim();
+		if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) {
+			return false;
+		}
+		let body = trimmed.slice(1, -1).trim();
+		if (body === "") {
+			return true;
+		}
+
+		let items = [];
+		let current = "";
+		let quote = undefined;
+		let escaped = false;
+		for (let i = 0; i < body.length; i++) {
+			let ch = body[i];
+			if (escaped) {
+				current += ch;
+				escaped = false;
+				continue;
+			}
+			if (ch === "\\") {
+				current += ch;
+				escaped = true;
+				continue;
+			}
+			if (quote !== undefined) {
+				current += ch;
+				if (ch === quote) {
+					quote = undefined;
+				}
+				continue;
+			}
+			if (ch === "'" || ch === "\"") {
+				current += ch;
+				quote = ch;
+				continue;
+			}
+			if (ch === ",") {
+				items.push(current.trim());
+				current = "";
+				continue;
+			}
+			current += ch;
+		}
+		if (quote !== undefined || escaped) {
+			return false;
+		}
+		if (current.trim() !== "" || !body.endsWith(",")) {
+			items.push(current.trim());
+		}
+		if (items.length === 0) {
+			return true;
+		}
+		let numericPattern = /^-?[0-9]+(\.[0-9]+)?$/;
+		let stringPattern = /^(?:'(?:[^'\\]|\\.)*')$/;
+		return items.every(function(item) {
+			if (item === "") {
+				return false;
+			}
+			return numericPattern.test(item) || stringPattern.test(item);
+		});
+	}
+
+	var populateParameterTypeSelect = function(select, selectedType) {
+		let options = [
+			{value: "enum", label: "Enum"},
+			{value: "numeric", label: "Numeric"},
+			{value: "boolean", label: "Boolean"},
+			{value: "text", label: "Text"},
+			{value: "tuple", label: "Tuple"},
+			{value: "yaml", label: "File"}
+		];
+		select.textContent = "";
+		options.forEach(function(entry) {
+			let option = document.createElement("option");
+			option.value = entry.value;
+			option.textContent = entry.label;
+			if (entry.value == selectedType) {
+				option.selected = true;
+			}
+			select.appendChild(option);
+		});
+	}
+
+	var getParameterDefaultInputType = function(parameterType) {
+		return parameterType == "numeric" ? "number" : "text";
+	}
+
+	var populateSelectOptions = function(select, values) {
+		select.textContent = "";
+		values.forEach(function(value) {
+			let option = document.createElement("option");
+			option.value = value;
+			option.textContent = value;
+			select.appendChild(option);
+		});
+	}
+
 	//
 	//  Private Configuration
 	// =======================
@@ -185,11 +385,11 @@ UI.Dashboard = new (function() {
 		remove_button.addEventListener("click", removeHandler);
 		listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'click', 'handler': removeHandler});
 
-		const onEnterRemove = function(event) {
-			if (event.key === 'Enter' || event.key === ' ') {
-				removeHandler(event);
-			}
-		}
+				const onEnterRemove = function(event) {
+					if (event.key === 'Enter' || event.key === ' ') {
+						removeButtonHandler(event);
+					}
+				}
 		remove_button.addEventListener("keydown", onEnterRemove);
 		listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'keydown', 'handler': onEnterRemove});
 
@@ -200,7 +400,8 @@ UI.Dashboard = new (function() {
 		let td_remove_button = document.createElement("td");
 
 		td_key_input_field.appendChild(key_input_field);
-		td_label.innerHTML = "&nbsp;&nbsp;=&nbsp;";
+		td_label.style.whiteSpace = "pre";
+		td_label.textContent = "  = ";
 		td_value_input_field.appendChild(value_input_field);
 		td_value_input_field.setAttribute("width", "62%");
 		td_remove_button.appendChild(remove_button);
@@ -422,7 +623,8 @@ UI.Dashboard = new (function() {
 		let td_remove_button = document.createElement("td");
 
 		td_key_input_field.appendChild(key_input_field);
-		td_label.innerHTML = "&nbsp;&nbsp;=&nbsp;";
+		td_label.style.whiteSpace = "pre";
+		td_label.textContent = "  = ";
 		td_value_input_field.appendChild(value_input_field);
 		td_remove_button.appendChild(remove_button);
 
@@ -456,7 +658,7 @@ UI.Dashboard = new (function() {
 		let childRow = document.getElementById("db_field_parameter_table_row_"+param_name.replace(' ', '_'));
 		if (entry == undefined || childRow == undefined) {
 			console.log(`\x1b[93m removeBehaviorParameter - unknown entry (${entry}) or `
-						+`child row (${childRow}) for '${param_value}'\x1b[0m`);
+						+`child row (${childRow}) for '${param_name}'\x1b[0m`);
 			return false;
 		}
 
@@ -614,11 +816,7 @@ UI.Dashboard = new (function() {
 		listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'keydown', 'handler': onEnterRemove});
 
 		let type_input_field = document.createElement("select");
-		type_input_field.innerHTML = '<option value="enum"' + (new_type == "enum"? ' selected="selected"' : '') + '>Enum</option>' +
-							'<option value="numeric"' + (new_type == "numeric"? ' selected="selected"' : '') + '>Numeric</option>' +
-							'<option value="boolean"' + (new_type == "boolean"? ' selected="selected"' : '') + '>Boolean</option>' +
-							'<option value="text"' + (new_type == "text"? ' selected="selected"' : '') + '>Text</option>' +
-							'<option value="yaml"' + (new_type == "yaml"? ' selected="selected"' : '') + '>File</option>';
+		populateParameterTypeSelect(type_input_field, new_type);
 		type_input_field.setAttribute("id", "db_field_parameter_table_type_input_" + new_name.replace(' ', '_'));
 		type_input_field.setAttribute("name", new_name);
 		type_input_field.setAttribute("class", "inline_text_edit");
@@ -627,10 +825,19 @@ UI.Dashboard = new (function() {
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 			let name = type_input_field.getAttribute("name");
 			let type = type_input_field.options[type_input_field.selectedIndex].value;
+			let entry = Behavior.getBehaviorParameterElement(name);
+			if (entry == undefined) {
+				return;
+			}
+			if (type === entry.type) return;
 			let daa = getDefaultAndAdditional(type);
 			Behavior.updateBehaviorParameter(name, type, "type");
 			Behavior.updateBehaviorParameter(name, daa.default, "default");
 			Behavior.updateBehaviorParameter(name, daa.additional, "additional");
+			let edit_name_input = document.getElementById("db_field_parameter_edit_table_name_input");
+			if (edit_name_input != undefined && edit_name_input.getAttribute("name") == name) {
+				that.createBehaviorParameterEdit(name);
+			}
 		};
 		type_input_field.addEventListener("blur", typeBlurHandler);
 		listeners_to_cleanup.push({'element': type_input_field, 'listener_type': 'blur', 'handler': typeBlurHandler});
@@ -724,9 +931,11 @@ UI.Dashboard = new (function() {
 		tr.setAttribute("id", new_name);
 
 		td_name_input_field.appendChild(name_input_field);
-		td_parentheses_left.innerHTML = "&nbsp;&nbsp;(";
+		td_parentheses_left.style.whiteSpace = "pre";
+		td_parentheses_left.textContent = "  (";
 		td_params_input_field.appendChild(params_input_field);
-		td_parentheses_right.innerHTML = "&nbsp;)";
+		td_parentheses_right.style.whiteSpace = "pre";
+		td_parentheses_right.textContent = " )";
 		tr.appendChild(td_name_input_field);
 		tr.appendChild(td_parentheses_left);
 		tr.appendChild(td_params_input_field);
@@ -741,14 +950,25 @@ UI.Dashboard = new (function() {
 		let acceptButton = document.getElementById("db_function_accept_button");
 		let discardButton = document.getElementById("db_function_discard_button");
 
-		modal.style.display = "block";
-		modalTextArea.value = getTextFunc();
-		db_function_edit_modal_header.textContent = headerText;
-		let overlayNeedsUpdate = true;
-		function updateOverlay() {
-			if (overlayNeedsUpdate) {
-				let formattedText = modalTextArea.value
-					.replace(/ /g, '·')   // Replace spaces with middle dot
+			modal.style.display = "block";
+			modalTextArea.value = getTextFunc();
+			db_function_edit_modal_header.textContent = headerText;
+			let overlayNeedsUpdate = true;
+			let overlayAnimationFrame = undefined;
+			const onModalInput = function() {
+				overlayNeedsUpdate = true;
+			};
+			const onModalScroll = function() {
+				overlayNeedsUpdate = true;
+			};
+			function updateOverlay() {
+				if (modal.style.display == "none") {
+					overlayAnimationFrame = undefined;
+					return;
+				}
+				if (overlayNeedsUpdate) {
+					let formattedText = modalTextArea.value
+						.replace(/ /g, '·')   // Replace spaces with middle dot
 					.replace(/\t/g, '→\t'); // Replace tabs with arrow
 				modalOverlay.textContent = formattedText;
 				// Correct any discrepancies when scroll reaches the bottom
@@ -765,32 +985,35 @@ UI.Dashboard = new (function() {
 					modalOverlay.scrollLeft = modalOverlay.scrollWidth - modalOverlay.clientWidth ;
 				} else {
 					modalOverlay.scrollLeft = modalTextArea.scrollLeft;
+					}
+					overlayNeedsUpdate = false;
 				}
-				overlayNeedsUpdate = false;
+				overlayAnimationFrame = window.requestAnimationFrame(updateOverlay);
 			}
-			window.requestAnimationFrame(updateOverlay);
-		}
 
-		// Set up listeners to handle changes
-		modalTextArea.addEventListener("input", function() {
-			overlayNeedsUpdate = true;
-		});
+			// Set up listeners to handle changes
+			modalTextArea.addEventListener("input", onModalInput);
 
-		modalTextArea.addEventListener('scroll', () => {
-			overlayNeedsUpdate = true;
-		});
+			modalTextArea.addEventListener('scroll', onModalScroll);
 
-		// Initial sync up with current data
-		updateOverlay();
+			// Initial sync up with current data
+			updateOverlay();
 
-		function clearModal() {
-			acceptButton.onclick = null;
-			discardButton.onclick = null;
-			acceptButton.onkeydown = null;
-			discardButton.onkeydown = null;
-			modal.style.display = "none";
-			updateOverlay(modalTextArea, modalOverlay);
-		}
+			function clearModal() {
+					acceptButton.onclick = null;
+					discardButton.onclick = null;
+					acceptButton.onkeydown = null;
+					discardButton.onkeydown = null;
+					modal.onkeydown = null;
+					modal.style.display = "none";
+					if (overlayAnimationFrame != undefined) {
+						window.cancelAnimationFrame(overlayAnimationFrame);
+						overlayAnimationFrame = undefined;
+				}
+				modalTextArea.removeEventListener("input", onModalInput);
+				modalTextArea.removeEventListener("scroll", onModalScroll);
+				updateOverlay(modalTextArea, modalOverlay);
+			}
 
 		function handleAccept(event) {
 			event.stopPropagation();
@@ -1517,12 +1740,14 @@ UI.Dashboard = new (function() {
 		let additional_tr = document.createElement("tr");
 		additional_tr.setAttribute("id", "db_field_parameter_edit_table_additional_row");
 		additional_tr.setAttribute("name", param_name);
+		const getParameterDefaultField = function() {
+			return document.getElementById("db_field_parameter_edit_table_value_input");
+		};
+		const getParameterAdditionalCell = function() {
+			return document.getElementById("db_field_parameter_edit_table_additional_cell");
+		};
 		let type_input_field = document.createElement("select");
-		type_input_field.innerHTML = '<option value="enum"' + (param.type == "enum"? ' selected="selected"' : '') + '>Enum</option>' +
-							'<option value="numeric"' + (param.type == "numeric"? ' selected="selected"' : '') + '>Numeric</option>' +
-							'<option value="boolean"' + (param.type == "boolean"? ' selected="selected"' : '') + '>Boolean</option>' +
-							'<option value="text"' + (param.type == "text"? ' selected="selected"' : '') + '>Text</option>' +
-							'<option value="yaml"' + (param.type == "yaml"? ' selected="selected"' : '') + '>File</option>';
+		populateParameterTypeSelect(type_input_field, param.type);
 		type_input_field.setAttribute("id", "db_field_parameter_edit_table_type_input");
 		type_input_field.setAttribute("name", param_name);
 		type_input_field.setAttribute("class", "input_field");
@@ -1552,38 +1777,40 @@ UI.Dashboard = new (function() {
 				case "enum":
 					value_input_field.style.backgroundColor = "#F08080"; // light coral for enum
 					break;
+				case "tuple":
+					value_input_field.style.backgroundColor = "#ADD8E6"; // light blue for tuple
+					break;
 				default:
 					value_input_field.style.backgroundColor = "#FFEBCD"; // blanched almond for primitives
 			}
 
-			// update input fields
-			type_input_field.parentNode.parentNode.parentNode.children[3].children[2].children[0].value = daa.default;
+				// update input fields
+					let default_field = getParameterDefaultField();
+					if (default_field != undefined) {
+						default_field.setAttribute("type", getParameterDefaultInputType(type));
+						default_field.value = daa.default;
+					}
 
 			let param_trs = document.getElementById("db_parameter_table").children;
 			for (let i = 0; i < param_trs.length; i++) {
 				let param_type_input = param_trs[i].children[0].children[0];
 				if (param_type_input.name == name) {
-					param_type_input.innerHTML = type_input_field.innerHTML.replace(' selected="selected"', '');
-					for (let i = 0; i < param_type_input.children.length; i++) {
-						let opt = param_type_input.children[i];
-						if (opt.value == type) {
-							opt.setAttribute("selected", "selected");
-							break;
-						}
-					}
+					populateParameterTypeSelect(param_type_input, type);
 					break;
 				}
 			}
 
-			let additional_td = type_input_field.parentNode.parentNode.parentNode.children[5].children[0];
-			additional_td.innerHTML = "";
-			additional_td.appendChild(that.createParameterAdditionalEdit(name, additional_tr));
+				let additional_td = getParameterAdditionalCell();
+				if (additional_td != undefined) {
+					additional_td.innerHTML = "";
+					additional_td.appendChild(that.createParameterAdditionalEdit(name, additional_tr));
+				}
 		};
 		type_input_field.addEventListener("change", changeTypeHandler);
 		listeners_to_cleanup.push({'element': type_input_field, 'listener_type': 'change', 'handler': changeTypeHandler});
 
 		let label_label = document.createElement("label");
-		label_label.innerHTML = "Label: ";
+		label_label.textContent = "Label: ";
 		let label_input_field = document.createElement("input");
 		label_input_field.setAttribute("id", "db_field_parameter_edit_table_label_input");
 		label_input_field.setAttribute("value", param.label);
@@ -1608,7 +1835,7 @@ UI.Dashboard = new (function() {
 		listeners_to_cleanup.push({'element': label_input_field, 'listener_type': 'keydown', 'handler': labelEnterHandler});
 
 		let hint_label = document.createElement("label");
-		hint_label.innerHTML = "Advice for the operator: ";
+		hint_label.textContent = "Advice for the operator: ";
 		let hint_input_field = document.createElement("input");
 		hint_input_field.setAttribute("id", "db_field_parameter_edit_table_hint_input");
 		hint_input_field.setAttribute("value", param.hint);
@@ -1646,11 +1873,11 @@ UI.Dashboard = new (function() {
 			let new_name = name_input_field.value.trim();
 			if (old_name == new_name) return;
 
-			setTimeout(() => {
-				if (that.changeBehaviorParameterName(new_name, old_name)) {
-					type_input_field.name = new_name;
-					name_input_field.name = new_name;
-					hint_input_field.name = new_name;
+				setTimeout(async () => {
+					if (await that.changeBehaviorParameterName(new_name, old_name)) {
+						type_input_field.name = new_name;
+						name_input_field.name = new_name;
+						hint_input_field.name = new_name;
 					label_input_field.name = new_name;
 					value_input_field.name = new_name;
 					additional_tr.setAttribute("name", new_name); // row does not normally have name so use setAttr
@@ -1663,10 +1890,10 @@ UI.Dashboard = new (function() {
 					console.log(`\x1b[93mParameter name change '${new_name}' was rejected! \x1b[0m`);
 					name_input_field.value = old_name;
 				}
-			}, 0);
-		};
-		name_input_field.addEventListener("blur", nameBlurHandler);
-		listeners_to_cleanup.push({'element': hint_input_field, 'listener_type': 'blur', 'handler': nameBlurHandler});
+				}, 0);
+			};
+			name_input_field.addEventListener("blur", nameBlurHandler);
+			listeners_to_cleanup.push({'element': name_input_field, 'listener_type': 'blur', 'handler': nameBlurHandler});
 
 		const nameEnterHandler = function(event) {
 			if (event.key === "Enter") {
@@ -1680,17 +1907,20 @@ UI.Dashboard = new (function() {
 		value_input_field.setAttribute("value", param.default);
 		value_input_field.setAttribute("name", param_name);
 		value_input_field.setAttribute("class", "inline_text_edit");
-		value_input_field.setAttribute("type", param.type);
-		switch (param.type){
-			case "text":
-				value_input_field.style.backgroundColor = "#7CFC00"; // lawn green for text
-				break;
-			case "enum":
-				value_input_field.style.backgroundColor = "#F08080"; // light coral for enum
-				break;
-			default:
-				value_input_field.style.backgroundColor = "#FFEBCD"; // blanched almond for primitives
-		}
+		value_input_field.setAttribute("type", getParameterDefaultInputType(param.type));
+			switch (param.type){
+				case "text":
+					value_input_field.style.backgroundColor = "#7CFC00"; // lawn green for text
+					break;
+				case "enum":
+					value_input_field.style.backgroundColor = "#F08080"; // light coral for enum
+					break;
+				case "tuple":
+					value_input_field.style.backgroundColor = "#ADD8E6"; // light blue for tuple
+					break;
+				default:
+					value_input_field.style.backgroundColor = "#FFEBCD"; // blanched almond for primitives
+			}
 
 		const valueBlurHandler = function(event) {
 			event.preventDefault(); // Prevent default action
@@ -1717,11 +1947,22 @@ UI.Dashboard = new (function() {
 				if (parseFloat(value_input_field.value) > parseFloat(entry.additional.max)) {
 					value_input_field.value = entry.additional.max;
 				}
-			} else if (entry.type == "enum") {
-				if (!param.additional.contains(value_input_field.value)) {
+				} else if (entry.type == "enum") {
+					if (!entry.additional.contains(value_input_field.value)) {
+						value_input_field.value = entry.default;
+					}
+				value_input_field.style.backgroundColor = "#F08080"; // light coral for enum
+			} else if (entry.type == "tuple") {
+				if (tupleUsesDoubleQuotes(value_input_field.value)) {
+					value_input_field.value = entry.default;
+					UI.Tools.customAcknowledge("Tuple parameters must use single-quoted strings.<br><br>"
+											+ "Double quotes are not allowed.");
+				}
+				value_input_field.value = normalizeTupleLiteral(value_input_field.value);
+				if (!isValidTupleLiteral(value_input_field.value)) {
 					value_input_field.value = entry.default;
 				}
-				value_input_field.style.backgroundColor = "#D5C5C"; // light coral for enum
+				value_input_field.style.backgroundColor = "#ADD8E6"; // light blue for tuple
 			} else if (entry.type == "text") {
 				value_input_field.value = value_input_field.value.replace(/^['"]+|['"]+$/g, '');
 				if (value_input_field.value != entry_value){
@@ -1754,14 +1995,16 @@ UI.Dashboard = new (function() {
 		let name_td = document.createElement("td");
 		let eq_td = document.createElement("td");
 		let value_td = document.createElement("td");
-		let add_td = document.createElement("td");
-		add_td.setAttribute("colspan", "3");
+			let add_td = document.createElement("td");
+			add_td.setAttribute("id", "db_field_parameter_edit_table_additional_cell");
+			add_td.setAttribute("colspan", "3");
 
 		type_td.appendChild(type_input_field);
 		label_td.appendChild(label_label);
 		label_input_td.appendChild(label_input_field);
 		name_td.appendChild(name_input_field);
-		eq_td.innerHTML = "&nbsp;&nbsp;=&nbsp;";
+		eq_td.style.whiteSpace = "pre";
+		eq_td.textContent = "  = ";
 		eq_td.setAttribute("style", "text-align: center");
 		value_td.appendChild(value_input_field);
 		hint_td.appendChild(hint_label);
@@ -1802,6 +2045,9 @@ UI.Dashboard = new (function() {
 			return element.name == param_name;
 		});
 		let type = param.type;
+		const getParameterDefaultField = function() {
+			return document.getElementById("db_field_parameter_edit_table_value_input");
+		};
 
 		if (type == "enum") {
 			let add_input = document.createElement("input");
@@ -1827,22 +2073,19 @@ UI.Dashboard = new (function() {
 				});
 
 				if (entry.additional.indexOf(to_add) != -1 || to_add == "") return;
-				additional.push(to_add);
-				Behavior.updateBehaviorParameter(name, entry.additional, "additional");
+					entry.additional.push(to_add);
+					Behavior.updateBehaviorParameter(name, entry.additional, "additional");
 
 				// update remove list
 				let select = add_button.parentNode.parentNode.children[4].children[0];
-				select.innerHTML = '';
-				for (let i = 0; i < additional.length; i++) {
-					select.innerHTML += '<option value="' + entry.additional[i] + '">' + entry.additional[i] + '</option>';
-				};
+				populateSelectOptions(select, entry.additional);
 
 				// update default value
-				let default_field = add_button.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.children[3].children[2].children[0];
-				if (additional.length == 1) {
-					default_field.value = to_add;
-					Behavior.updateBehaviorParameter(name, to_add, "default");
-				}
+					let default_field = getParameterDefaultField();
+					if (entry.additional.length == 1) {
+						default_field.value = to_add;
+						Behavior.updateBehaviorParameter(name, to_add, "default");
+					}
 			};
 			add_button.addEventListener("click", addButtonHandler);
 			listeners_to_cleanup.push({'element': add_button, 'listener_type': 'click', 'handler': addButtonHandler});
@@ -1856,10 +2099,7 @@ UI.Dashboard = new (function() {
 			listeners_to_cleanup.push({'element': add_button, 'listener_type': 'keydown', 'handler': onEnterAdd});
 
 			let remove_input = document.createElement("select");
-			remove_input.innerHTML = '';
-			for (let i = 0; i < param.additional.length; i++) {
-				remove_input.innerHTML += '<option value="' + param.additional[i] + '">' + param.additional[i] + '</option>';
-			};
+			populateSelectOptions(remove_input, param.additional);
 			remove_input.setAttribute("id", "db_field_parameter_edit_table_remove_input");
 			remove_input.setAttribute("class", "input_field");
 			remove_input.setAttribute("style", "min-width: 80px");
@@ -1889,16 +2129,13 @@ UI.Dashboard = new (function() {
 				Behavior.updateBehaviorParameter(name, entry.additional, "additional");
 
 				// update remove list
-				select.innerHTML = '';
-				for (let i = 0; i < entry.additional.length; i++) {
-					select.innerHTML += '<option value="' + entry.additional[i] + '">' + entry.additional[i] + '</option>';
-				};
+				populateSelectOptions(select, entry.additional);
 
 				// update default value
-				let default_field = remove_button.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.children[3].children[2].children[0];
-				if (additional.length == 0) {
-					default_field.value = "";
-					Behavior.updateBehaviorParameter(name, "", "default");
+					let default_field = getParameterDefaultField();
+					if (entry.additional.length == 0) {
+						default_field.value = "";
+						Behavior.updateBehaviorParameter(name, "", "default");
 				} else if (to_remove == default_field.value) {
 					default_field.value = entry.additional[0];
 					Behavior.updateBehaviorParameter(name, entry.additional[0], "default");
@@ -1909,22 +2146,24 @@ UI.Dashboard = new (function() {
 			remove_button.addEventListener("click", removeButtonHandler);
 			listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'click', 'handler': removeButtonHandler});
 
-			const onEnterRemove = function(event) {
-				if (event.key === 'Enter' || event.key === ' ') {
-					removeHandler(event);
+				const onEnterRemove = function(event) {
+					if (event.key === 'Enter' || event.key === ' ') {
+						removeButtonHandler(event);
+					}
 				}
-			}
 			remove_button.addEventListener("keydown", onEnterRemove);
 			listeners_to_cleanup.push({'element': remove_button, 'listener_type': 'keydown', 'handler': onEnterRemove});
 
 			let label_td = document.createElement("td");
-			label_td.innerHTML = "Options:&nbsp;&nbsp;&nbsp;";
+			label_td.style.whiteSpace = "pre";
+			label_td.textContent = "Options:   ";
 			let add_input_td = document.createElement("td");
 			add_input_td.appendChild(add_input);
 			let add_button_td = document.createElement("td");
 			add_button_td.appendChild(add_button);
 			let spacer_td = document.createElement("td");
-			spacer_td.innerHTML = "&nbsp;&nbsp;&nbsp;";
+			spacer_td.style.whiteSpace = "pre";
+			spacer_td.textContent = "   ";
 			let remove_input_td = document.createElement("td");
 			remove_input_td.appendChild(remove_input);
 			let remove_button_td = document.createElement("td");
@@ -1961,10 +2200,10 @@ UI.Dashboard = new (function() {
 				Behavior.updateBehaviorParameter(name, entry.additional, "additional");
 
 				// update default value
-				let default_field = min_input.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.children[3].children[2].children[0];
-				if (parseFloat(default_field.value) < parseFloat(min_input.value)) {
-					default_field.value = min_input.value;
-					Behavior.updateBehaviorParameter(name, min_input.value, "default");
+					let default_field = getParameterDefaultField();
+					if (parseFloat(default_field.value) < parseFloat(min_input.value)) {
+						default_field.value = min_input.value;
+						Behavior.updateBehaviorParameter(name, min_input.value, "default");
 				}
 			};
 			min_input.addEventListener("blur", minBlurHandler);
@@ -2001,10 +2240,10 @@ UI.Dashboard = new (function() {
 				Behavior.updateBehaviorParameter(name, entry.additional, "additional");
 
 				// update default value
-				let default_field = max_input.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.children[3].children[2].children[0];
-				if (parseFloat(default_field.value) > parseFloat(max_input.value)) {
-					default_field.value = max_input.value;
-					Behavior.updateBehaviorParameter(name, max_input.value, "default");
+					let default_field = getParameterDefaultField();
+					if (parseFloat(default_field.value) > parseFloat(max_input.value)) {
+						default_field.value = max_input.value;
+						Behavior.updateBehaviorParameter(name, max_input.value, "default");
 				}
 			};
 
@@ -2020,11 +2259,13 @@ UI.Dashboard = new (function() {
 			listeners_to_cleanup.push({'element': max_input, 'listener_type': 'keydown', 'handler': maxEnterHandler});
 
 			let min_label_td = document.createElement("td");
-			min_label_td.innerHTML = "Minimum:&nbsp;&nbsp;&nbsp;";
+			min_label_td.style.whiteSpace = "pre";
+			min_label_td.textContent = "Minimum:   ";
 			let min_input_td = document.createElement("td");
 			min_input_td.appendChild(min_input);
 			let max_label_td = document.createElement("td");
-			max_label_td.innerHTML = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Maximum:&nbsp;&nbsp;&nbsp;";
+			max_label_td.style.whiteSpace = "pre";
+			max_label_td.textContent = "      Maximum:   ";
 			let max_input_td = document.createElement("td");
 			max_input_td.appendChild(max_input);
 
@@ -2053,20 +2294,21 @@ UI.Dashboard = new (function() {
 				entry.additional.key = key_input.value;
 				Behavior.updateBehaviorParameter(name, entry.additional, "additional");
 			};
-			key_input.addEventListener("blur", keyInputHandler);
-			listeners_to_cleanup.push({'element': key_input, 'listener_type': 'blur', 'handler': keyInputBlurHandler});
+				key_input.addEventListener("blur", keyInputBlurHandler);
+				listeners_to_cleanup.push({'element': key_input, 'listener_type': 'blur', 'handler': keyInputBlurHandler});
 
 			const keyInputEnterHandler = function(event) {
 				if (event.key === "Enter") {
 					keyInputBlurHandler(event);
 				}
 			};
-			max_input.addEventListener("keydown", keyInputEnterHandler);
-			listeners_to_cleanup.push({'element': key_input, 'listener_type': 'keydown', 'handler': keyInputEnterHandler});
+				key_input.addEventListener("keydown", keyInputEnterHandler);
+				listeners_to_cleanup.push({'element': key_input, 'listener_type': 'keydown', 'handler': keyInputEnterHandler});
 
 
 			let key_label_td = document.createElement("td");
-			key_label_td.innerHTML = "Key to look up in file:&nbsp;&nbsp;&nbsp;";
+			key_label_td.style.whiteSpace = "pre";
+			key_label_td.textContent = "Key to look up in file:   ";
 			let key_input_td = document.createElement("td");
 			key_input_td.appendChild(key_input);
 
@@ -2088,6 +2330,8 @@ UI.Dashboard = new (function() {
 			additional = {min: 0, max: 1};
 		} else if (type == "boolean") {
 			default_value = "False";
+		} else if (type == "tuple") {
+			default_value = "()";
 		} else if (type == "yaml") {
 			additional = {key: ''};
 		} else if (type == "enum") {

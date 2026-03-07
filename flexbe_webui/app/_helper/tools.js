@@ -33,7 +33,7 @@ Tools = new (function() {
 			new_state = new BehaviorState(s.getBehaviorName(), WS.Behaviorlib.getByName(s.getBehaviorName()));
 			new_state.setStateName(s.getStateName());
 		} else if (s instanceof State) {
-			state_def = WS.Statelib.getFromLib(s.getStateType());
+			const state_def = WS.Statelib.getFromLib(s.getStateType());
 			new_state = new State(s.getStateName(), state_def);
 		}
 

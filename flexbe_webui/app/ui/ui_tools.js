@@ -68,23 +68,34 @@ UI.Tools = new (function() {
 		let changes = ActivityTracer.hasUnsavedChanges();
 
 		let info = document.getElementById("history_info");
-		info.innerHTML = "<b>" + Behavior.getBehaviorName() + "</b><br /><br />";
+		info.textContent = "";
+		let name = document.createElement("b");
+		name.textContent = Behavior.getBehaviorName();
+		info.appendChild(name);
+		info.appendChild(document.createElement("br"));
+		info.appendChild(document.createElement("br"));
+		let last_saved = document.createElement("span");
+		last_saved.textContent = "Last saved: ";
+		let status = document.createElement("i");
 		if (!changes) {
-			info.innerHTML += "Last saved: <i>no changes</i><br />";
+			status.textContent = "no changes";
 		} else if (save == 0) {
-			info.innerHTML += "Last saved: <i>never</i><br />";
+			status.textContent = "never";
 		} else {
 			let savetime = Math.round((Date.now() - activities[save].time) / 60000);
-			info.innerHTML += "Last saved: <i>" + savetime + " min ago</i><br />";
+			status.textContent = savetime + " min ago";
 		}
+		last_saved.appendChild(status);
+		info.appendChild(last_saved);
+		info.appendChild(document.createElement("br"));
 
 		let list = document.getElementById("history_list");
 		list.innerHTML = "";
 		for (let i = activities.length - 1; i >= 0; i--) {
-			let a = (i > 0)? activities[i] : {description: "<i>no changes</i>"};
+			let a = (i > 0)? activities[i] : {description: "no changes"};
 			let entry = document.createElement("div");
 			entry.setAttribute("class", "history_element");
-			entry.innerHTML = ((i == current)? "> " : "") + ((i == save)? "# " : "") + a.description;
+			entry.textContent = ((i == current)? "> " : "") + ((i == save)? "# " : "") + a.description;
 			list.appendChild(entry);
 
 			const addListener = function(index) {
@@ -227,7 +238,9 @@ UI.Tools = new (function() {
 
 	this.displayCommandInput = function() {
 		console.log(`Store prior focus: active element = '${document.activeElement.id}' (${prior_focus ? prior_focus.id : 'undefined'})`);
-		prior_focus = prior_focus ? document.activeElement : prior_focus;
+		// Preserve the first focus target that opened the overlay so closing the
+		// command UI can restore keyboard context instead of dropping focus.
+		prior_focus = prior_focus ? prior_focus : document.activeElement;
 		document.getElementById("command_overlay").style.display = "block";
 		document.getElementById("command_overlay_suggestions").style.display = "block";
 		setTimeout(function() {
@@ -304,6 +317,16 @@ UI.Tools = new (function() {
 			div.innerText = s.text;
 			document.getElementById("command_overlay_suggestions").appendChild(div);
 		};
+		let displayNoSuggestions = function() {
+			let container = document.getElementById("command_overlay_suggestions");
+			container.innerHTML = "";
+			let div = document.createElement("div");
+			div.setAttribute("class", "command_overlay_suggestion");
+			let italic = document.createElement("i");
+			italic.textContent = "no suggestions";
+			div.appendChild(italic);
+			container.appendChild(div);
+		}
 		suggestions.forEach(displaySuggestions);
 		if (suggestions.length == 0) {
 			document.getElementById("command_overlay_suggestions").style.opacity = "0";
@@ -341,10 +364,10 @@ UI.Tools = new (function() {
 								completions.forEach(displaySuggestions);
 							}
 						} else  {
-							document.getElementById("command_overlay_suggestions").innerHTML = '<div class="command_overlay_suggestion"><i>no suggestions</i></div>';
+							displayNoSuggestions();
 						}
 					} else  {
-						document.getElementById("command_overlay_suggestions").innerHTML = '<div class="command_overlay_suggestion"><i>no suggestions</i></div>';
+						displayNoSuggestions();
 					}
 				}
 			}
@@ -445,12 +468,35 @@ UI.Tools = new (function() {
 
 	this.sendShutdownConfirmation = function(allow_shutdown) {
 		// console.log(`confirming that shutdown is allowed ${allow_shutdown}`);
-		API.post("confirm_shutdown", allow_shutdown, (result) => {
-			if (result) {
-				console.log(`Response from shutdown confirmation ${result['confirm']}`);
+		API.postData("confirm_shutdown", allow_shutdown, result_data => {
+			if (typeof result_data.confirm === "boolean") {
+				console.log(`Response from shutdown confirmation ${result_data.confirm}`);
 			} else {
 				console.log("Invalid response from shutdown confirmation!");
 			}
+		}, error => {
+			console.log(`Invalid response from shutdown confirmation: ${error}`);
+		});
+	}
+
+	this.openFileInEditor = function(json_file_dict, success_message, failure_message) {
+		API.postFlag("open_file_editor", json_file_dict, () => {
+			if (success_message) {
+				T.logInfo(success_message);
+			}
+		}, error => {
+			T.logError(error || failure_message || "Failed to open the file in the editor!");
+		});
+	}
+
+	this.openFileInSourceViewer = function(json_file_dict, source_name, file_path, success_message, failure_message) {
+		API.postData("view_file_source", json_file_dict, result_data => {
+			if (success_message) {
+				T.logInfo(success_message);
+			}
+			Tools.viewSource(source_name, file_path, result_data.text);
+		}, error => {
+			T.logError(error || failure_message || "Failed to open the file in the source viewer!");
 		});
 	}
 
@@ -461,7 +507,8 @@ UI.Tools = new (function() {
 			const cancelBtn = document.getElementById('custom_confirm_dialog_cancel_btn');
 			const confirmBtn = document.getElementById('custom_confirm_dialog_confirm_btn');
 
-			msgSpan.innerHTML = confirmMsg;
+			msgSpan.style.whiteSpace = "pre-line";
+			msgSpan.textContent = confirmMsg.replace(/<br\s*\/?>/gi, "\n");
 			modal.style.display = "block";
 
 			function closeModalClicked(event) {
@@ -489,7 +536,7 @@ UI.Tools = new (function() {
 					// Move focus between confirmation buttons
 					document.activeElement == cancelBtn ? confirmBtn.focus({preventScroll: true}) : cancelBtn.focus({preventScroll: true});
 					return; // no resolution yet
-				} else if (event.key === 'Esc') {
+				} else if (event.key === 'Escape') {
 					event.target = cancelBtn; // Escape always cancels
 					closeModalClicked(event);
 				} else if (event.key === 'Enter' || event.key === ' ') {
@@ -508,7 +555,8 @@ UI.Tools = new (function() {
 			const msgSpan = document.getElementById('custom_acknowledge_dialog_msg');
 			const confirmBtn = document.getElementById('custom_acknowledge_dialog_confirm_btn');
 
-			msgSpan.innerHTML = confirmMsg;
+			msgSpan.style.whiteSpace = "pre-line";
+			msgSpan.textContent = confirmMsg.replace(/<br\s*\/?>/gi, "\n");
 			modal.style.display = "block";
 
 			function closeModalClicked(event) {
@@ -532,7 +580,7 @@ UI.Tools = new (function() {
 					// Keep focus on confirmation buttons
 					confirmBtn.focus({preventScroll: true}); // the button by default after event listeners defined
 					return; // no resolution yet
-				} else if (event.key === 'Esc') {
+				} else if (event.key === 'Escape') {
 					event.target = confirmBtn; // Escape always cancels
 					closeModalClicked(event);
 				} else if (event.key === 'Enter' || event.key === ' ') {
@@ -543,6 +591,72 @@ UI.Tools = new (function() {
 			modal.addEventListener('click', closeModalClicked, true);
 			confirmBtn.focus({preventScroll: true}); // the button by default after event listeners defined
 			console.log(`defined acknowledge dialog with focus '${confirmBtn.id}' (${document.activeElement.id})`)
+		});
+	}
+
+	this.customSaveWithRenameDecision = async function(confirmMsg) {
+		return new Promise((resolve) => {
+			const modal = document.getElementById('custom_save_behavior_dialog');
+			const msgSpan = document.getElementById('custom_save_behavior_dialog_msg');
+			const saveBtn = document.getElementById('custom_save_behavior_dialog_save_btn');
+			const saveAsBtn = document.getElementById('custom_save_behavior_dialog_save_as_btn');
+			const cancelBtn = document.getElementById('custom_save_behavior_dialog_cancel_btn');
+			const buttons = [saveBtn, saveAsBtn, cancelBtn];
+
+			msgSpan.style.whiteSpace = "pre-line";
+			msgSpan.textContent = confirmMsg.replace(/<br\s*\/?>/gi, "\n");
+			modal.style.display = "block";
+
+			function closeDialog(choice) {
+				modal.style.display = "none";
+				modal.removeEventListener('click', handleClick, true);
+				modal.removeEventListener('keydown', handleKeyDown, true);
+				resolve(choice);
+			}
+
+			function handleClick(event) {
+				event.stopImmediatePropagation();
+				event.preventDefault();
+				if (event.target === saveBtn) {
+					closeDialog('save');
+				} else if (event.target === saveAsBtn) {
+					closeDialog('save_as');
+				} else {
+					closeDialog('cancel');
+				}
+			}
+
+			function handleKeyDown(event) {
+				event.stopImmediatePropagation();
+				event.preventDefault();
+				if (!modal.contains(event.target)) {
+					return;
+				}
+				if (event.key === 'Tab') {
+					let ndx = buttons.indexOf(document.activeElement);
+					if (ndx < 0) ndx = 0;
+					let next = event.shiftKey ? (ndx + buttons.length - 1) % buttons.length : (ndx + 1) % buttons.length;
+					buttons[next].focus({preventScroll: true});
+					return;
+				}
+				if (event.key === 'Escape') {
+					closeDialog('cancel');
+					return;
+				}
+				if (event.key === 'Enter' || event.key === ' ') {
+					if (event.target === saveBtn) {
+						closeDialog('save');
+					} else if (event.target === saveAsBtn) {
+						closeDialog('save_as');
+					} else {
+						closeDialog('cancel');
+					}
+				}
+			}
+
+			modal.addEventListener('keydown', handleKeyDown, true);
+			modal.addEventListener('click', handleClick, true);
+			saveAsBtn.focus({preventScroll: true});
 		});
 	}
 

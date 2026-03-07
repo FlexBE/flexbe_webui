@@ -32,5 +32,15 @@ const BehaviorState = function(be_name, be_definition) {
 		return (element != undefined)? element.value : "";
 	}
 
+	this.updateBehaviorDefinition = function(new_def) {
+		behavior_name = new_def.getBehaviorName();
+		behavior_manifest = new_def.getBehaviorManifest();
+		be_definition = new_def;
+		that.updateStateDefinition(new_def);
+
+		behavior_statemachine = new_def.cloneBehaviorStatemachine();
+		behavior_statemachine.setBehavior(that);
+	}
+
 };
 BehaviorState.prototype = Object.create(State.prototype);

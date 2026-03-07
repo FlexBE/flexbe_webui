@@ -1,6 +1,7 @@
 const Checking = new (function() {
 	var that = this;
 	var flagWarning = false;
+	var validationWarnings = [];
 
 	const python_varname_pattern = /^[a-z_][a-z0-9_]*$/i;
 
@@ -11,9 +12,71 @@ const Checking = new (function() {
 	// these allow mixed capitalization unlike basic variable test
 	const referenceNamePattern = /^([a-zA-Z_][a-zA-Z0-9_]*)(\.[a-zA-Z_][a-zA-Z0-9_]*)+$/;
 	const indexedVariablePattern = /^([a-zA-Z_][a-zA-Z0-9_]*)(\[[^\]]+\])+$/;
+
+	const isValidTupleLiteral = function(value) {
+		if (typeof value !== "string") return false;
+		let trimmed = value.trim();
+		if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) return false;
+		let body = trimmed.slice(1, -1).trim();
+		if (body === "") return true;
+
+		let items = [];
+		let current = "";
+		let quote = undefined;
+		let escaped = false;
+		for (let i = 0; i < body.length; i++) {
+			let ch = body[i];
+			if (escaped) {
+				current += ch;
+				escaped = false;
+				continue;
+			}
+			if (ch === "\\") {
+				current += ch;
+				escaped = true;
+				continue;
+			}
+			if (quote !== undefined) {
+				current += ch;
+				if (ch === quote) quote = undefined;
+				continue;
+			}
+			if (ch === "'" || ch === "\"") {
+				current += ch;
+				quote = ch;
+				continue;
+			}
+			if (ch === ",") {
+				items.push(current.trim());
+				current = "";
+				continue;
+			}
+			current += ch;
+		}
+		if (quote !== undefined || escaped) return false;
+		if (current.trim() !== "" || !body.endsWith(",")) items.push(current.trim());
+		if (items.length === 0) return true;
+
+		const numericPattern = /^-?[0-9]+(\.[0-9]+)?$/;
+		const stringPattern = /^(?:'(?:[^'\\]|\\.)*')$/;
+		return items.every(item => item !== "" && (numericPattern.test(item) || stringPattern.test(item)));
+	};
 	var variables;
 
-	this.checkBehavior = function() {
+	const addValidationWarning = function(message) {
+		flagWarning = true;
+		if (!validationWarnings.contains(message)) {
+			validationWarnings.push(message);
+		}
+	};
+
+	this.checkBehaviorReport = function() {
+		let report = {
+			fatal_errors: [],
+			warnings: [],
+			info: [],
+		};
+
 		try {
 			console.log(`Checking '${Behavior.getBehaviorName()}' behavior ...`);
 			// Store variables that class definitions we are likely to encounter in setup
@@ -26,11 +89,13 @@ const Checking = new (function() {
 			that.variables.add('Logger.REPORT_WARN');
 			that.variables.add('Logger.REPORT_ERROR');
 			flagWarning = false;
+			validationWarnings = [];
 
 			var error = that.checkDashboard();
 			if (error != undefined) {
 				UI.Menu.toDashboardClicked();
-				return error;
+				report.fatal_errors.push(error);
+				return report;
 			}
 
 			// Add any imported classes to list of variables
@@ -48,17 +113,14 @@ const Checking = new (function() {
 			if (error != undefined) {
 				console.log(`\x1b[91m Failed checkStateMachine for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
 				UI.Menu.toStatemachineClicked();
-				return error;
-			}
-
-			if (flagWarning) {
-				T.logWarn(`Check warnings - but this did not invalidate the behavior!`);
-				flagWarning = false;
+				report.fatal_errors.push(error);
+				return report;
 			}
 		} catch (error) {
 			console.log(`\x1b[91m Failed behavior check for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
 			console.log(error.stack);
-			return error.error;
+			report.fatal_errors.push(error.error);
+			return report;
 		}
 
 		try {
@@ -76,10 +138,23 @@ const Checking = new (function() {
 			}
 			UI.Statemachine.setDisplayedSM(container);
 			UI.Menu.toStatemachineClicked();
-			return error.error;
+			report.fatal_errors.push(error.error);
+			return report;
 		}
 
-		return undefined;
+		that.warnBehavior().forEach(function(message) {
+			addValidationWarning(message);
+		});
+		report.warnings = validationWarnings.clone();
+		return report;
+	}
+
+	this.checkBehavior = function() {
+		let report = that.checkBehaviorReport();
+		if (report.warnings.length > 0) {
+			T.logWarn(`Validation completed with ${report.warnings.length} non-fatal warning(s).`);
+		}
+		return report.fatal_errors.length > 0 ? report.fatal_errors[0] : undefined;
 	}
 
 	this.warnBehavior = function() {
@@ -132,10 +207,12 @@ const Checking = new (function() {
 			let p = beparams[i];
 			if (p.name == "") return "a parameter has not been named";
 			if (p.label == "") return "parameter " + p.name + " has no label";
-			if (!['enum', 'text', 'numeric', 'boolean', 'yaml'].contains(p.type)) return "parameter " + p.name + " has illegal type: " + p.type;
+			if (!['enum', 'text', 'numeric', 'boolean', 'tuple', 'yaml'].contains(p.type)) return "parameter " + p.name + " has illegal type: " + p.type;
 			if (p.type == 'enum') {
 				if (p.additional.length == 0) return "enum parameter " + p.name + " has no options to choose from";
 				if (!p.additional.contains(p.default)) return "enum parameter " + p.name + " has illegal default value: " + p.default;
+			} else if (p.type == 'tuple') {
+				if (!isValidTupleLiteral(p.default)) return "tuple parameter " + p.name + " has illegal default value: " + p.default;
 			}
 			that.variables.add("self." + p.name);
 		}
@@ -262,8 +339,9 @@ const Checking = new (function() {
 		    // Regular expression to match initial capitals style
 			const initialCapitalsRegex = /^[A-Z][a-z0-9]*([A-Z][a-z0-9]*)*$/;
 			if (!initialCapitalsRegex.test(stateName)) {
-				T.logInfo(`State '${stateName}' does not follow suggested InitialCapitals style naming`);
-				flagWarning = true;
+				let message = `State '${stateName}' does not follow suggested InitialCapitals style naming`;
+				T.logInfo(message);
+				addValidationWarning(message);
 			}
 	}
 
@@ -274,17 +352,20 @@ const Checking = new (function() {
 
 		const regex_pattern = /^[a-z_][a-z0-9_]*$/;
 		if (!regex_pattern.test(lower)) {
-			T.logInfo(`State '${stateName}' outcome '${outName}' has unexpected characters - stick with lower case letters and digits`);
-			flagWarning = true;
+			let message = `State '${stateName}' outcome '${outName}' has unexpected characters - stick with lower case letters and digits`;
+			T.logInfo(message);
+			addValidationWarning(message);
 		}
 		if (lower !== outName) {
-			T.logInfo(`State '${stateName}' outcome '${outName}' does not follow suggested snake_case style naming`);
-			flagWarning = true;
+			let message = `State '${stateName}' outcome '${outName}' does not follow suggested snake_case style naming`;
+			T.logInfo(message);
+			addValidationWarning(message);
 		}
 
 		if (lower.startsWith('preempt')) {
-			T.logError(`State '${stateName}' outcome '${outName}' uses reserved name 'preempt'`);
-			flagWarning = true; // should we invalidate here?
+			let message = `State '${stateName}' outcome '${outName}' uses reserved name 'preempt'`;
+			T.logError(message);
+			addValidationWarning(message);
 		}
 	}
 
@@ -311,8 +392,8 @@ const Checking = new (function() {
 					let err_text = `Unknown parameter type for ${sparams[i]} (${param_type}) of ${state.getStateName()} `;
 					console.log('\x1b[91m' + err_text + '\x1b[0m');
 					T.logError(err_text); // log it, but don't invalidate for now
-					flagWarning = true;
-					//return err_text;  // @todo - invalidate SM
+					addValidationWarning(err_text);
+					// Keep this non-fatal so the user can inspect and repair the state machine in place.
 				} else {
 					let valid = true;
 					let param_vars = Checking.extractVariables(sparams[i]);
@@ -340,8 +421,8 @@ const Checking = new (function() {
 							console.log('\x1b[91m' + err_text + '\x1b[0m');
 							T.logError(err_text); // log it, but don't invalidate SM for now
 							valid = false;
-							flagWarning = true;
-							//return err_text;  // @todo - invalidate SM
+							addValidationWarning(err_text);
+							// Keep this non-fatal so the user can inspect and repair the state machine in place.
 						}
 					}
 				}
@@ -549,7 +630,7 @@ const Checking = new (function() {
 		} catch (exc) {
 			console.log(`${exc} - <${item}> - ${typeof item}`);
 			console.log(exc.stack);
-			flagWarning = true;
+			addValidationWarning(`Internal warning while checking value '${item}'`);
 		}
 
 		// Check for number
@@ -588,20 +669,23 @@ const Checking = new (function() {
 								// console.log(`\x1b[95m Detected lambda expression '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=<${lambdaEqn}> (${isValidEqn})\x1b[0m`);
 								return "lambda";
 							} else {
-								T.logWarn(`Invalid Python equation for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=\{${lambdaEqn}\} (${isValidEqn})`);
-								flagWarning = true;
+								let message = `Invalid Python equation for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn=\{${lambdaEqn}\} (${isValidEqn})`;
+								T.logWarn(message);
+								addValidationWarning(message);
 								return "unknown" // if lambda plus args, then assume equation is invalid attempt
 							}
 						} else {
-							T.logWarn(`Invalid Python expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn expression=\{${lambdaEqn}\} (${isValidEqn})`);
-							flagWarning = true;
+							let message = `Invalid Python expression for lambda '${checkItem}' - args=[${lambdaArgs}](${isValidArgs}) eqn expression=\{${lambdaEqn}\} (${isValidEqn})`;
+							T.logWarn(message);
+							addValidationWarning(message);
 							return "unknown" // if lambda plus args, then assume equation is invalid attempt
 						}
 					} // else is not a lambda, so keep processing as string
 				} catch (err) {
-					T.logWarn(`lambda match error '${checkItem}' - '${JSON.stringify(match)}' ...`);
+					let message = `lambda match error '${checkItem}' - '${JSON.stringify(match)}' ...`;
+					T.logWarn(message);
 					console.log(err.stack);
-					flagWarning = true;
+					addValidationWarning(message);
 				}
 			}
 		}

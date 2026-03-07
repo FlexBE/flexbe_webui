@@ -29,6 +29,16 @@ UI.RuntimeControl = new (function() {
 
 	var tab_targets = [];
 
+	var escapeHtml = function(value) {
+		if (value == undefined) return "";
+		return String(value)
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#39;");
+	}
+
 	this.updateDrawing = function() {
 		drawings.forEach(function(element, i) {
 			element.drawing.remove();
@@ -112,8 +122,8 @@ UI.RuntimeControl = new (function() {
 				});
 				new_transitions.push(dt);
 
-				if (dt) {
-					function handleOutcomeSelection(event) {
+					if (dt) {
+						function handleOutcomeSelection(event) {
 						let t = this.data("transition");
 						if (RC.Sync.hasProcess("Transition")) {
 							UI.Panels.Terminal.logWarn(`There is an unacknowledged transition still pending (resync to clear if required)!`);
@@ -128,13 +138,12 @@ UI.RuntimeControl = new (function() {
 						outcome_request.target = undefined;
 						console.log(`\x1b[94m Forced outcome '${element.getOutcome()}' for '${current_state.getStatePath()}'\x1b[0m`);
 					}
-					dt.drawing
-						.attr({'cursor': 'pointer', 'title': "Click to force outcome " + element.getOutcome()})
-						.data("transition", dt.obj)
-						.click(handleOutcomeSelection);
-					new_transitions.push(dt);
-				}
-			})
+						dt.drawing
+							.attr({'cursor': 'pointer', 'title': "Click to force outcome " + element.getOutcome()})
+							.data("transition", dt.obj)
+							.click(handleOutcomeSelection);
+					}
+				})
 			drawings.push(...new_transitions); // add grouped transitions to drawings list
 		});
 
@@ -169,6 +178,9 @@ UI.RuntimeControl = new (function() {
 					let child_ndx = current_states.indexOf(current_state);
 
 					let child_state = current_states[child_ndx + 1];
+					if (child_state == undefined) {
+						return;
+					}
 					current_state = child_state;
 					that.updateStateDisplayDepth(child_state.getStatePath());
 				});
@@ -178,14 +190,17 @@ UI.RuntimeControl = new (function() {
 
 		if (state_obj instanceof BehaviorState) {
 			let drawable = new Drawable.BehaviorState(state_obj, R, true, mode, active, locked);
-			if (active) {
-				drawable.drawing.data("new_path", state_obj.getStatePath());
-				drawable.drawing.dblclick(function() {
-					let child_ndx = current_states.indexOf(current_state);
-					let child_state = current_states[child_ndx + 1];
-					current_state = child_state;
-					that.updateStateDisplayDepth(child_state.getStatePath());
-				});
+				if (active) {
+					drawable.drawing.data("new_path", state_obj.getStatePath());
+					drawable.drawing.dblclick(function() {
+						let child_ndx = current_states.indexOf(current_state);
+						let child_state = current_states[child_ndx + 1];
+						if (child_state == undefined) {
+							return;
+						}
+						current_state = child_state;
+						that.updateStateDisplayDepth(child_state.getStatePath());
+					});
 			}
 			return drawable;
 		}
@@ -210,7 +225,10 @@ UI.RuntimeControl = new (function() {
 	this.updateStateDisplayDepth = function(state_path) {
 		let path_segments = state_path.split("/");
 		current_level = path_segments.length - 1;
-		document.getElementById("selection_rc_lock_layer").selectedIndex = document.getElementById("selection_rc_lock_layer").length - current_level;
+		let selection_box = document.getElementById("selection_rc_lock_layer");
+		if (selection_box != undefined) {
+			selection_box.selectedIndex = selection_box.length - current_level;
+		}
 
 		that.updateStateDisplay();
 	}
@@ -258,7 +276,7 @@ UI.RuntimeControl = new (function() {
 
 	this.setDocumentation = function(state) {
 		if (state == undefined) {
-			document.getElementById("runtime_documentation_text").innerHTML = "";
+			document.getElementById("runtime_documentation_text").textContent = "";
 			return;
 		}
 
@@ -279,11 +297,11 @@ UI.RuntimeControl = new (function() {
 			}
 			doc += "<br />Double-click the displayed container symbol to look inside."
 		} else if (state instanceof BehaviorState) {
-			doc += "<b>" + state.getBehaviorName() + "</b> (Behavior)<br />";
-			doc += WS.Behaviorlib.getByName(state.getBehaviorName()).getBehaviorDesc() + "<br />";
+			doc += "<b>" + escapeHtml(state.getBehaviorName()) + "</b> (Behavior)<br />";
+			doc += escapeHtml(WS.Behaviorlib.getByName(state.getBehaviorName()).getBehaviorDesc()) + "<br />";
 		} else if (WS.Statelib.getFromLib(state_type) != undefined) {
-			doc += "<b>" + state_type + "</b><br />";
-			doc += WS.Statelib.getFromLib(state_type).getStateDesc() + "<br />";
+			doc += "<b>" + escapeHtml(state_type) + "</b><br />";
+			doc += escapeHtml(WS.Statelib.getFromLib(state_type).getStateDesc()) + "<br />";
 			let pkeys = state.getParameters();
 			let pvals = state.getParameterValues();
 			if (pkeys.length > 0) {
@@ -291,17 +309,17 @@ UI.RuntimeControl = new (function() {
 				doc += "<b>Parameter Values:</b><br />";
 			}
 			for (let i = 0; i < pkeys.length; i++) {
-				doc += "<div style='font-family: monospace;'><b>" + pkeys[i] + "</b> = ";
-				doc += pvals[i];
+				doc += "<div style='font-family: monospace;'><b>" + escapeHtml(pkeys[i]) + "</b> = ";
+				doc += escapeHtml(pvals[i]);
 				let resolved = VarSolver.resolveVar(pvals[i], false);
 				if (resolved !== false && !(resolved instanceof Array) && resolved != pvals[i]) {
-					doc += " (" + resolved + ")</div>";
+					doc += " (" + escapeHtml(resolved) + ")</div>";
 				}
 			}
 			doc += "<br /><br />";
 			doc += "<b>Outcomes:</b><br />";
 			WS.Statelib.getFromLib(state_type).getOutcomeDesc().forEach(outcome => {
-				doc += "<div><b>" + outcome.name + "</b>: " + outcome.desc + "</div>";
+				doc += "<div><b>" + escapeHtml(outcome.name) + "</b>: " + escapeHtml(outcome.desc) + "</div>";
 			});
 		}
 
@@ -310,13 +328,18 @@ UI.RuntimeControl = new (function() {
 
 	this.resetStateDisplay = function() {
 		current_level = 0;
-		current_state = undefined
+		current_state = undefined;
 		current_states = [];
+		previous_states = [];
 		previous_state = undefined;
 		income_transition = undefined;
 		next_states = {};
 		outcome_transitions = [];
+		pending_outcome_requests.clear();
+		outcome_request.outcome = undefined;
+		outcome_request.target = undefined;
 		that.setDocumentation(undefined);
+		that.updateDrawing();
 	}
 
 	this.createParameterTable = function() {
@@ -348,7 +371,9 @@ UI.RuntimeControl = new (function() {
 		}
 
 		if (params.length == 0) {
-			table.innerHTML = "<i>The selected behavior supports no parameters.</i>";
+			let empty = document.createElement("i");
+			empty.textContent = "The selected behavior supports no parameters.";
+			table.appendChild(empty);
 			return;
 		}
 
@@ -357,7 +382,7 @@ UI.RuntimeControl = new (function() {
 			name_td.setAttribute("width", "14%");
 			name_td.setAttribute("height", "30");
 			name_td.setAttribute("title", params[i].name);
-			name_td.innerHTML = params[i].label + ":";
+			name_td.textContent = params[i].label + ":";
 
 			let value_td = document.createElement("td");
 			value_td.setAttribute("width", "60%");
@@ -366,23 +391,32 @@ UI.RuntimeControl = new (function() {
 				select.setAttribute("id", params[i].name);
 				select.setAttribute("name", params[i].name);
 				params[i].additional.forEach(function(opt) {
-					select.innerHTML += '<option value="' + opt + '" ' + ((opt == params[i].default)? 'selected="selected"' : '') + '>' + opt + '</option>';
+					let option = document.createElement("option");
+					option.setAttribute("value", opt);
+					option.textContent = opt;
+					if (opt == params[i].default) {
+						option.selected = true;
+					}
+					select.appendChild(option);
 				});
 				value_td.appendChild(select);
-			} else if (params[i].type == "numeric") {
-				let input = document.createElement("input");
-				input.setAttribute("id", params[i].name);
-				input.setAttribute("name", params[i].name);
-				input.setAttribute("type", "number");
-				input.setAttribute("value", params[i].default);
-				input.setAttribute("min", params[i].additional.min);
-				input.setAttribute("max", params[i].additional.max);
-				const isFloat = (params[i].default.indexOf(".") != -1) ||
-								(params[i].additional.min.indexOf(".") != -1) ||
-								(params[i].additional.max.indexOf(".") != -1); // value or limit has decimal.
-				let step = "1"; // default for integers
-				if (isFloat) {
-					const range =  parseFloat(params[i].additional.max) - parseFloat(params[i].additional.min);
+				} else if (params[i].type == "numeric") {
+					let input = document.createElement("input");
+					input.setAttribute("id", params[i].name);
+					input.setAttribute("name", params[i].name);
+					input.setAttribute("type", "number");
+					input.setAttribute("value", params[i].default);
+					input.setAttribute("min", params[i].additional.min);
+					input.setAttribute("max", params[i].additional.max);
+					const defaultValue = String(params[i].default);
+					const minValue = String(params[i].additional.min);
+					const maxValue = String(params[i].additional.max);
+					const isFloat = (defaultValue.indexOf(".") != -1) ||
+									(minValue.indexOf(".") != -1) ||
+									(maxValue.indexOf(".") != -1); // value or limit has decimal.
+					let step = "1"; // default for integers
+					if (isFloat) {
+						const range =  parseFloat(params[i].additional.max) - parseFloat(params[i].additional.min);
 					step = (range*0.025).toPrecision(3).toString();
 				}
 				input.setAttribute("step", step);
@@ -403,36 +437,30 @@ UI.RuntimeControl = new (function() {
 				input.setAttribute("type", "text");
 				input.setAttribute("value", params[i].default);
 				value_td.appendChild(input);
-			} else if (params[i].type == "yaml") {
-				let add_button = document.createElement("input");
-				add_button.setAttribute("id", "yaml_button_" + i);
-				add_button.setAttribute("type", "button");
-				add_button.setAttribute("value", "...");
-				add_button.addEventListener('click', function() {
-					let button = this;
-					chrome.fileSystem.chooseEntry({type: 'openFile'}, function(entry) {
-						button.parentNode.parentNode.children[0].children[0].setAttribute("value", entry.name);
-					});
-				});
+			} else if (params[i].type == "tuple") {
+				let input = document.createElement("input");
+				input.setAttribute("id", params[i].name);
+				input.setAttribute("name", params[i].name);
+				input.setAttribute("type", "text");
+				input.setAttribute("value", params[i].default);
+				input.setAttribute("placeholder", "('a', 'b') or (1, 2)");
+				value_td.appendChild(input);
+				} else if (params[i].type == "yaml") {
+					let file_input = document.createElement("input");
+					file_input.setAttribute("type", "text");
+					file_input.setAttribute("value", params[i].default);
+					file_input.setAttribute("key", params[i].additional.key);
+					file_input.setAttribute("style", "width: 300px");
 
-				let file_input = document.createElement("input");
-				file_input.setAttribute("type", "text");
-				file_input.setAttribute("value", params[i].default);
-				file_input.setAttribute("key", params[i].additional.key);
-				file_input.setAttribute("style", "width: 300px");
+					let file_td = document.createElement("td");
+					file_td.appendChild(file_input);
+					let key_label_td = document.createElement("td");
+					key_label_td.textContent = (params[i].additional.key != "")? "(key: " + params[i].additional.key + ")" : "";
 
-				let file_td = document.createElement("td");
-				file_td.appendChild(file_input);
-				let add_td = document.createElement("td");
-				add_td.appendChild(add_button);
-				let key_label_td = document.createElement("td");
-				key_label_td.innerHTML = (params[i].additional.key != "")? "(key: " + params[i].additional.key + ")" : "";
-
-				let yaml_tr = document.createElement("tr");
-				yaml_tr.appendChild(file_td);
-				//yaml_tr.appendChild(add_td);
-				yaml_tr.appendChild(key_label_td);
-				let yaml_table = document.createElement("table");
+					let yaml_tr = document.createElement("tr");
+					yaml_tr.appendChild(file_td);
+					yaml_tr.appendChild(key_label_td);
+					let yaml_table = document.createElement("table");
 				yaml_table.appendChild(yaml_tr);
 				value_td.appendChild(yaml_table);
 			}
@@ -443,7 +471,8 @@ UI.RuntimeControl = new (function() {
 			if (params[i].name.indexOf("/") != -1) {
 				text += " (/" + params[i].name.substr(0, params[i].name.lastIndexOf("/")) + ")";
 			}
-			hint_td.innerHTML = '<font style="color: gray">' + text + '</font>';
+			hint_td.style.color = "gray";
+			hint_td.textContent = text;
 
 			let tr = document.createElement("tr");
 			tr.setAttribute("name", params[i].name);
@@ -491,6 +520,10 @@ UI.RuntimeControl = new (function() {
 				result.push({name: name, value: value});
 				checkResult();
 			} else if (type == "text") {
+				value = c.children[1].children[0].value;
+				result.push({name: name, value: value});
+				checkResult();
+			} else if (type == "tuple") {
 				value = c.children[1].children[0].value;
 				result.push({name: name, value: value});
 				checkResult();
@@ -662,14 +695,38 @@ UI.RuntimeControl = new (function() {
 		if (!RC.Controller.isRunning()) return;
 
 		if (RC.Controller.isActive()) {
-			let selection_box = document.getElementById("selection_rc_lock_layer");
-			locked_state_path = selection_box.options[selection_box.selectedIndex].getAttribute("path");
+				let selection_box = document.getElementById("selection_rc_lock_layer");
+				if (selection_box == undefined
+					|| selection_box.selectedIndex < 0
+					|| selection_box.options[selection_box.selectedIndex] == undefined) {
+					T.logWarn("No valid lock layer is available.");
+					return;
+				}
+				locked_state_path = selection_box.options[selection_box.selectedIndex].getAttribute("path");
+				if (locked_state_path == undefined || locked_state_path == "") {
+					T.logWarn("No valid lock target is available.");
+					return;
+				}
 			RC.Controller.setLockedStatePath(locked_state_path);
 			RC.PubSub.sendBehaviorLock(locked_state_path);
 		} else if (RC.Controller.needSwitch()) {
-			let selection_box = document.getElementById("selection_rc_autonomy");
-			let autonomy_value = parseInt(selection_box.options[selection_box.selectedIndex].value);
-			RC.PubSub.sendBehaviorUpdate(param_keys, param_vals, autonomy_value);
+			that.parseParameterConfig(function (result) {
+				param_keys = [];
+				param_vals = [];
+				result.forEach(function (r) {
+					param_keys.push("/" + r.name);
+					param_vals.push("" + r.value);
+				});
+				let selection_box = document.getElementById("selection_rc_autonomy");
+				if (selection_box == undefined
+					|| selection_box.selectedIndex < 0
+					|| selection_box.options[selection_box.selectedIndex] == undefined) {
+					T.logWarn("No valid autonomy level is available.");
+					return;
+				}
+				let autonomy_value = parseInt(selection_box.options[selection_box.selectedIndex].value);
+				RC.PubSub.sendBehaviorUpdate(param_keys, param_vals, autonomy_value);
+			});
 		} else {
 			RC.PubSub.sendBehaviorUnlock(locked_state_path);
 			RC.Sync.remove("Changes");
@@ -837,27 +894,32 @@ UI.RuntimeControl = new (function() {
 
 	this.displayBehaviorConfiguration = function() {
 		that.hideDisplays();
+		that.resetStateDisplay();
 		document.getElementById("runtime_configuration_display").style.display = "inline";
 		that.createParameterTable();
 	}
 
 	this.displayWaitingForBehavior = function() {
 		that.hideDisplays();
+		that.resetStateDisplay();
 		document.getElementById("runtime_waiting_display").style.display = "inline";
 	}
 
 	this.displayExternalBehavior = function() {
 		that.hideDisplays();
+		that.resetStateDisplay();
 		document.getElementById("runtime_external_display").style.display = "inline";
 	}
 
 	this.displayEngineOffline = function() {
 		that.hideDisplays();
+		that.resetStateDisplay();
 		document.getElementById("runtime_offline_display").style.display = "inline";
 	}
 
 	this.displayNoBehavior = function() {
 		that.hideDisplays();
+		that.resetStateDisplay();
 		document.getElementById("runtime_no_behavior_display").style.display = "inline";
 		let updateHistoryDisplay = function() {
 			let historyHTML = "";
@@ -983,10 +1045,11 @@ UI.RuntimeControl = new (function() {
 						console.log(`  remove pending outcome '${path}' (${key}) given container '${targetPath}' outcome request '${outcome}'`);
 						pending_outcome_requests.delete(key);
 					}
-				} else {
-					console.log(`\x1b[93mdisplayOutcomeRequest: Invalid key '${key}' is not in state map with ${Behavior.getStateMap().size} entries.\x1b[0m`);
+					} else {
+						console.log(`\x1b[93mdisplayOutcomeRequest: Invalid key '${key}' is not in state map with ${Behavior.getStateMap().size} entries.\x1b[0m`);
+						pending_outcome_requests.delete(key);
+					}
 				}
-			}
 			pending_outcome_requests.set(targetId, outcome);
 		}
 
@@ -995,7 +1058,9 @@ UI.RuntimeControl = new (function() {
 			return;
 		}
 
-		setTimeout(that.processNextOutcomeRequest(), 0);
+			// Defer queue processing until the current callback completes so any
+			// state-path/status updates land before we redraw outcome request UI.
+			setTimeout(that.processNextOutcomeRequest, 0);
 	}
 
 	this.transitionFeedback = function(args) {
@@ -1017,18 +1082,25 @@ UI.RuntimeControl = new (function() {
 		}
 
 		RC.Sync.remove("Transition");
-		setTimeout(that.processNextOutcomeRequest(), 0); // post callback to process next pending outcome request
+			// Keep outcome-request queue processing on the next tick so transition
+			// feedback does not race the UI update that just completed.
+			setTimeout(that.processNextOutcomeRequest, 0); // post callback to process next pending outcome request
 	}
 
-	this.processNextOutcomeRequest = function() {
-		let nextRequest = null;
-		if (pending_outcome_requests.size === 0) return;
+		this.processNextOutcomeRequest = function() {
+			let nextRequest = null;
+			if (pending_outcome_requests.size === 0) return;
 
-		for (const [key, value] of pending_outcome_requests.entries()) {
-			const entry = Behavior.getStateMap().get(key);
-			const path = entry.path;
-			const target_state = entry.state;
-			if (value !== 255 && value >= 0) {
+			for (const [key, value] of Array.from(pending_outcome_requests.entries())) {
+				const entry = Behavior.getStateMap().get(key);
+				if (entry == undefined) {
+					console.log(`\x1b[93mprocessNextOutcomeRequest: removing stale request for unknown state id '${key}'\x1b[0m`);
+					pending_outcome_requests.delete(key);
+					continue;
+				}
+				const path = entry.path;
+				const target_state = entry.state;
+				if (value !== 255 && value >= 0) {
 				nextRequest = key;
 				outcome_request.target = path;
 				outcome_request.outcome = target_state.getOutcomes()[value];
@@ -1065,24 +1137,38 @@ UI.RuntimeControl = new (function() {
 			lock_button.removeAttribute("disabled");
 			// collect containers but skip top-level container (behavior)
 			let options = [];
-			for(let i=current_states.length-1; i>0; i--) {
-				if (current_states[i] == undefined) {
-					// Skipping undefined current_state
-					continue;
-				}
-				let option = document.createElement("option");
-				if (i == current_level) {
-					option.setAttribute("selected", "selected");
-				}
-				try {
-					if (current_states[i] instanceof Statemachine && current_states[i].isConcurrent()) {
-						options = [];
+				for(let i=current_states.length-1; i>0; i--) {
+					if (current_states[i] == undefined) {
+						// Skipping undefined current_state
+						continue;
+					}
+					let option = document.createElement("option");
+					if (i == current_level) {
 						option.setAttribute("selected", "selected");
 					}
-					option.setAttribute("path", current_states[i].getStatePath());
-					let txt = current_states[i].getStateName();
-					option.setAttribute("title", txt);
-					option.text = ((txt.length > 18)? txt.slice(0,15) + "..." : txt);
+					try {
+						if (current_states[i] instanceof Statemachine && current_states[i].isConcurrent()) {
+							// Limit lock scope at the nearest active concurrency container.
+							// The older behavior cleared deeper options here but kept iterating
+							// upward, which reintroduced parents above the concurrency boundary.
+							// Keeping those broader ancestors available made the selector imply
+							// lock targets outside the active concurrent branch.
+							options = [];
+							option.setAttribute("selected", "selected");
+							option.setAttribute("path", current_states[i].getStatePath());
+							let txt = current_states[i].getStateName();
+							option.setAttribute("title", txt);
+							option.text = ((txt.length > 18)? txt.slice(0,15) + "..." : txt);
+							options.push(option);
+							break;
+							// Old behavior kept walking upward after clearing:
+							// options = [];
+							// option.setAttribute("selected", "selected");
+						}
+						option.setAttribute("path", current_states[i].getStatePath());
+						let txt = current_states[i].getStateName();
+						option.setAttribute("title", txt);
+						option.text = ((txt.length > 18)? txt.slice(0,15) + "..." : txt);
 					options.push(option);
 				} catch (err) {
 					console.log("\x1b[31m===================================\n===================================");
@@ -1172,6 +1258,7 @@ UI.RuntimeControl = new (function() {
 			current_states[i] = new_current_state;
 		}
 		current_states = current_states.slice(0, path_segments.length);
+		previous_states = previous_states.slice(0, path_segments.length);
 
 		if (!force_redraw) {
 			try {
@@ -1206,8 +1293,11 @@ UI.RuntimeControl = new (function() {
 		}
 
 		if (status_label != undefined) {
-			if (!status_label.attr('text').includes(path_segments[current_level])){
-				// Preserve existing status label if it includes text from the deepest state
+			const displayed_state = current_states[current_level];
+			const preserve_status = displayed_state != undefined
+				&& outcome_request.target != undefined
+				&& outcome_request.target == displayed_state.getStatePath();
+			if (!preserve_status) {
 				status_label.remove();
 				status_label = undefined;
 			}
@@ -1244,8 +1334,8 @@ UI.RuntimeControl = new (function() {
 		let text_title = text_split[0];
 		let text_body = "";
 		for (let i = 1; i < text_split.length; i++) {
-			text_body += "<br />&nbsp;&nbsp;&nbsp;&nbsp;";
-			text_body += text_split[i].replace(/ /g, "&nbsp;").replace(/\t/g, "&nbsp;&nbsp;&nbsp;&nbsp;");
+			text_body += "\n    ";
+			text_body += text_split[i].replace(/\t/g, "    ");
 		}
 
 		let panel = document.getElementById("runtime_feedback_text");
@@ -1255,13 +1345,13 @@ UI.RuntimeControl = new (function() {
 
 		let entry_time = document.createElement("span");
 		entry_time.style.color = "gray";
-		entry_time.innerHTML = "[" + time + "] ";
+		entry_time.textContent = "[" + time + "] ";
 
 		let entry_title = document.createElement("span"); // changed from deprecated "font"
 		entry_title.style.color = color;
 		entry_title.style.fontWeight = level == 2 ? "bold" : "";
 		entry_title.style.fontSize = "9pt";
-		entry_title.innerHTML = text_title;
+		entry_title.textContent = text_title;
 
 		let entry_body = undefined;
 		let entry_toggle = undefined;
@@ -1269,20 +1359,21 @@ UI.RuntimeControl = new (function() {
 			entry_body = document.createElement("span");
 			entry_body.style.color = color;
 			entry_body.style.opacity = "0.8";
-			entry_body.innerHTML = text_body;
+			entry_body.style.whiteSpace = "pre-wrap";
+			entry_body.textContent = text_body;
 			entry_body.style.display = collapse? "none" : "";
 
 			entry_toggle = document.createElement("span");
 			entry_toggle.style.cursor = "pointer";
-			entry_toggle.innerHTML = collapse? " [+]" : " [-]";
+			entry_toggle.textContent = collapse? " [+]" : " [-]";
 			entry_toggle.title = collapse? "show details" : "hide details";
 			entry_toggle.addEventListener("click", function() {
-				if (entry_toggle.innerHTML == " [-]") {
-					entry_toggle.innerHTML = " [+]";
+				if (entry_toggle.textContent == " [-]") {
+					entry_toggle.textContent = " [+]";
 					entry_toggle.title = "show details";
 					entry_body.style.display = "none";
 				} else {
-					entry_toggle.innerHTML = " [-]";
+					entry_toggle.textContent = " [-]";
 					entry_body.style.display = "";
 					entry_toggle.title = "hide details";
 					panel.scrollTop = entry_title.offsetTop - panel.offsetTop;

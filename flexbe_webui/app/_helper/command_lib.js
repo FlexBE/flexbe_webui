@@ -131,7 +131,29 @@ const CommandLib = new (function() {
 					return;
 				}
 				WS.Behaviorlib.updateEntry(WS.Behaviorlib.getByName(be_name), function() {
-					// TODO: update behavior state machine where required
+					var updated_entry = arguments[0];
+					if (updated_entry == undefined) {
+						return;
+					}
+
+					var updated_states = 0;
+					var refreshNestedBehaviorStates = function(container) {
+						container.getStates().forEach(function(state) {
+							if (state instanceof BehaviorState && state.getStateClass() == updated_entry.getStateClass()) {
+								state.updateBehaviorDefinition(updated_entry);
+								updated_states += 1;
+								return;
+							}
+							if (state instanceof Statemachine) {
+								refreshNestedBehaviorStates(state);
+							}
+						});
+					};
+
+					refreshNestedBehaviorStates(Behavior.getStatemachine());
+					if (updated_states > 0 && UI.Menu.isPageStatemachine()) {
+						UI.Statemachine.refreshView();
+					}
 					UI.Tools.notifyRosCommand('update');
 				});
 			},
@@ -147,7 +169,12 @@ const CommandLib = new (function() {
 			match: /^attach ?(-?\d+)?$/,
 			impl: function(args) {
 				var selection_box = document.getElementById("selection_rc_autonomy");
-				var autonomy_level = (args[1] != undefined)? parseInt(args[1]) : parseInt(selection_box.options[selection_box.selectedIndex].value);
+				var selected_option = selection_box.options[selection_box.selectedIndex];
+				if (args[1] == undefined && selected_option == undefined) {
+					T.logWarn('No autonomy level available to attach with.');
+					return;
+				}
+				var autonomy_level = (args[1] != undefined)? parseInt(args[1]) : parseInt(selected_option.value);
 				if (!RC.Controller.isActive()) {
 					if (!RC.Controller.isExternal()) {
 						T.logWarn('No behavior running to attach to.');
@@ -157,7 +184,7 @@ const CommandLib = new (function() {
 
 					UI.RuntimeControl.displayBehaviorFeedback(4, "Attaching to behavior...");
 				} else {
-					T.logInfo('Already attached, only updating autonomy level.');
+					T.logInfo('Already attached. Updating the autonomy level only.');
 					UI.Tools.notifyRosCommand('attach');
 				}
 				UI.Menu.toControlClicked();
@@ -178,14 +205,14 @@ const CommandLib = new (function() {
 			match: /^lock ?(-?\d+)?$/,
 			impl: function(args) {
 				if (!RC.Controller.isRunning() || !RC.Controller.isActive()) {
-					T.logWarn('No unlocked behavior running, ignoring command.');
+					T.logWarn('Cannot lock: no unlocked behavior is currently running.');
 					return;
 				}
 				var idx = (args[1] != undefined)? parseInt(args[1]) : 0;
 				var sel = document.getElementById("selection_rc_lock_layer");
 				idx = (idx < 0)? idx + sel.options.length : idx;
 				if (idx < 0 || idx >= sel.options.length) {
-					T.logWarn('Selected lock level out of range, ignoring command.');
+					T.logWarn('Cannot lock: the selected lock level is out of range.');
 					return;
 				}
 				sel.selectedIndex = idx;
@@ -198,7 +225,7 @@ const CommandLib = new (function() {
 			match: /^unlock$/,
 			impl: function(args) {
 				if (!RC.Controller.isRunning() || RC.Controller.needSwitch()) {
-					T.logWarn('No locked behavior without changes running, ignoring command.');
+					T.logWarn('Cannot unlock: no unchanged locked behavior is currently running.');
 					return;
 				}
 				UI.RuntimeControl.behaviorLockClicked();
@@ -210,7 +237,7 @@ const CommandLib = new (function() {
 			match: /^(switch|goforit)$/,
 			impl: function(args) {
 				if (!RC.Controller.isRunning() || RC.Controller.isActive() || !RC.Controller.needSwitch()) {
-					T.logWarn('No locked behavior running which requires a switch, ignoring command.');
+					T.logWarn('Cannot switch: no locked behavior is waiting for runtime changes.');
 					return;
 				}
 				UI.RuntimeControl.behaviorLockClicked();
@@ -225,7 +252,7 @@ const CommandLib = new (function() {
 				var sm = (path == '/')? Behavior.getStatemachine()
 					: Behavior.getStatemachine().getStateByPath(path);
 				if (sm == undefined || !(sm instanceof Statemachine)) {
-					T.logWarn('Given path ' + path + ' does not refer to a statemachine.');
+					T.logWarn('Cannot open "' + path + '": it is not a state machine path.');
 					return;
 				}
 				UI.Statemachine.setDisplayedSM(sm);

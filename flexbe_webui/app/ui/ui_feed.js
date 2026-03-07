@@ -1,13 +1,29 @@
 UI.Feed = new (function() {
 	var that = this;
 
+	var appendIconImage = function(parent, src, alt) {
+		let img = document.createElement("img");
+		img.setAttribute("src", src);
+		img.setAttribute("alt", alt);
+		parent.appendChild(img);
+	}
+
 	var requestLatestVersion = function(callback) {
 		let xhr = new XMLHttpRequest();
 		xhr.open("GET", "https://api.github.com/repos/flexbe/flexbe_webui/tags", true);
+		xhr.timeout = 5000;
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == 4) {
-				if (xhr.responseText != "") {
+				if (xhr.status < 200 || xhr.status >= 300 || xhr.responseText == "") {
+					callback(undefined);
+					return;
+				}
+				try {
 					let resp = JSON.parse(xhr.responseText);
+					if (!Array.isArray(resp)) {
+						callback(undefined);
+						return;
+					}
 					let found = false;
 					for (let i=0; i<resp.length; i++) {
 						if (resp[i].name.match(/^\d+\.\d+\.\d+$/) != null) {
@@ -17,10 +33,19 @@ UI.Feed = new (function() {
 						}
 					}
 					if (!found) callback(undefined);
-				} else {
+				} catch (error) {
 					callback(undefined);
 				}
 			}
+		}
+		xhr.onerror = function() {
+			callback(undefined);
+		}
+		xhr.ontimeout = function() {
+			callback(undefined);
+		}
+		xhr.onabort = function() {
+			callback(undefined);
 		}
 		xhr.send();
 	}
@@ -63,9 +88,9 @@ UI.Feed = new (function() {
 	var displayPredefinedMessage = function(id) {
 		let msg = document.getElementById(id);
 		let close_button = document.getElementById(id + "_close");
-		close_button.addEventListener('click', function() {
+		close_button.onclick = function() {
 			msg.style.display = "none";
-		});
+		};
 		msg.style.display = "block";
 	}
 
@@ -89,22 +114,24 @@ UI.Feed = new (function() {
 		let msg_icon = document.createElement('td');
 		msg_icon.setAttribute('style', "width:20px");
 		if (severity == 1) {
-			msg_icon.innerHTML = '<img src="img/warning.png">';
+			appendIconImage(msg_icon, "img/warning.png", "Warning");
 			msg_element.setAttribute('style', "background:#FFC");
 		} else if (severity == 2) {
-			msg_icon.innerHTML = '<img src="img/error.png">';
+			appendIconImage(msg_icon, "img/error.png", "Error");
 			msg_element.setAttribute('style', "background:#FDC");
 		} else {
-			msg_icon.innerHTML = '<img src="img/information.png">';
+			appendIconImage(msg_icon, "img/information.png", "Information");
 		}
 
 		let msg_title = document.createElement('td');
 		msg_title.setAttribute('style', "vertical-align: middle");
-		msg_title.innerHTML = '<h2>' + title + '</h2>';
+		let title_heading = document.createElement('h2');
+		title_heading.textContent = title;
+		msg_title.appendChild(title_heading);
 
 		let msg_close = document.createElement('td');
 		msg_close.setAttribute('style', "width:20px");
-		msg_close.innerHTML = '<img src="img/close.png">';
+		appendIconImage(msg_close, "img/close.png", "Close");
 		msg_close.addEventListener('click', function() {
 			msg_element.parentNode.removeChild(msg_element);
 		});
@@ -118,7 +145,8 @@ UI.Feed = new (function() {
 		let msg_content = document.createElement('td');
 		msg_content.setAttribute('colspan', "3");
 		msg_content.setAttribute('style', "padding:2px; padding-top:5px;");
-		msg_content.innerHTML = content;
+		msg_content.style.whiteSpace = "pre-line";
+		msg_content.textContent = content == undefined ? "" : content;
 		if (child != undefined) msg_content.appendChild(child);
 
 		msg_body.appendChild(msg_content);
@@ -132,7 +160,7 @@ UI.Feed = new (function() {
 	}
 
 	this.initialize = function() {
-		current_version_label = UI.Settings.getVersion();
+		let current_version_label = UI.Settings.getVersion();
 		document.getElementById("flexbe_version_label").innerText = current_version_label;
 
 		requestLatestVersion(

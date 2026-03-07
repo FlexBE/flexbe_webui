@@ -41,8 +41,7 @@ const Behavior = new (function() {
 	this.setBehaviorName = function(_behavior_name) {
 		if (behavior_name != _behavior_name && file_name != undefined) {
 			T.logWarn(`Changing the behavior name does NOT change the file name (${file_name}) used to store behavior!`);
-			T.logInfo(`You may change behavior package selection (to something else and back)`);
-			T.logInfo(`to reset file names and create a new behavior file as a copy of this one.`);  // Does "Save As"
+			T.logInfo(`Use Save and choose "Save As" to create/update a file matching the new behavior name.`);
 			T.show();
 		}
 		behavior_name = _behavior_name;
@@ -263,10 +262,11 @@ const Behavior = new (function() {
 	}
 	this.updateInterfaceOutputKeys = function(old_value, new_value) {
 		for (let i = interface_output_keys.length - 1; i >= 0; i--) {
-			if (interface_output_keys[i] == old_value)
+			if (interface_output_keys[i] == old_value) {
 				interface_output_keys[i] = new_value;
 				root_sm.getOutputKeys().remove(old_value);
 				root_sm.getOutputKeys().push(new_value);
+			}
 		};
 	}
 
@@ -374,6 +374,14 @@ const Behavior = new (function() {
 		manifest_path = _manifest_path;
 	}
 
+	this.getFileName = function() {
+		return file_name;
+	}
+
+	this.getManifestPath = function() {
+		return manifest_path;
+	}
+
 	this.createNames = function() {
 		let result = {
 			behavior_name: '',
@@ -427,6 +435,9 @@ const Behavior = new (function() {
 					let transition = transitions.findElement(function(element) {
 						return element.getFrom().getStateName() == s.getStateName() && element.getOutcome() == result.outcomes[i];
 					});
+					if (transition == undefined || transition.getTo() == undefined) {
+						throw {path: result.path, error: `missing transition target for outcome '${result.outcomes[i]}'`};
+					}
 					let target_name = transition.getTo().getStateName();
 					if (s.getContainer().isConcurrent() && transition.getTo().getStateClass() == ':CONDITION') {
 						target_name = target_name.split('#')[0];

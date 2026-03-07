@@ -2,17 +2,30 @@ Drawable.Outcome = function(outcome_obj, target_paper, readonly, outline) {
 	//var that = this;
 
 	var paper = target_paper;
+	var font_size = Drawable.Helper.scaled(10, 8);
+	var box_width = Drawable.Helper.scaled(35, 28);
+	var box_height = Drawable.Helper.scaled(20, 16);
+	var symbol_x = Drawable.Helper.scaled(8, 6);
+	var symbol_y = Drawable.Helper.scaled(8, 6);
+	var symbol_radius = Drawable.Helper.scaled(5, 4);
+	var label_y = Drawable.Helper.scaled(25, 20);
+	var drag_size = Drawable.Helper.scaled(15, 12);
+	var node_stroke_width = Drawable.Helper.getNodeStrokeWidth(false);
+	var outer_radius = Math.max(
+		Drawable.Helper.scaled(8, 6),
+		symbol_radius + Drawable.Helper.scaled(3, 2) + node_stroke_width
+	);
 
 	var color = outline? '#999' : '#000';
 
 	var dot = paper.set();
-	var dot_box = paper.rect(0, 0, 35, 20).attr({opacity: 0});
+	var dot_box = paper.rect(0, 0, box_width, box_height).attr({opacity: 0});
 	if (outcome_obj.getContainer().isConcurrent()) {
-		dot.push(paper.text(8, 8, '&').attr({fill: color}));
+		dot.push(paper.text(symbol_x, symbol_y, '&').attr({fill: color, 'font-size': font_size}));
 	} else {
-		dot.push(paper.circle(8, 8, 5).attr({fill: color, stroke: color}));
+		dot.push(paper.circle(symbol_x, symbol_y, symbol_radius).attr({fill: color, stroke: color, 'stroke-width': node_stroke_width}));
 	}
-	var outer_dot = paper.circle(8, 8, 8).attr({'fill-opacity': 0, fill: '#FFF', stroke: color});
+	var outer_dot = paper.circle(symbol_x, symbol_y, outer_radius).attr({'fill-opacity': 0, fill: '#FFF', stroke: color, 'stroke-width': node_stroke_width});
 	if (!readonly) outer_dot
 		.data("state", outcome_obj)
 		.click(Drawable.Helper.connectTransition);
@@ -21,10 +34,10 @@ Drawable.Outcome = function(outcome_obj, target_paper, readonly, outline) {
 
 	dot.push(dot_box);
 	dot.push(outer_dot);
-	dot.push(paper.text(8, 25, outcome_obj.getStateName().split('#')[0]).attr({fill: color}));
+	dot.push(paper.text(symbol_x, label_y, outcome_obj.getStateName().split('#')[0]).attr({fill: color, 'font-size': font_size}));
 
 	if (!readonly) {
-		var drag_box = paper.image('img/move-icon.png', 20, 0, 15, 15)
+		var drag_box = paper.image('img/move-icon.png', box_width - drag_size, 0, drag_size, drag_size)
 			.attr({cursor: 'move', 'stroke-width': 1})
 			.data("state", outcome_obj)
 			.data("box", dot_box)

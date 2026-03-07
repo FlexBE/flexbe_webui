@@ -115,8 +115,8 @@ const Transition = function(_from_state, _to_state, _outcome, _autonomy,
 
 		return {
 			from_state_name: from.getStateName(),
-			to_state_name: to.getStateName(),
-			to_state_class: to.getStateClass(),
+			to_state_name: to ? to.getStateName() : undefined,
+			to_state_class: to ? to.getStateClass() : undefined,
 			outcome: outcome,
 			autonomy: autonomy,
 			x: x,

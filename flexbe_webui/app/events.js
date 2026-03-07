@@ -278,6 +278,22 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('cb_collapse_info').addEventListener('change', UI.Settings.collapseInfoClicked);
 	document.getElementById('cb_collapse_warn').addEventListener('change', UI.Settings.collapseWarnClicked);
 	document.getElementById('cb_collapse_error').addEventListener('change', UI.Settings.collapseErrorClicked);
+	document.getElementById('input_dashboard_text_size').addEventListener('change', UI.Settings.dashboardTextSizeChanged);
+	document.getElementById('input_dashboard_text_size').addEventListener('keydown', onEnterInput(UI.Settings.dashboardTextSizeChanged));
+	document.getElementById('input_statemachine_text_size').addEventListener('change', UI.Settings.statemachineTextSizeChanged);
+	document.getElementById('input_statemachine_text_size').addEventListener('keydown', onEnterInput(UI.Settings.statemachineTextSizeChanged));
+	document.getElementById('cb_dashboard_text_bold').addEventListener('change', UI.Settings.dashboardTextBoldClicked);
+	document.getElementById('cb_dashboard_text_bold').addEventListener('keydown', onCheckboxChange);
+	document.getElementById('cb_statemachine_text_bold').addEventListener('change', UI.Settings.statemachineTextBoldClicked);
+	document.getElementById('cb_statemachine_text_bold').addEventListener('keydown', onCheckboxChange);
+	document.getElementById('cb_statemachine_text_extra_bold').addEventListener('change', UI.Settings.statemachineTextExtraBoldClicked);
+	document.getElementById('cb_statemachine_text_extra_bold').addEventListener('keydown', onCheckboxChange);
+	document.getElementById('input_transition_line_width_normal').addEventListener('change', UI.Settings.transitionLineWidthNormalChanged);
+	document.getElementById('input_transition_line_width_normal').addEventListener('keydown', onEnterInput(UI.Settings.transitionLineWidthNormalChanged));
+	document.getElementById('input_transition_line_width_bold').addEventListener('change', UI.Settings.transitionLineWidthBoldChanged);
+	document.getElementById('input_transition_line_width_bold').addEventListener('keydown', onEnterInput(UI.Settings.transitionLineWidthBoldChanged));
+	document.getElementById('input_transition_line_width_extra_bold').addEventListener('change', UI.Settings.transitionLineWidthExtraBoldChanged);
+	document.getElementById('input_transition_line_width_extra_bold').addEventListener('keydown', onEnterInput(UI.Settings.transitionLineWidthExtraBoldChanged));
 
 	document.getElementById('cb_collapse_hint').addEventListener('keydown', onCheckboxChange);
 	document.getElementById('cb_collapse_info').addEventListener('keydown', onCheckboxChange);
@@ -292,6 +308,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	});
 
 	document.getElementById('select_default_package').addEventListener('change', UI.Settings.defaultPackageChanged);
+	document.getElementById('input_allow_editors').addEventListener('change', UI.Settings.allowEditorsChanged);
 	document.getElementById('input_editor_command').addEventListener('change', UI.Settings.editorCommandChanged);
 	document.getElementById('cb_explicit_states').addEventListener('change', UI.Settings.explicitStatesClicked);
 	document.getElementById('cb_explicit_states').addEventListener('keydown', onCheckboxChange);
@@ -307,6 +324,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('cb_pkg_cache_enabled').addEventListener('keydown', onCheckboxChange);
 
 	document.getElementById('input_runtime_timeout').addEventListener('blur', UI.Settings.runtimeTimeoutChanged);
+	document.getElementById('input_server_timeout').addEventListener('blur', UI.Settings.serverTimeoutChanged);
 
 	document.getElementById('cb_save_in_source').addEventListener('change', UI.Settings.saveInSourceClicked);
 	document.getElementById('cb_save_in_source').addEventListener('keydown', onCheckboxChange);
@@ -367,5 +385,3 @@ document.addEventListener('DOMContentLoaded', function() {
 	});
 
 });
-
-

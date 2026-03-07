@@ -62,7 +62,7 @@ UI.Panels.Terminal = new (function() {
 	}
 
 	this.clearLog = function() {
-		document.getElementById("terminal").innerHTML += "<br /><br />";
+		document.getElementById("terminal").innerHTML = "";
 	}
 
 	this.show = function() {

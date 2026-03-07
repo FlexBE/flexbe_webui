@@ -11,6 +11,15 @@ UI.Settings = new (function() {
 	var commands_key;
 
 	var default_package;
+	var dashboard_text_size = 86.5;
+	var dashboard_text_bold = false;
+	var statemachine_text_size = 86.5;
+	var statemachine_text_bold = true;
+	var statemachine_text_extra_bold = false;
+	var transition_line_width_normal = 2.0;
+	var transition_line_width_bold = 3.0;
+	var transition_line_width_extra_bold = 4.0;
+	var allow_editors;
 	var editor_command;
 	var explicit_states;
 	var gridsize;
@@ -21,6 +30,7 @@ UI.Settings = new (function() {
 	var pkg_cache_enabled;
 
 	var runtime_timeout;
+	var server_timeout;
 	var stop_behaviors;
 
 	var save_in_source;
@@ -49,6 +59,15 @@ UI.Settings = new (function() {
 			'commands_enabled': commands_enabled,
 			'commands_key': commands_key,
 			'default_package': default_package,
+			'dashboard_text_size': dashboard_text_size,
+			'dashboard_text_bold': dashboard_text_bold,
+			'statemachine_text_size': statemachine_text_size,
+			'statemachine_text_bold': statemachine_text_bold,
+			'statemachine_text_extra_bold': statemachine_text_extra_bold,
+			'transition_line_width_normal': transition_line_width_normal,
+			'transition_line_width_bold': transition_line_width_bold,
+			'transition_line_width_extra_bold': transition_line_width_extra_bold,
+			'allow_editors': allow_editors,
 			'editor_command': editor_command,
 			'explicit_states': explicit_states,
 			'gridsize': gridsize,
@@ -56,6 +75,7 @@ UI.Settings = new (function() {
 			'license_file': custom_license_file,
 			'pkg_cache_enabled': pkg_cache_enabled,
 			'runtime_timeout': runtime_timeout,
+			'server_timeout': server_timeout,
 			'save_in_source': save_in_source,
 			'source_code_root': source_code_root,
 			'stop_behaviors': stop_behaviors,
@@ -78,6 +98,15 @@ UI.Settings = new (function() {
 			'commands_enabled': commands_enabled,
 			'commands_key': commands_key,
 			'default_package': default_package,
+			'dashboard_text_size': dashboard_text_size,
+			'dashboard_text_bold': dashboard_text_bold,
+			'statemachine_text_size': statemachine_text_size,
+			'statemachine_text_bold': statemachine_text_bold,
+			'statemachine_text_extra_bold': statemachine_text_extra_bold,
+			'transition_line_width_normal': transition_line_width_normal,
+			'transition_line_width_bold': transition_line_width_bold,
+			'transition_line_width_extra_bold': transition_line_width_extra_bold,
+			'allow_editors': allow_editors,
 			'editor_command': editor_command,
 			'explicit_states': explicit_states,
 			'gridsize': gridsize,
@@ -85,6 +114,7 @@ UI.Settings = new (function() {
 			'license_file': custom_license_file,
 			'pkg_cache_enabled': pkg_cache_enabled,
 			'runtime_timeout': runtime_timeout,
+			'server_timeout': server_timeout,
 			'save_in_source': save_in_source,
 			'source_code_root': source_code_root,
 			'stop_behaviors': stop_behaviors,
@@ -103,17 +133,15 @@ UI.Settings = new (function() {
 
 		console.log(`Configuration changed.`);
 		try {
-			json_dict = {};
-			json_dict['configuration'] = getConfiguration();
+				let json_dict = {};
+				json_dict['configuration'] = getConfiguration();
 
-			API.post('save_config_settings', json_dict, (result) => {
-				console.log(`save_config_settings: ${JSON.stringify(result)}`);
-				if (result.success) {
+				API.postData('save_config_settings', json_dict, (_data, result) => {
+					console.log(`save_config_settings: ${JSON.stringify(result)}`);
 					console.log('Updated the configuration settings on server!');
-				} else {
-					T.logError('Failed to update configuration settings on the server: \n' + result.text);
-				}
-			});
+				}, error => {
+					T.logError('Failed to update configuration settings on the server: \n' + error);
+				});
 		} catch (err) {
 			T.logError('Failed to export configuration: ' + err);
 		}
@@ -123,92 +151,113 @@ UI.Settings = new (function() {
 
 	this.retrieveConfigurationSettings = async function(json_dict={}) {
 		console.log(`Attempting to retrieve configuration settings '${JSON.stringify(json_dict)}' ...`);
-		API.post('get_config_settings', json_dict, (result) => {
-			if (result.success) {
-				T.logInfo('Retrieved configuration settings');
-				items = result.configuration
-				code_indentation = items.code_indentation;
-				document.getElementById("select_code_indentation").selectedIndex = items.code_indentation;
+		API.postData('get_config_settings', json_dict, result_data => {
+			T.logInfo('Retrieved configuration settings');
+			let items = result_data.configuration;
+			code_indentation = items.code_indentation;
+			document.getElementById("select_code_indentation").selectedIndex = items.code_indentation;
 
-				collapse_info = items.collapse_info;
-				document.getElementById("cb_collapse_info").checked = items.collapse_info;
-				collapse_warn = items.collapse_warn;
-				document.getElementById("cb_collapse_warn").checked = items.collapse_warn;
-				collapse_error = items.collapse_error;
-				document.getElementById("cb_collapse_error").checked = items.collapse_error;
-				collapse_hint = items.collapse_hint;
-				document.getElementById("cb_collapse_hint").checked = items.collapse_hint;
+			collapse_info = items.collapse_info;
+			document.getElementById("cb_collapse_info").checked = items.collapse_info;
+			collapse_warn = items.collapse_warn;
+			document.getElementById("cb_collapse_warn").checked = items.collapse_warn;
+			collapse_error = items.collapse_error;
+			document.getElementById("cb_collapse_error").checked = items.collapse_error;
+			collapse_hint = items.collapse_hint;
+			document.getElementById("cb_collapse_hint").checked = items.collapse_hint;
 
-				commands_enabled = items.commands_enabled;
-				document.getElementById("cb_commands_enabled").checked = items.commands_enabled;
-				commands_key = items.commands_key;
-				document.getElementById("input_commands_key").value = items.commands_key;
+			commands_enabled = items.commands_enabled;
+			document.getElementById("cb_commands_enabled").checked = items.commands_enabled;
+			commands_key = items.commands_key;
+			document.getElementById("input_commands_key").value = items.commands_key;
 
-				default_package = items.default_package;
-				that.createBehaviorPackageSelect(document.getElementById("select_default_package"));
+			default_package = items.default_package;
+			that.createBehaviorPackageSelect(document.getElementById("select_default_package"));
 
-				editor_command = items.editor_command;
-				document.getElementById("input_editor_command").value = items.editor_command;
+			dashboard_text_size = (items.dashboard_text_size !== undefined) ? items.dashboard_text_size : 86.5;
+			dashboard_text_bold = (items.dashboard_text_bold !== undefined) ? items.dashboard_text_bold : false;
+			statemachine_text_size = (items.statemachine_text_size !== undefined) ? items.statemachine_text_size : 86.5;
+			statemachine_text_bold = (items.statemachine_text_bold !== undefined) ? items.statemachine_text_bold : true;
+			statemachine_text_extra_bold = (items.statemachine_text_extra_bold !== undefined) ? items.statemachine_text_extra_bold : false;
+			transition_line_width_normal = (items.transition_line_width_normal !== undefined) ? items.transition_line_width_normal : 2.0;
+			transition_line_width_bold = (items.transition_line_width_bold !== undefined) ? items.transition_line_width_bold : 3.0;
+			transition_line_width_extra_bold = (items.transition_line_width_extra_bold !== undefined) ? items.transition_line_width_extra_bold : 4.0;
+			enforceTransitionLineWidthConstraints();
+			document.getElementById("input_dashboard_text_size").value = dashboard_text_size;
+			document.getElementById("cb_dashboard_text_bold").checked = dashboard_text_bold;
+			document.getElementById("input_statemachine_text_size").value = statemachine_text_size;
+			document.getElementById("cb_statemachine_text_bold").checked = statemachine_text_bold;
+			document.getElementById("cb_statemachine_text_extra_bold").checked = statemachine_text_extra_bold;
+			updateTransitionLineWidthInputs();
+			applyDashboardTextSize();
+			applyDashboardTextBold();
+			applyStatemachineTextSize();
+			applyStatemachineTextBold();
 
-				explicit_states = items.explicit_states;
-				document.getElementById("cb_explicit_states").checked = items.explicit_states;
+			allow_editors = (items.allow_editors || []);
+			document.getElementById("input_allow_editors").value = allow_editors.join(', ');
 
-				gridsize = items.gridsize;
-				document.getElementById("input_gridsize").value = items.gridsize;
+			editor_command = items.editor_command;
+			document.getElementById("input_editor_command").value = items.editor_command;
 
-				pkg_cache_enabled = items.pkg_cache_enabled;
-				document.getElementById("cb_pkg_cache_enabled").checked = items.pkg_cache_enabled;
+			explicit_states = items.explicit_states;
+			document.getElementById("cb_explicit_states").checked = items.explicit_states;
 
-				runtime_timeout = items.runtime_timeout;
-				document.getElementById("input_runtime_timeout").value = items.runtime_timeout;
+			gridsize = items.gridsize;
+			document.getElementById("input_gridsize").value = items.gridsize;
 
-				save_in_source = items.save_in_source;
-				document.getElementById("cb_save_in_source").checked = items.save_in_source;
-				source_code_root = items.source_code_root;
-				document.getElementById("input_source_code_root").value = items.source_code_root;
+			pkg_cache_enabled = items.pkg_cache_enabled;
+			document.getElementById("cb_pkg_cache_enabled").checked = items.pkg_cache_enabled;
+
+			runtime_timeout = items.runtime_timeout;
+			document.getElementById("input_runtime_timeout").value = items.runtime_timeout;
+			server_timeout = (items.server_timeout !== undefined) ? items.server_timeout : 0.25;
+			document.getElementById("input_server_timeout").value = server_timeout;
+
+			save_in_source = (items.save_in_source !== undefined) ? items.save_in_source : true;
+			document.getElementById("cb_save_in_source").checked = save_in_source;
+			source_code_root = items.source_code_root;
+			document.getElementById("input_source_code_root").value = items.source_code_root;
 
 				// state_parser = items.state_parser.toLowerCase();
 				// document.getElementById("select_state_parser").value = state_parser;
 
-				stop_behaviors = items.stop_behaviors;
-				document.getElementById("cb_stop_behaviors").checked = items.stop_behaviors;
+			stop_behaviors = items.stop_behaviors;
+			document.getElementById("cb_stop_behaviors").checked = items.stop_behaviors;
 
-				synthesis_enabled = items.synthesis_enabled;
-				document.getElementById("cb_synthesis_enabled").checked = items.synthesis_enabled;
-				synthesis_topic = items.synthesis_topic;
-				document.getElementById("input_synthesis_topic").value = items.synthesis_topic;
-				synthesis_type = items.synthesis_type;
-				document.getElementById("input_synthesis_type").value = items.synthesis_type;
-				synthesis_system = items.synthesis_system;
-				document.getElementById("input_synthesis_system").value = items.synthesis_system;
-				updateSynthesisInterface();
+			synthesis_enabled = items.synthesis_enabled;
+			document.getElementById("cb_synthesis_enabled").checked = items.synthesis_enabled;
+			synthesis_topic = items.synthesis_topic;
+			document.getElementById("input_synthesis_topic").value = items.synthesis_topic;
+			synthesis_type = items.synthesis_type;
+			document.getElementById("input_synthesis_type").value = items.synthesis_type;
+			synthesis_system = items.synthesis_system;
+			document.getElementById("input_synthesis_system").value = items.synthesis_system;
+			updateSynthesisInterface();
 
-				select_license = items.license.toUpperCase();
-				document.getElementById("select_license").value = select_license;
+			select_license = ((items.license !== undefined) ? items.license : 'Apache-2').toUpperCase();
+			document.getElementById("select_license").value = select_license;
 
-				custom_license_file = items.license_file;
-				document.getElementById("custom_license_file").value = custom_license_file;
-				if (select_license != 'CUSTOM') {
-					document.getElementById("custom_license_file").disabled = true;
-				}
-				T.logInfo(`selected license ${select_license} for behaviors (${custom_license_file})`);
+			custom_license_file = items.license_file;
+			document.getElementById("custom_license_file").value = custom_license_file;
+			document.getElementById("custom_license_file").disabled = (select_license != 'CUSTOM');
+			T.logInfo(`selected license ${select_license} for behaviors (${custom_license_file})`);
 
-				text_encoding = items.text_encoding.toUpperCase();
-				document.getElementById("select_encoding").value = text_encoding;
+			text_encoding = ((items.text_encoding !== undefined) ? items.text_encoding : 'UTF-8').toUpperCase();
+			document.getElementById("select_encoding").value = text_encoding;
 
-				transition_mode = items.transition_mode;
-				document.getElementById("select_transition_mode").selectedIndex = items.transition_mode;
-			} else {
-				T.logError('Failed to load configuration: \n' + result.text);
-			}
+			transition_mode = items.transition_mode;
+			document.getElementById("select_transition_mode").selectedIndex = items.transition_mode;
+		}, error => {
+			T.logError('Failed to load configuration: \n' + error);
 		});
 	}
 
 	this.retrievePackageData = async function() {
-		API.get("packages/states", state_result => {
-			state_pkg_cache = state_result;
-			API.get("packages/behaviors", behavior_result => {
-				behavior_pkg_cache = behavior_result;
+		API.getData("packages/states", state_packages => {
+			state_pkg_cache = Array.isArray(state_packages) ? state_packages : [];
+			API.getData("packages/behaviors", behavior_packages => {
+				behavior_pkg_cache = Array.isArray(behavior_packages) ? behavior_packages : [];
 				console.log(`update behavior package cache with ${behavior_pkg_cache.length} behaviors`);
 				storeSettings(); // to update cache
 				updateWorkspaceDisplay();
@@ -220,20 +269,43 @@ UI.Settings = new (function() {
 				// async
 				that.updateStatelib();
 				that.updateBehaviorlib();
+			}, error => {
+				T.logError('Failed to retrieve behavior package list.');
+				console.log(error);
+				behavior_pkg_cache = [];
 			});
+		}, error => {
+			T.logError('Failed to retrieve state package list.');
+			console.log(error);
+			state_pkg_cache = [];
 		});
 	}
 
 	this.updateStatelib = function() {
 		// console.log("UI.Settings updateStateLib ...");
 		WS.Statelib.resetLib();
+		if (!Array.isArray(state_pkg_cache)) {
+			return;
+		}
 		state_pkg_cache.forEach(state_pkg => {
 			// console.log("    " + state_pkg.name + " ...");
-			API.get(`io/states/${state_pkg.name}`, state_defs => {
+			API.getData(`io/states/${state_pkg.name}`, state_result => {
+				const state_defs = state_result && Array.isArray(state_result.items) ? state_result.items : null;
+				const state_errors = state_result && Array.isArray(state_result.errors) ? state_result.errors : [];
+				if (!Array.isArray(state_defs)) {
+					T.logError(`Failed to load state definitions for '${state_pkg.name}'.`);
+					return;
+				}
 				state_defs.forEach(state_data => {
 					let state_def = IO.StateParser.parseState(state_data);
 					WS.Statelib.addToLib(state_def);
 				});
+				state_errors.forEach(error => {
+					T.logWarn(`State library warning for '${state_pkg.name}': ${error}`);
+				});
+			}, error => {
+				T.logError(`Failed to load state definitions for '${state_pkg.name}'.`);
+				console.log(error);
 			});
 		});
 		// console.log("UI.Settings updateStateLib is done!");
@@ -242,15 +314,30 @@ UI.Settings = new (function() {
 	this.updateBehaviorlib = function() {
 		// console.log("UI.settings: updateBehaviorLib ...");
 		WS.Behaviorlib.resetLib();
+		if (!Array.isArray(behavior_pkg_cache)) {
+			return;
+		}
 		behavior_pkg_cache.forEach(behavior_pkg => {
 			// console.log("    '" + behavior_pkg.name + "' ...");
-			API.get(`io/behaviors/${behavior_pkg.name}`, behavior_defs => {
+			API.getData(`io/behaviors/${behavior_pkg.name}`, behavior_result => {
+				const behavior_defs = behavior_result && Array.isArray(behavior_result.items) ? behavior_result.items : null;
+				const behavior_errors = behavior_result && Array.isArray(behavior_result.errors) ? behavior_result.errors : [];
+				if (!Array.isArray(behavior_defs)) {
+					T.logError(`Failed to load behavior definitions for '${behavior_pkg.name}'.`);
+					return;
+				}
 				behavior_defs.forEach(behavior_data => {
 					IO.BehaviorLoader.loadBehaviorInterface(behavior_data, function(ifc) {
 						let behavior_def = new WS.BehaviorStateDefinition(behavior_data, ifc.smi_outcomes, ifc.smi_input, ifc.smi_output);
 						WS.Behaviorlib.addToLib(behavior_def);
 					});
 				});
+				behavior_errors.forEach(error => {
+					T.logWarn(`Behavior library warning for '${behavior_pkg.name}': ${error}`);
+				});
+			}, error => {
+				T.logError(`Failed to load behavior definitions for '${behavior_pkg.name}'.`);
+				console.log(error);
 			});
 		});
 		// console.log("UI.settings: updateBehaviorLib is done!");
@@ -377,8 +464,14 @@ UI.Settings = new (function() {
 		}
 
 		if (state_pkg_cache == undefined || state_pkg_cache.length == 0) {
+			let link = document.createElement("a");
+			link.setAttribute("href", "https://github.com/FlexBE");
+			link.setAttribute("target", "_blank");
+			link.setAttribute("rel", "noopener noreferrer");
+			link.textContent = "on GitHub.";
 			UI.Feed.displayCustomMessage('msg_no_state_packages', 1, 'No State Packages',
-				'The list of available FlexBE states is empty.\n\n You can find available states <a href="https://github.com/FlexBE" target="_blank">on Github</a>.'
+				'The list of available FlexBE states is empty.\n\nYou can find available states ',
+				link
 			);
 		} else {
 			let msg = document.getElementById('msg_no_state_packages');
@@ -392,7 +485,6 @@ UI.Settings = new (function() {
 			entry.setAttribute("class", "display-tag");
 			entry.setAttribute("title", pkg['path']);
 			entry.innerText = pkg['name'];
-			pkg['display'] = entry;
 			return entry;
 		}
 		let behavior_el = document.getElementById("workspace_behavior_packages");
@@ -411,8 +503,8 @@ UI.Settings = new (function() {
 
 	this.importConfiguration = async function() {
 		console.log('Importing configuration files ...');
-		const files_result = await API.get_async('get_config_files');
-		if (files_result.success){
+		try {
+			const {data: files_result} = await API.getDataAsync('get_config_files');
 			console.log(` available configuration files: ${JSON.stringify(files_result.config_files)}`);
 			try {
 				const chosen_file = await chooseFile(files_result.folder_path, files_result.config_files);
@@ -430,15 +522,15 @@ UI.Settings = new (function() {
 				T.logError(`Failed to import configuration file!`);
 				console.log(`   ${err}`);
 			}
-		} else {
+		} catch ({error}) {
 			T.logError(`Cannot retrieve available configuration files!`);
-			console.log(`${files_result.text}`);
+			console.log(`${error}`);
 		}
 	}
 
 	this.exportConfiguration = async function() {
-		const files_result = await API.get_async('get_config_files');
-		if (files_result.success){
+		try {
+			const {data: files_result} = await API.getDataAsync('get_config_files');
 			console.log(` available configuration files: ${JSON.stringify(files_result.config_files)}`);
 			try {
 				const chosen_file = await chooseFile(files_result.folder_path, files_result.config_files);
@@ -450,12 +542,10 @@ UI.Settings = new (function() {
 					json_dict['configuration'] = getConfiguration();
 
 					console.log(`Attempting to save configuration '${JSON.stringify(json_dict)}' ...`);
-					API.post('save_config_settings', json_dict, (result) => {
-						if (result.success) {
-							T.logInfo('Exported configuration file successfully!');
-						} else {
-							T.logError('Failed to export configuration: \n' + result.text);
-						}
+					API.postData('save_config_settings', json_dict, () => {
+						T.logInfo('Exported configuration file successfully!');
+					}, error => {
+						T.logError('Failed to export configuration: \n' + error);
 					});
 				} else {
 					T.logInfo(`Canceled configuration file export.`);
@@ -465,9 +555,9 @@ UI.Settings = new (function() {
 				console.log(`   ${err}`);
 			}
 
-		} else {
+		} catch ({error}) {
 			T.logError(`Cannot retrieve available configuration files!`);
-			console.log(`${files_result.text}`);
+			console.log(`${error}`);
 		}
 
 	}
@@ -513,6 +603,19 @@ UI.Settings = new (function() {
 		storeSettings();
 	}
 
+	this.serverTimeoutChanged = function() {
+		let value = parseFloat(document.getElementById("input_server_timeout").value);
+		if (!isFinite(value)) {
+			value = 0.25;
+		}
+		value = Math.min(Math.max(value, 0.05), 10.0);
+		value = Math.round(value * 100) / 100;
+		if (server_timeout === value) return;
+		server_timeout = value;
+		document.getElementById("input_server_timeout").value = value;
+		storeSettings();
+	}
+
 	this.saveInSourceClicked = function(evt) {
 		if (save_in_source === evt.target.checked) return;
 		save_in_source = evt.target.checked;
@@ -528,7 +631,7 @@ UI.Settings = new (function() {
 	}
 
 	this.stopBehaviorsClicked = function(evt) {
-		if (stop_behaviors = evt.target.checked) return;
+		if (stop_behaviors === evt.target.checked) return;
 		stop_behaviors = evt.target.checked;
 		storeSettings();
 	}
@@ -603,8 +706,245 @@ UI.Settings = new (function() {
 		storeSettings();
 	}
 
+	this.allowEditorsChanged = function() {
+		let el = document.getElementById('input_allow_editors');
+		let parsed = el.value.split(',')
+			.map(v => v.trim())
+			.filter(v => v.length > 0);
+		let next = [...new Set(parsed)];
+		let same = JSON.stringify(next) === JSON.stringify(allow_editors);
+		if (same) return;
+		allow_editors = next;
+		el.value = allow_editors.join(', ');
+		storeSettings();
+	}
+
 	this.getDefaultPackage = function() {
 		return default_package;
+	}
+
+	this.getDashboardTextSize = function() {
+		return dashboard_text_size;
+	}
+
+	this.getStatemachineTextSize = function() {
+		return statemachine_text_size;
+	}
+
+	this.isStatemachineTextBold = function() {
+		return statemachine_text_bold;
+	}
+
+	this.isStatemachineTextExtraBold = function() {
+		return statemachine_text_extra_bold;
+	}
+
+	this.getTransitionLineWidthNormal = function() {
+		return transition_line_width_normal;
+	}
+
+	this.getTransitionLineWidthBold = function() {
+		return transition_line_width_bold;
+	}
+
+	this.getTransitionLineWidthExtraBold = function() {
+		return transition_line_width_extra_bold;
+	}
+
+	var normalizeTextSize = function(value) {
+		let size = parseFloat(value);
+		if (isNaN(size)) {
+			size = 86.5;
+		}
+		return Math.min(Math.max(size, 50.0), 150.0);
+	}
+
+	var normalizeTransitionLineWidth = function(value, fallback_value) {
+		let width = parseFloat(value);
+		if (isNaN(width)) {
+			width = fallback_value;
+		}
+		return Math.min(Math.max(width, 1.0), 20.0);
+	}
+
+	var normalizeGridSize = function(value) {
+		let size = parseInt(value);
+		if (isNaN(size)) {
+			size = 50;
+		}
+		return Math.min(Math.max(size, 10), 200);
+	}
+
+	var enforceTransitionLineWidthConstraints = function() {
+		const epsilon = 0.1;
+		transition_line_width_normal = Math.min(Math.max(transition_line_width_normal, 1.0), 19.8);
+		transition_line_width_bold = Math.min(Math.max(transition_line_width_bold, 1.1), 19.9);
+		transition_line_width_extra_bold = Math.min(Math.max(transition_line_width_extra_bold, 1.2), 20.0);
+
+		if (transition_line_width_bold <= transition_line_width_normal) {
+			transition_line_width_bold = Math.min(19.9, transition_line_width_normal + epsilon);
+		}
+		if (transition_line_width_extra_bold <= transition_line_width_bold) {
+			transition_line_width_extra_bold = Math.min(20.0, transition_line_width_bold + epsilon);
+		}
+		if (transition_line_width_extra_bold <= transition_line_width_bold) {
+			transition_line_width_extra_bold = 20.0;
+			transition_line_width_bold = Math.min(19.9, transition_line_width_bold);
+			if (transition_line_width_bold <= transition_line_width_normal) {
+				transition_line_width_normal = Math.max(1.0, transition_line_width_bold - epsilon);
+			}
+		}
+
+		transition_line_width_normal = parseFloat(transition_line_width_normal.toFixed(1));
+		transition_line_width_bold = parseFloat(transition_line_width_bold.toFixed(1));
+		transition_line_width_extra_bold = parseFloat(transition_line_width_extra_bold.toFixed(1));
+	}
+
+	var updateTransitionLineWidthInputs = function() {
+		document.getElementById('input_transition_line_width_normal').value = transition_line_width_normal;
+		document.getElementById('input_transition_line_width_bold').value = transition_line_width_bold;
+		document.getElementById('input_transition_line_width_extra_bold').value = transition_line_width_extra_bold;
+	}
+
+	var refreshStateRenderViews = function() {
+		if (UI.Statemachine != undefined) {
+			UI.Statemachine.refreshView();
+		}
+		if (UI.RuntimeControl != undefined && UI.RuntimeControl.refreshView != undefined) {
+			UI.RuntimeControl.refreshView();
+		}
+	}
+
+	var applyDashboardTextSize = function() {
+		dashboard_text_size = normalizeTextSize(dashboard_text_size);
+		document.documentElement.style.setProperty('--dashboard-text-size', `${dashboard_text_size}%`);
+		let toolbarHeight = Math.round(80 * (dashboard_text_size / 86.5));
+		toolbarHeight = Math.min(Math.max(toolbarHeight, 72), 140);
+		document.documentElement.style.setProperty('--toolbar-height', `${toolbarHeight}px`);
+	}
+
+	var applyDashboardTextBold = function() {
+		document.body.classList.toggle('dashboard-text-bold', !!dashboard_text_bold);
+	}
+
+	var applyStatemachineTextSize = function() {
+		statemachine_text_size = normalizeTextSize(statemachine_text_size);
+		document.documentElement.style.setProperty('--statemachine-text-size', `${statemachine_text_size}%`);
+	}
+
+	var applyStatemachineTextBold = function() {
+		let is_bold = !!(statemachine_text_bold || statemachine_text_extra_bold);
+		let drawing_area = document.getElementById('drawing_area');
+		if (drawing_area != undefined) {
+			drawing_area.classList.toggle('statemachine-text-bold', is_bold);
+		}
+		let runtime_state_display = document.getElementById('runtime_state_display');
+		if (runtime_state_display != undefined) {
+			runtime_state_display.classList.toggle('statemachine-text-bold', is_bold);
+		}
+	}
+
+	this.dashboardTextSizeChanged = function() {
+		let el = document.getElementById('input_dashboard_text_size');
+		let val = normalizeTextSize(el.value);
+		if (dashboard_text_size === val) {
+			el.value = val;
+			return;
+		}
+		dashboard_text_size = val;
+		el.value = val;
+		applyDashboardTextSize();
+		storeSettings();
+	}
+
+	this.dashboardTextBoldClicked = function(evt) {
+		if (dashboard_text_bold === evt.target.checked) return;
+		dashboard_text_bold = evt.target.checked;
+		applyDashboardTextBold();
+		storeSettings();
+	}
+
+	this.statemachineTextSizeChanged = function() {
+		let el = document.getElementById('input_statemachine_text_size');
+		let val = normalizeTextSize(el.value);
+		if (statemachine_text_size === val) {
+			el.value = val;
+			return;
+		}
+		statemachine_text_size = val;
+		el.value = val;
+		applyStatemachineTextSize();
+		refreshStateRenderViews();
+		storeSettings();
+	}
+
+	this.statemachineTextBoldClicked = function(evt) {
+		if (statemachine_text_bold === evt.target.checked) return;
+		statemachine_text_bold = evt.target.checked;
+		if (statemachine_text_bold) {
+			statemachine_text_extra_bold = false;
+			document.getElementById('cb_statemachine_text_extra_bold').checked = false;
+		}
+		applyStatemachineTextBold();
+		refreshStateRenderViews();
+		storeSettings();
+	}
+
+	this.statemachineTextExtraBoldClicked = function(evt) {
+		if (statemachine_text_extra_bold === evt.target.checked) return;
+		statemachine_text_extra_bold = evt.target.checked;
+		if (statemachine_text_extra_bold) {
+			statemachine_text_bold = false;
+			document.getElementById('cb_statemachine_text_bold').checked = false;
+		}
+		applyStatemachineTextBold();
+		refreshStateRenderViews();
+		storeSettings();
+	}
+
+	this.transitionLineWidthNormalChanged = function() {
+		let el = document.getElementById('input_transition_line_width_normal');
+		let val = normalizeTransitionLineWidth(el.value, 2.0);
+		if (transition_line_width_normal === val) {
+			enforceTransitionLineWidthConstraints();
+			updateTransitionLineWidthInputs();
+			return;
+		}
+		transition_line_width_normal = val;
+		enforceTransitionLineWidthConstraints();
+		updateTransitionLineWidthInputs();
+		refreshStateRenderViews();
+		storeSettings();
+	}
+
+	this.transitionLineWidthBoldChanged = function() {
+		let el = document.getElementById('input_transition_line_width_bold');
+		let val = normalizeTransitionLineWidth(el.value, 3.0);
+		if (transition_line_width_bold === val) {
+			enforceTransitionLineWidthConstraints();
+			updateTransitionLineWidthInputs();
+			return;
+		}
+		transition_line_width_bold = val;
+		enforceTransitionLineWidthConstraints();
+		updateTransitionLineWidthInputs();
+		refreshStateRenderViews();
+		storeSettings();
+	}
+
+	this.transitionLineWidthExtraBoldChanged = function() {
+		let el = document.getElementById('input_transition_line_width_extra_bold');
+		let val = normalizeTransitionLineWidth(el.value, 4.0);
+		if (transition_line_width_extra_bold === val) {
+			enforceTransitionLineWidthConstraints();
+			updateTransitionLineWidthInputs();
+			return;
+		}
+		transition_line_width_extra_bold = val;
+		enforceTransitionLineWidthConstraints();
+		updateTransitionLineWidthInputs();
+		refreshStateRenderViews();
+		storeSettings();
 	}
 
 	this.getCodeIndentation = function() {
@@ -634,9 +974,13 @@ UI.Settings = new (function() {
 
 	this.gridsizeChanged = function() {
 		let el = document.getElementById('input_gridsize');
-		let val = parseInt(el.value);
-		if (val === gridsize) return;
+		let val = normalizeGridSize(el.value);
+		if (val === gridsize) {
+			el.value = val;
+			return;
+		}
 		gridsize = val;
+		el.value = val;
 		storeSettings();
 	}
 

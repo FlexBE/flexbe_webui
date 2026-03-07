@@ -1,3 +1,10 @@
+/* Runtime-scaled UI variables are set from UI.Settings text-size handlers. */
+:root {
+	--dashboard-text-size: 86.5%;
+	--statemachine-text-size: 86.5%;
+	--toolbar-height: 80px;
+}
+
 body, html {
 	margin: 0;
 	height: 100%;
@@ -8,14 +15,29 @@ body, html {
 	overflow: hidden;
 	position:fixed;
 	font-family: Ubuntu, Arial, sans-serif;
-	font-size: 86.5%;
+	font-size: var(--dashboard-text-size, 86.5%);
 	user-select: none;
 	cursor: default;
 }
 
+body.dashboard-text-bold {
+	font-weight: 700;
+}
+
+body.dashboard-text-bold input,
+body.dashboard-text-bold select,
+body.dashboard-text-bold textarea,
+body.dashboard-text-bold button {
+	font-weight: inherit;
+}
+
+body.dashboard-text-bold font {
+	font-weight: inherit;
+}
+
 .toolbar {
 	position: fixed;
-	height: 79px;
+	height: calc(var(--toolbar-height) - 1px);
 	width: 100%;
 	background: linear-gradient(#f2f2f2, #e5e5e5);
 	border-bottom: 1px solid black;
@@ -28,20 +50,25 @@ body, html {
 	display: inline-block;
 	padding: 4px 10px;
 	vertical-align: top;
-	height: 75px;
+	height: calc(var(--toolbar-height) - 5px);
 }
 
 .category_button {
-	display: inline-block;
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
 	background: none;
 	color: #555;
 	margin: 0px;
-	padding: 8px;
-	width: 75px;
-	max-width: 75px;
-	height: 60px;
+	padding: 6px 8px;
+	width: clamp(92px, 8.5em, 140px);
+	height: calc(var(--toolbar-height) - 20px);
 	text-align: center;
 	vertical-align: middle;
+	line-height: 1.1;
+	white-space: normal;
 }
 .category_button:hover {
 	background: rgba(255,255,255,0.3);
@@ -52,16 +79,36 @@ body, html {
 }
 
 .category_button_active {
-	display: inline-block;
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
 	background: rgba(255,255,255,0.5);
 	color: #000;
 	margin: 0px;
-	padding: 8px;
-	width: 75px;
-	max-width: 75px;
-	height: 60px;
+	padding: 6px 8px;
+	width: clamp(92px, 8.5em, 140px);
+	height: calc(var(--toolbar-height) - 20px);
 	text-align: center;
 	vertical-align: middle;
+	line-height: 1.1;
+	white-space: normal;
+}
+
+.category_button img,
+.category_button_active img {
+	display: block;
+	margin: 0 auto;
+}
+
+.category_button_label {
+	display: block;
+	width: 100%;
+	max-width: 8.5em;
+	text-align: center;
+	text-indent: 0;
+	text-wrap: balance;
 }
 
 .category_button_active:focus {
@@ -69,7 +116,7 @@ body, html {
 }
 
 #editor_title {
-	height: 80px;
+	height: var(--toolbar-height);
 	padding: 0px;
 	margin: 0px;
 	width: 240px;
@@ -160,7 +207,7 @@ body, html {
 
 #terminal {
 	position: absolute;
-	top: 80px;
+	top: var(--toolbar-height);
 	left: 0px;
 	height: 0;
 	width: 100%;
@@ -209,7 +256,7 @@ body, html {
 
 #feed_area {
 	position: absolute;
-	top: 80px;
+	top: var(--toolbar-height);
 	right: 0px;
 	width: 270px;
 	padding: 0px;
@@ -307,6 +354,29 @@ body, html {
 
 .custom_modal_dialog_button:hover {
 	background-color: #ddd;
+}
+
+.custom_modal_dialog_button_warning {
+	background-color: #f8d9b9;
+	color: #7a2e00;
+}
+
+.custom_modal_dialog_button_warning:hover {
+	background-color: #f2c391;
+}
+
+.custom_modal_dialog_button_positive {
+	background-color: #cdeecf;
+	color: #154f1a;
+}
+
+.custom_modal_dialog_button_positive:hover {
+	background-color: #b3e6b6;
+}
+
+.custom_modal_dialog_button_neutral {
+	background-color: #f1f1f1;
+	color: #333;
 }
 
 .custom_modal_dialog_button:focus {

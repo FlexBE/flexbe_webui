@@ -1,5 +1,14 @@
 Drawable.Note = function(note_obj, paper) {
 	var that = this;
+	var font_size = Drawable.Helper.scaled(10, 8);
+	var wrap_width = Drawable.Helper.scaled(200, 140);
+	var bg_width = Drawable.Helper.scaled(213, 150);
+	var text_x = Drawable.Helper.scaled(10, 8);
+	var text_y = Drawable.Helper.scaled(5, 4);
+	var text_padding_y = Drawable.Helper.scaled(10, 8);
+	var text_padding_x = Drawable.Helper.scaled(15, 12);
+	var line_width = Drawable.Helper.scaled(3, 2);
+	var border_width = Drawable.Helper.scaled(3, 2);
 
 	var note = paper.set();
 
@@ -25,7 +34,7 @@ Drawable.Note = function(note_obj, paper) {
 	var wrapText = function(text, width) {
 		var words = text.split(" ");
 		var wrapped = "";
-		var t = paper.text(100, 100).attr('text-anchor', 'start');
+		var t = paper.text(100, 100).attr('text-anchor', 'start').attr({'font-size': font_size, 'font-family': 'monospace'});
 
 		for (var i=0; i<words.length; i++) {
 			t.attr("text", wrapped + " " + words[i]);
@@ -46,11 +55,21 @@ Drawable.Note = function(note_obj, paper) {
 			delete_btn = document.getElementById("button_note_editor_delete"),
 			save_btn = document.getElementById("button_note_editor_save"),
 			important_cb = document.getElementById("cb_note_editor_important");
+
+		if (editor == undefined || text_input == undefined || delete_btn == undefined
+			|| save_btn == undefined || important_cb == undefined) {
+			T.logError("Note editor is not available.");
+			return;
+		}
 		var color = note_obj.isImportant()? '#600' : '#000';
+
+		if (editor._noteEditorCleanup != undefined) {
+			editor._noteEditorCleanup();
+		}
 
 		editor.style.display = "block";
 		editor.style.backgroundColor = "#ccc";
-		editor.style.borderLeft = "3px solid " + color;
+		editor.style.borderLeft = `${border_width}px solid ${color}`;
 		text_input.style.color = color
 		text_input.value = note_obj.getContent();
 		important_cb.checked = note_obj.isImportant();
@@ -62,6 +81,7 @@ Drawable.Note = function(note_obj, paper) {
 			save_btn.removeEventListener('click', saveCB);
 			important_cb.removeEventListener('change', importantCB);
 			delete_btn.removeEventListener('click', deleteCB);
+			editor._noteEditorCleanup = undefined;
 		}
 		var saveCB = function() {
 			if (text_input.value == "") {
@@ -75,7 +95,7 @@ Drawable.Note = function(note_obj, paper) {
 		var importantCB = function(evt) {
 			note_obj.setImportant(evt.target.checked);
 			color = note_obj.isImportant()? '#600' : '#000';
-			editor.style.borderLeft = "3px solid " + color;
+			editor.style.borderLeft = `${border_width}px solid ${color}`;
 			text_input.style.color = color
 			txt.attr({'fill': color});
 			line.attr({'fill': color});
@@ -89,25 +109,26 @@ Drawable.Note = function(note_obj, paper) {
 		save_btn.addEventListener('click', saveCB);
 		important_cb.addEventListener('change', importantCB);
 		delete_btn.addEventListener('click', deleteCB);
+		editor._noteEditorCleanup = hide;
 	}
 
 	var color = note_obj.isImportant()? '#600' : '#000';
 
-	var bg = paper.rect(0, 0, 213, 0)
+	var bg = paper.rect(0, 0, bg_width, 0)
 		.attr({'fill': 'rgba(0, 0, 0, .1)', 'stroke-opacity': 0.0});
-	var txt = paper.text(10, 5, wrapText(note_obj.getContent(), 200))
-		.attr({"text-anchor": 'start', 'fill': color, 'font-size': '10', 'font-family': 'monospace'});
+	var txt = paper.text(text_x, text_y, wrapText(note_obj.getContent(), wrap_width))
+		.attr({"text-anchor": 'start', 'fill': color, 'font-size': font_size, 'font-family': 'monospace'});
 
-	bg.attr({'height': txt.getBBox().height + 10, 'width': txt.getBBox().width + 15});
+	bg.attr({'height': txt.getBBox().height + text_padding_y, 'width': txt.getBBox().width + text_padding_x});
 
-	var line = paper.rect(0, 0, 3, bg.getBBox().height)
+	var line = paper.rect(0, 0, line_width, bg.getBBox().height)
 		.attr({'stroke-opacity': 0.0, 'fill': color});
 
 	note.push(bg);
 	note.push(txt);
 	note.push(line);
 
-	txt.translate(10, 5 + txt.getBBox().height / 2);
+	txt.translate(text_x, text_y + txt.getBBox().height / 2);
 
 	note.attr({x: note_obj.getPosition().x, y: note_obj.getPosition().y})
 		.drag(moveFnc, startFnc, endFnc)

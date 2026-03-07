@@ -22,16 +22,87 @@ UI.Statemachine = new (function() {
 	var allow_panning = false;
 	var panning = false;
 	var mouse_pos = undefined;
-	// var mouse_text = undefined;
 	var background = undefined;
 	var dataflow_displayed = false;
 	var comments_displayed = true;
 	var outcomes_displayed = true;
+	var render_config = {
+		gridsize: 50,
+		text_scale: 1.0,
+		text_weight: 400,
+		transition_line_width_normal: 2.0,
+		transition_line_width_bold: 3.0,
+		transition_line_width_extra_bold: 4.0,
+	};
 
 	var drawn_sms = [];
 	var grid = [];
 
 	var tab_targets = [];
+
+	var updateRenderConfig = function() {
+		let gridsize = 50;
+		let text_scale = 1.0;
+		let text_weight = 400;
+		let transition_line_width_normal = 2.0;
+		let transition_line_width_bold = 3.0;
+		let transition_line_width_extra_bold = 4.0;
+
+		try {
+			if (UI.Settings != undefined) {
+				if (UI.Settings.getGridsize) {
+					gridsize = parseInt(UI.Settings.getGridsize());
+				}
+				if (UI.Settings.getStatemachineTextSize) {
+					const text_size = parseFloat(UI.Settings.getStatemachineTextSize());
+					if (isFinite(text_size) && text_size > 0) {
+						text_scale = text_size / 86.5;
+					}
+				}
+				if (UI.Settings.isStatemachineTextExtraBold && UI.Settings.isStatemachineTextExtraBold()) {
+					text_weight = 900;
+				} else if (UI.Settings.isStatemachineTextBold && UI.Settings.isStatemachineTextBold()) {
+					text_weight = 700;
+				}
+				if (UI.Settings.getTransitionLineWidthNormal) {
+					transition_line_width_normal = parseFloat(UI.Settings.getTransitionLineWidthNormal());
+				}
+				if (UI.Settings.getTransitionLineWidthBold) {
+					transition_line_width_bold = parseFloat(UI.Settings.getTransitionLineWidthBold());
+				}
+				if (UI.Settings.getTransitionLineWidthExtraBold) {
+					transition_line_width_extra_bold = parseFloat(UI.Settings.getTransitionLineWidthExtraBold());
+				}
+			}
+		} catch (err) {
+			// Fall back to defaults when settings are unavailable.
+		}
+
+		if (!isFinite(gridsize) || gridsize <= 0) {
+			gridsize = 50;
+		}
+		if (!isFinite(text_scale) || text_scale <= 0) {
+			text_scale = 1.0;
+		}
+		if (!isFinite(transition_line_width_normal) || transition_line_width_normal <= 0) {
+			transition_line_width_normal = 2.0;
+		}
+		if (!isFinite(transition_line_width_bold) || transition_line_width_bold <= 0) {
+			transition_line_width_bold = 3.0;
+		}
+		if (!isFinite(transition_line_width_extra_bold) || transition_line_width_extra_bold <= 0) {
+			transition_line_width_extra_bold = 4.0;
+		}
+
+		render_config = {
+			gridsize: gridsize,
+			text_scale: Math.min(Math.max(text_scale, 0.6), 2.0),
+			text_weight: text_weight,
+			transition_line_width_normal: transition_line_width_normal,
+			transition_line_width_bold: transition_line_width_bold,
+			transition_line_width_extra_bold: transition_line_width_extra_bold,
+		};
+	}
 
 	Mousetrap.bind("shift", function() {
 		displayGrid();
@@ -70,19 +141,19 @@ UI.Statemachine = new (function() {
 
 	Mousetrap.bind("shift+left", function() {
 		// console.log(`shift+left - pan left ...`);
-		panShift(UI.Settings.getGridsize(), 0);
+		panShift(that.getGridSize(), 0);
 	});
 	Mousetrap.bind("shift+right", function() {
 		// console.log(`shift+right - pan right ...`);
-		panShift(-UI.Settings.getGridsize(), 0);
+		panShift(-that.getGridSize(), 0);
 	});
 	Mousetrap.bind("shift+up", function() {
 		// console.log(`shift+up - pan up ...`);
-		panShift(0, UI.Settings.getGridsize());
+		panShift(0, that.getGridSize());
 	});
 	Mousetrap.bind("shift+down", function() {
 		// console.log(`shift+down - pan down ...`);
-		panShift(0, -UI.Settings.getGridsize());
+		panShift(0, -that.getGridSize());
 	});
 
 	var panShift = function(dx, dy) {
@@ -115,12 +186,11 @@ UI.Statemachine = new (function() {
 
 	var updateMousePos = function(event) {
 		mouse_pos.attr({ cx: event.offsetX, cy: event.offsetY });
-		// mouse_text.attr({ x: event.offsetX, y: event.offsetY  - 15, text: `(${event.offsetX}, ${event.offsetY})`});
 		if (connecting) that.refreshView();
 	}
 
 	var displayGrid = function() {
-		let gridsize = UI.Settings.getGridsize();
+		let gridsize = that.getGridSize();
 		let offset = {x: UI.Statemachine.getPanShift().x % gridsize, y: UI.Statemachine.getPanShift().y % gridsize};
 		for (let i = offset.x; i < R.width; i += gridsize) {
 			grid.push(R.path("M" + i + ",0L" + i + "," + R.height).attr({stroke: '#ddd'}));
@@ -386,8 +456,6 @@ UI.Statemachine = new (function() {
 			.drag(updateSelectionMove, beginSelectionMove, endSelectionMove);
 
 		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0});
-		// mouse_text = R.text(R.width / 2, R.height/2 + 10, `(${R.width/2}, ${R.height/2})`)
-		// 				.attr({'font-size': 16, 'fill': 'gray'}); // @todo - remove text
 
 		background = R.rect(0, 0, R.width, R.height)
 			.attr({fill: '#FFF', stroke: '#FFF'}).toBack()
@@ -400,6 +468,7 @@ UI.Statemachine = new (function() {
 
 	this.initialize = function() {
 		initializeDrawingArea();
+		updateRenderConfig();
 
 		displayed_sm = Behavior.getStatemachine();
 	}
@@ -416,7 +485,20 @@ UI.Statemachine = new (function() {
 		}
 
 		initializeDrawingArea();
+		updateRenderConfig();
 		that.refreshView();
+	}
+
+	this.updateRenderConfig = function() {
+		updateRenderConfig();
+	}
+
+	this.getRenderConfig = function() {
+		return Object.assign({}, render_config);
+	}
+
+	this.getGridSize = function() {
+		return render_config.gridsize;
 	}
 
 	this.toggleDataflow = function() {
@@ -652,6 +734,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.refreshView = function() {
+		updateRenderConfig();
 		if (drag_transition_drawing != undefined) {
 			drag_transition_drawing.drawing.remove();
 			drag_transition_drawing = undefined;
@@ -699,16 +782,16 @@ UI.Statemachine = new (function() {
 			else
 				drawings.push(new Drawable.State(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
 
-			if (s.getPosition().x > sm_extents.x) sm_extents.x = s.getPosition().x + UI.Settings.getGridsize()*2;
-			if (s.getPosition().y > sm_extents.y) sm_extents.y = s.getPosition().y + UI.Settings.getGridsize()*2;
+			if (s.getPosition().x > sm_extents.x) sm_extents.x = s.getPosition().x + that.getGridSize()*2;
+			if (s.getPosition().y > sm_extents.y) sm_extents.y = s.getPosition().y + that.getGridSize()*2;
 
 		}
 		for (let i=0; i<sm_outcomes.length; ++i) {
 			o = sm_outcomes[i];
 			let obj = new Drawable.Outcome(o, R, false, !outcomes_displayed);
 			drawings.push(obj);
-			if (o.getPosition().x > sm_extents.x) sm_extents.x = o.getPosition().x + UI.Settings.getGridsize();
-			if (o.getPosition().y > sm_extents.y) sm_extents.y = o.getPosition().y + UI.Settings.getGridsize();
+			if (o.getPosition().x > sm_extents.x) sm_extents.x = o.getPosition().x + that.getGridSize();
+			if (o.getPosition().y > sm_extents.y) sm_extents.y = o.getPosition().y + that.getGridSize();
 		}
 
 		// draw transitions at last
@@ -744,8 +827,8 @@ UI.Statemachine = new (function() {
 			new_transitions.push(dt);
 			drawings.push(dt);
 
-			if (t.getX() != undefined && t.getX() > sm_extents.x) sm_extents.x = t.getX() + UI.Settings.getGridsize()*2;
-			if (t.getY() != undefined && t.getY() > sm_extents.y) sm_extents.y = t.getY() + UI.Settings.getGridsize()*2;
+			if (t.getX() != undefined && t.getX() > sm_extents.x) sm_extents.x = t.getX() + that.getGridSize()*2;
+			if (t.getY() != undefined && t.getY() > sm_extents.y) sm_extents.y = t.getY() + that.getGridSize()*2;
 		}
 
 		new_transitions = [];
@@ -1106,7 +1189,7 @@ UI.Statemachine = new (function() {
 			if (t.getTo() == undefined || t.getFrom() == undefined)
 				continue;
 
-			temp_dict = {t: t};
+			let temp_dict = {t: t};
 			if(t.getBeginning() != undefined && t.getFrom().getStateName() == state.getStateName()){
 				temp_dict.beg_x = t.getBeginning().x;
 				temp_dict.beg_y = t.getBeginning().y;
@@ -1132,8 +1215,12 @@ UI.Statemachine = new (function() {
 					otherY = t.getFrom().getPosition().y;
 					width = Math.abs(old_pos.x - otherX);
 					height = Math.abs(old_pos.y - otherY);
-					xShift = Math.abs(t.getX()-otherX)/width * (state.getPosition().x-old_pos.x);
-					yShift = Math.abs(t.getY()-otherY)/height * (state.getPosition().y-old_pos.y);
+					if (width != 0) {
+						xShift = Math.abs(t.getX()-otherX)/width * (state.getPosition().x-old_pos.x);
+					}
+					if (height != 0) {
+						yShift = Math.abs(t.getY()-otherY)/height * (state.getPosition().y-old_pos.y);
+					}
 				}else if(t.getFrom().getStateName() == state.getStateName()){
 					temp_dict.x = t.getX();
 					temp_dict.y = t.getY();
@@ -1141,8 +1228,12 @@ UI.Statemachine = new (function() {
 					otherY = t.getTo().getPosition().y;
 					width = Math.abs(old_pos.x - otherX);
 					height = Math.abs(old_pos.y - otherY);
-					xShift = Math.abs(t.getX()-otherX)/width * (state.getPosition().x-old_pos.x);
-					yShift = Math.abs(t.getY()-otherY)/height * (state.getPosition().y-old_pos.y);
+					if (width != 0) {
+						xShift = Math.abs(t.getX()-otherX)/width * (state.getPosition().x-old_pos.x);
+					}
+					if (height != 0) {
+						yShift = Math.abs(t.getY()-otherY)/height * (state.getPosition().y-old_pos.y);
+					}
 				}
 
 				if(t.getX() > old_pos.x && t.getX() > otherX && state.getPosition().x >= old_pos.x){

@@ -24,12 +24,12 @@ const VarSolver = new (function() {
 		}
 
 		// check for numeric
-		if (target_var.match(/^-?[0-9]*(.[0-9]+)?$/)) {
+		if (target_var.match(/^-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$/)) {
 			return target_var;
 		}
 
 		// check for boolean
-		if (target_var.match(/^True|False$/)) {
+		if (target_var.match(/^(True|False)$/)) {
 			return target_var;
 		}
 
