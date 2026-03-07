@@ -39,7 +39,6 @@ setup(
         'fastapi>=0.109.1',
         'pydantic>=1.10.13',
         'Pygments',
-        'PySide6>=6.7.1',
         'PyYAML',
         'setuptools',
         'uvicorn',

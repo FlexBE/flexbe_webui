@@ -32,6 +32,7 @@ The `flexbe_webui` has the look of the classic `flexbe_app` with some notable im
 3. (Optional) Run headless and connect client separately:
    - terminal 1: `ros2 launch flexbe_webui flexbe_ocs.launch.py headless:=true`
    - terminal 2: `ros2 run flexbe_webui webui_client`
+   - note: `webui_client` requires an additional local `PySide6`/QtWebEngine install; see [docs/installation.md](docs/installation.md)
 
 ## Documentation
 

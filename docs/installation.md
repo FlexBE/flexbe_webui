@@ -13,6 +13,7 @@ Install dependencies:
 - `rosdep install --from-paths src --ignore-src`
 
 `flexbe_webui` Python requirements are listed in `setup.py` and `requires.txt`.
+The desktop `webui_client` has an additional client-only dependency on `PySide6` and QtWebEngine.
 
 ## Ubuntu 24.04 (ROS 2 Jazzy)
 
@@ -22,7 +23,7 @@ These apt packages are sufficient for most dependencies:
 - `python3-pydantic`
 - `python3-fastapi`
 
-`PySide6` is typically not available via apt on Ubuntu 24.04, so a venv path is recommended.
+`PySide6` is typically not available via apt on Ubuntu 24.04, so a venv path is recommended for `webui_client`.
 
 ### Recommended venv setup
 
@@ -52,4 +53,3 @@ You can run without activating the venv if this path is on `PYTHONPATH`:
 ```bash
 export PYTHONPATH=$PYTHONPATH:$WORKSPACE_ROOT/venv/lib/python3.12/site-packages
 ```
-
