@@ -14,6 +14,8 @@
 
 """Run flake8 tests."""
 
+import warnings
+
 from ament_flake8.main import main_with_errors
 
 import pytest
@@ -23,9 +25,17 @@ import pytest
 @pytest.mark.linter
 def test_flake8():
     """Run flake8 tests."""
+    warnings.filterwarnings(
+        'ignore',
+        message=r'This process \(pid=\d+\) is multi-threaded, use of fork\(\) may lead to deadlocks in the child\.',
+        category=DeprecationWarning,
+    )
     # Customize flake8 arguments
     custom_argv = [
-        '--max-line-length=130',
+        '--config',
+        '.flake8',
+        '--linelength',
+        '130',
     ]
     ret, errors = main_with_errors(argv=custom_argv)
     assert ret == 0, \
