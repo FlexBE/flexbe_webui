@@ -36,7 +36,7 @@ def get_packages() -> Dict[str, PackageData]:
         python_path = None
         try:
             python_path = importlib.import_module(name).__path__[-1]
-        except (ImportError, ModuleNotFoundError, AttributeError):
+        except (ImportError, ModuleNotFoundError, AttributeError, IndexError):
             editable = False
         try:
             pkg_data = PackageData(name=name, path=path, python_path=python_path, editable=editable)

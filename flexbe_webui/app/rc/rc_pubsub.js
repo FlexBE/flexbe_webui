@@ -566,6 +566,10 @@ RC.PubSub = new (function() {
 		var root_container_path = root.replace("/" + root_name, "");
 		var root_container = (root_container_path == "")? Behavior.getStatemachine() :
 								Behavior.getStatemachine().getStateByPath(root_container_path);
+		if (root_container == undefined) {
+			T.logError(`Synthesis result has unknown root container path '${root_container_path}'`);
+			return;
+		}
 		var root_varname = "";
 		var defs = IO.ModelGenerator.parseInstantiationMsg(result.states);
 		if (defs == undefined) {
@@ -627,6 +631,10 @@ RC.PubSub = new (function() {
 			},
 			function() {
 				var container = (root_container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(root_container_path);
+				if (container == undefined) {
+					T.logError(`Redo: unknown container path '${root_container_path}'`);
+					return;
+				}
 				container.addState(state_machine);
 				UI.Statemachine.refreshView();
 			}

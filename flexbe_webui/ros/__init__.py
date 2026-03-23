@@ -37,7 +37,7 @@ class PackageInfo(BaseModel):
     @classmethod
     def from_dict(cls, data: dict):
         """Create an instance from a dictionary."""
-        return cls.model_validate(data)
+        return cls.parse_obj(data)
 
 
 class PackageData(BaseModel):
@@ -61,4 +61,4 @@ class PackageData(BaseModel):
     @classmethod
     def from_dict(cls, data: dict):
         """Create an instance from a dictionary."""
-        return cls.model_validate(data)
+        return cls.parse_obj(data)

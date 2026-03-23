@@ -17,7 +17,7 @@
 import re
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, root_validator, validator
 
 _ROS_ACTION_TYPE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$')
 
@@ -53,6 +53,26 @@ class State(BaseModel):
     resolved_parameter_output_values_old: List[object] = []   # mostly str or list of strings
     behavior_state: bool
     state_machine: bool
+
+    @root_validator(skip_on_failure=True)
+    def _validate_parallel_list_lengths(cls, values):
+        """Ensure parallel lists have matching lengths to prevent IndexError in code generation."""
+        state_name = values.get('state_name', 'unknown')
+        pairs = [
+            ('parameter_values', 'parameters'),
+            ('autonomy', 'outcomes'),
+            ('input_mapping', 'input_keys'),
+            ('output_mapping', 'output_keys'),
+        ]
+        for name_a, name_b in pairs:
+            list_a = values.get(name_a, [])
+            list_b = values.get(name_b, [])
+            if len(list_a) != len(list_b):
+                raise ValueError(
+                    f"State '{state_name}': '{name_a}' length {len(list_a)}"
+                    f" does not match '{name_b}' length {len(list_b)}"
+                )
+        return values
 
 
 class Transition(BaseModel):
@@ -154,8 +174,7 @@ class ActionClientRequest(BaseModel):
     topic: str
     action_type: str
 
-    @field_validator('action_type')
-    @classmethod
+    @validator('action_type')
     def validate_action_type(cls, v):
         """Validate action_type is a safe 'package/ActionName' string."""
         if not _ROS_ACTION_TYPE_RE.match(v):
@@ -168,8 +187,7 @@ class ActionSchemaRequest(BaseModel):
 
     action_type: str
 
-    @field_validator('action_type')
-    @classmethod
+    @validator('action_type')
     def validate_action_type(cls, v):
         """Validate action_type is a safe 'package/ActionName' string."""
         if not _ROS_ACTION_TYPE_RE.match(v):
