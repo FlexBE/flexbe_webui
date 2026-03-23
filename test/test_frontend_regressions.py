@@ -14,6 +14,7 @@
 
 """Browser-free frontend regression tests executed through Node.js."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -22,6 +23,12 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = REPO_ROOT / 'test' / 'frontend_regression_runner.js'
+NODE = shutil.which('node')
+
+pytestmark = pytest.mark.skipif(
+    NODE is None,
+    reason='node is required for frontend regression tests',
+)
 
 
 @pytest.mark.parametrize('case_name', [
@@ -45,7 +52,7 @@ RUNNER = REPO_ROOT / 'test' / 'frontend_regression_runner.js'
 def test_frontend_regressions(case_name):
     """Run frontend regression scenarios without a browser."""
     result = subprocess.run(
-        ['node', str(RUNNER), case_name],
+        [NODE, str(RUNNER), case_name],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

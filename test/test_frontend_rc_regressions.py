@@ -14,18 +14,27 @@
 
 """Dedicated RC controller/pubsub frontend regressions executed through Node.js."""
 
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = REPO_ROOT / 'test' / 'frontend_rc_regression_runner.js'
+NODE = shutil.which('node')
+
+pytestmark = pytest.mark.skipif(
+    NODE is None,
+    reason='node is required for frontend RC regression tests',
+)
 
 
 def test_frontend_rc_regressions():
     """Run RC controller/pubsub regression scenarios without a browser."""
     result = subprocess.run(
-        ['node', str(RUNNER)],
+        [NODE, str(RUNNER)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

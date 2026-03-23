@@ -206,6 +206,23 @@ function setupGlobals() {
     syncProcesses.delete(key);
     return originalRemove.call(RC.Sync, key);
   };
+  const originalSetProgress = RC.Sync.setProgress;
+  RC.Sync.setProgress = function(key, fulfilled, relative) {
+    const process = syncProcesses.get(key);
+    if (process) {
+      process.fulfilled = (relative ? process.fulfilled : 0) + fulfilled;
+      process.fulfilled = Math.min(Math.max(process.fulfilled, 0), 1);
+    }
+    return originalSetProgress.call(RC.Sync, key, fulfilled, relative);
+  };
+  const originalSetStatus = RC.Sync.setStatus;
+  RC.Sync.setStatus = function(key, newStatus) {
+    const process = syncProcesses.get(key);
+    if (process) {
+      process.status = newStatus;
+    }
+    return originalSetStatus.call(RC.Sync, key, newStatus);
+  };
 
   return {
     logs,
@@ -350,6 +367,51 @@ function runSwitchOrderingCase() {
   }
 }
 
+function runLaunchBlockedStartCase() {
+  const context = initializeRcHarness();
+  try {
+    RC.Controller.signalConnected();
+    RC.Controller.signalBehavior();
+    RC.Controller.signalStarted();
+    RC.Sync.register('BehaviorStart', 60);
+
+    const commandFeedback = context.subscriberCallbacks.get('/test/flexbe/command_feedback');
+    assert(commandFeedback);
+    commandFeedback({ command: 'launch', args: ['blocked', 'not_ready'] });
+
+    assert.strictEqual(RC.Controller.isConnected(), true);
+    assert.strictEqual(RC.Controller.isRunning(), false);
+    assert.strictEqual(document.getElementById('button_behavior_start').disabled, false);
+    assert.strictEqual(context.syncProcesses.has('BehaviorStart'), false);
+    assert(context.feedback.some(entry => entry.text.includes('not ready for a new behavior')));
+  } finally {
+    context.restoreConsole();
+  }
+}
+
+function runLaunchBlockedSwitchCase() {
+  const context = initializeRcHarness();
+  try {
+    RC.Controller.signalConnected();
+    RC.Controller.signalBehavior();
+    RC.Controller.signalStarted();
+    RC.Controller.updateCurrentStatePath('/known');
+    RC.Controller.signalRunning();
+    RC.Sync.register('Switch', 70);
+
+    const commandFeedback = context.subscriberCallbacks.get('/test/flexbe/command_feedback');
+    assert(commandFeedback);
+    commandFeedback({ command: 'launch', args: ['blocked', 'not_ready'] });
+
+    assert.strictEqual(RC.Controller.isRunning(), true);
+    assert.strictEqual(context.syncProcesses.get('Switch').status, RC.Sync.STATUS_ERROR);
+    assert.strictEqual(context.syncProcesses.get('Switch').fulfilled, 1);
+    assert(context.feedback.some(entry => entry.text.includes('not ready for a new behavior')));
+  } finally {
+    context.restoreConsole();
+  }
+}
+
 function main() {
   const cases = {
     heartbeat_ordering: runHeartbeatOrderingCase,
@@ -358,6 +420,8 @@ function main() {
     state_map_ordering: runStateMapOrderingCase,
     ready_ordering: runReadyOrderingCase,
     switch_ordering: runSwitchOrderingCase,
+    launch_blocked_start: runLaunchBlockedStartCase,
+    launch_blocked_switch: runLaunchBlockedSwitchCase,
   };
 
   if (caseName) {

@@ -94,9 +94,10 @@ RC.Controller = new (function() {
 		onEnter: function() {
 			document.getElementById("selection_rc_autonomy").setAttribute("disabled", "disabled");
 			UI.RuntimeControl.displayExternalBehavior();
+			document.getElementById("button_behavior_attach_external").disabled = true;
 			T.clearLog();
 			T.logInfo('Running behavior detected!');
-			T.logInfo('You may go to Runtime Control in order to attach and monitor execution.');
+			T.logInfo('Load the matching behavior in the UI first, then Attach to monitor execution.');
 			T.show();
 		},
 		onExit: function() {
@@ -109,9 +110,10 @@ RC.Controller = new (function() {
 		onEnter: function() {
 			document.getElementById("selection_rc_autonomy").setAttribute("disabled", "disabled");
 			UI.RuntimeControl.displayExternalBehavior();
+			document.getElementById("button_behavior_attach_external").disabled = false;
 			T.clearLog();
 			T.logInfo('Running behavior detected!');
-			T.logInfo('You may go to Runtime Control in order to attach and monitor execution.');
+			T.logInfo('Click Attach to connect this UI to the running behavior.');
 			T.show();
 		},
 		onExit: function() {

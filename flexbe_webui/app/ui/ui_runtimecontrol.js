@@ -684,9 +684,9 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.attachExternalClicked = function() {
-		let selection_box = document.getElementById("selection_rc_autonomy");
-		let autonomy_level = parseInt(selection_box.options[selection_box.selectedIndex].value);
-		RC.PubSub.sendAttachBehavior(autonomy_level);
+		// Send 255 as a sentinel so onboard preserves its current autonomy level and
+		// reports it back in the CommandFeedback args, allowing the UI to sync the dropdown.
+		RC.PubSub.sendAttachBehavior(255);
 
 		UI.RuntimeControl.displayBehaviorFeedback(4, "Attaching to behavior...");
 	}
@@ -944,8 +944,9 @@ UI.RuntimeControl = new (function() {
 
 		const targetEntry  = Behavior.getStateMap().get(targetId);
 		if (targetEntry == undefined) {
-			console.log(`\x1b[93mCannot find '${targetId}' (${output}) in `
-						+ `state map with ${Behavior.getStateMap().size} entries\x1b[0m`);
+			console.log(`\x1b[93mState update arrived before state map is ready`
+						+ ` (hash=${targetId}, output=${output}, map has ${Behavior.getStateMap().size}`
+						+ ` entr${Behavior.getStateMap().size == 1 ? 'y' : 'ies'}) — will apply on next update\x1b[0m`);
 			return;
 		}
 		const targetPath = targetEntry.path;
@@ -963,7 +964,7 @@ UI.RuntimeControl = new (function() {
 				for (const [key, value] of Array.from(pending_outcome_requests.entries())) {
 					const stateEntry = Behavior.getStateMap().get(key);
 					if (stateEntry == undefined) {
-						console.log(`\xb1[93m Cannot find ${key} in state map with ${Behavior.getStateMap().size} entries.\x1b[0m`);
+						console.log(`\x1b[93mPending outcome request for hash=${key} not found in state map (${Behavior.getStateMap().size} entries) — skipping\x1b[0m`);
 					}
 					const path = stateEntry.path;
 					if (path.startsWith(targetPath)) {

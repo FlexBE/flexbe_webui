@@ -20,6 +20,7 @@ pytest -q
 ## Frontend Regression Harness
 
 The browser-free frontend regression harness covers key UI logic without launching a browser.
+It requires `node` to be available on `PATH`; otherwise the corresponding pytest modules are skipped.
 
 Run the full suite from the repository root:
 
@@ -38,6 +39,7 @@ node test/frontend_regression_runner.js events_flows
 ## RC Controller / PubSub Regression Harness
 
 This dedicated harness focuses on runtime controller and pub/sub ordering behavior.
+It also requires `node` on `PATH`; if `node` is unavailable, the pytest wrapper skips these cases.
 
 Run the full suite:
 

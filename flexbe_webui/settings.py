@@ -209,7 +209,7 @@ class WebuiSettings(BaseModel):
             return 20.0
         return width
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _normalize_transition_line_width_order(cls, values: Dict[str, Any]):
         """Keep transition widths ordered: normal < bold < extra bold."""
         epsilon = 0.1
@@ -244,7 +244,7 @@ class WebuiSettings(BaseModel):
             return ''
         return str(value)
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _resolve_paths_and_license(cls, values: Dict[str, Any]):
         """Apply source path and license-file dependent settings."""
         save_in_source = bool(values.get('save_in_source', False))

@@ -45,8 +45,8 @@ RC.PubSub = new (function() {
 	const WARNING = 10;
 	const ERROR = 11;
 	const READY = 20;
-	// -----------------
-	const RUNNING = 30; // Custom use here
+	const RUNNING = 30;
+	const STOPPED = 40;
 
 	const be_status_code_names = {
 		"-1": 'Undefined',
@@ -56,7 +56,9 @@ RC.PubSub = new (function() {
 		[WARNING]: 'Warning',
 		[ERROR]: 'Error',
 		[READY]: 'Ready',
-		[RUNNING]: 'Running'	};
+		[RUNNING]: 'Running',
+		[STOPPED]: 'Stopped',
+	};
 
 	var current_state_callback = function (msg) {
 		if (RC.Sync.hasProcess("Transition")) RC.Sync.remove("Transition");
@@ -95,6 +97,13 @@ RC.PubSub = new (function() {
 		UI.RuntimeControl.displayBehaviorFeedback(msg.status_code, msg.text);
 	}
 
+	var launch_feedback_text = function(reason) {
+		if (reason == "not_ready") {
+			return "Behavior launch blocked: onboard engine is not ready for a new behavior.";
+		}
+		return "Behavior launch blocked before reaching onboard.";
+	}
+
 	var behavior_status_callback = function (msg){
 		if (msg.code != last_onboard_status) {
 			try {
@@ -113,7 +122,7 @@ RC.PubSub = new (function() {
 			RC.PubSub.sendPreemptBehavior();
 			return;
 		}
-		if (RC.Sync.hasProcess("EmergencyStop") && (msg.code == FINISHED || msg.code == FAILED)) {
+		if (RC.Sync.hasProcess("EmergencyStop") && (msg.code == FINISHED || msg.code == FAILED || msg.code == STOPPED)) {
 			RC.Sync.remove("EmergencyStop");
 			T.logInfo("The onboard behavior has stopped.");
 			T.logInfo("Use 'Stop Execution' before closing the UI while a behavior is running.");
@@ -128,6 +137,13 @@ RC.PubSub = new (function() {
 			last_mirror_state_id = undefined; // clear prior SM status
 			RC.Controller.signalFinished();
 			UI.RuntimeControl.displayBehaviorFeedback(4, "No behavior active.");
+		} else if (msg.code == STOPPED) {
+			// STOPPED follows FINISHED/FAILED/preempt as a cleanup marker before the next READY.
+			// Controller is already in a terminal state; clear residual mirror tracking in case
+			// FINISHED/FAILED was missed.
+			last_mirror_state_id = undefined;
+			RC.Controller.signalFinished();
+			UI.RuntimeControl.displayBehaviorFeedback(4, "Behavior stopped.");
 		} else if (msg.code == STARTED) {
 			if (RC.Sync.hasProcess("BehaviorStart")) {
 				RC.Sync.remove("BehaviorStart");
@@ -167,6 +183,15 @@ RC.PubSub = new (function() {
 			RC.Sync.setProgress("Delay", 0.5, false);
 		}
 		last_onboard_heartbeat_time = now;
+
+		// If onboard is running a behavior but we haven't tracked it yet (e.g., WebUI connected
+		// after an autonomously launched behavior started and missed the latched BEStatus.STARTED),
+		// fall back to the heartbeat to trigger the Attach button.
+		if (msg.behavior_id != 0 && !RC.Controller.isRunning() && !RC.Controller.isExternal() && !RC.Controller.isReadonly()) {
+			console.log(`\x1b[93mOnboard heartbeat detected running behavior id=${msg.behavior_id} - signaling external.\x1b[0m`);
+			RC.Controller.signalConnected();
+			RC.Controller.signalExternal();
+		}
 
 		onboard_heartbeat_timer = setTimeout(function() {
 			console.log("\x1b[31mOnboard connection timed out.\x1b[0m");
@@ -267,7 +292,7 @@ RC.PubSub = new (function() {
 						+ ` state map size = ${state_map.size} vs. ${msg.state_ids.length} entries in message\n`
 						+ `${JSON.stringify(Array.from(state_map))}]`);
 		} else {
-			console.log(`\x1b[94mReceived valid state map for '${Behavior.getBehaviorName()}' (${Behavior.getBehaviorId()}) with ${state_map.size} entries\x1b[0m`);
+			console.log(`\x1b[94mState map sync complete for '${Behavior.getBehaviorName()}' — ${state_map.size} states ready; any earlier 'state update arrived before state map' warnings can be ignored\x1b[0m`);
 		}
 	}
 
@@ -342,6 +367,7 @@ RC.PubSub = new (function() {
 							break;
 						case READY:
 						case FINISHED:
+						case STOPPED:
 							status = "online";
 							break;
 						case WARNING:
@@ -404,12 +430,31 @@ RC.PubSub = new (function() {
 				transition_requests_pending = 0;
 			}
 		}
+		if (msg.command == "launch" && msg.args[0] == "blocked") {
+			if (RC.Sync.hasProcess("BehaviorStart")) {
+				RC.Sync.setProgress("BehaviorStart", 1, false);
+				RC.Sync.setStatus("BehaviorStart", RC.Sync.STATUS_ERROR);
+				RC.Controller.signalFinished();
+			} else if (RC.Sync.hasProcess("Switch")) {
+				RC.Sync.setProgress("Switch", 1, false);
+				RC.Sync.setStatus("Switch", RC.Sync.STATUS_ERROR);
+			}
+			UI.RuntimeControl.displayBehaviorFeedback(3, launch_feedback_text(msg.args[1]));
+		}
 		if (msg.command == "autonomy") {
 			RC.Sync.remove("Autonomy");
 		}
 		if (msg.command == "attach") {
 			if (RC.Sync.hasProcess("Attach")) {
 				if (msg.args[0] == Behavior.getBehaviorName()) {
+					// Sync the autonomy dropdown to the level reported by onboard (args[1])
+					if (msg.args.length > 1) {
+						let reported_level = parseInt(msg.args[1]);
+						let selection_box = document.getElementById("selection_rc_autonomy");
+						if (!isNaN(reported_level) && selection_box) {
+							selection_box.value = reported_level;
+						}
+					}
 					RC.Controller.signalRunning();
 					RC.Sync.remove("Attach");
 				} else {

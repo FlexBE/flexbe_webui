@@ -565,7 +565,7 @@ UI.Settings = new (function() {
 
 	this.getVersion = function() {
 		// FlexBE Behavior Engine API version
-		return "4.1.0";
+		return "4.1.1";
 	}
 
 
