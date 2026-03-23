@@ -15,7 +15,7 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 		dict['msg_type'] = msg_type;
 		API.post('create_subscriber', dict, (result) => {
 			if (result) {
-				T.logInfo("Created subscriber for '" + topic +"' (" + msg_type + ") at " + wsProto + "/" + wsHost);
+				T.logInfo("Created subscriber for '" + topic +"' (" + msg_type + ") at " + wsProto + "//" + wsHost);
 			} else {
 				T.logWarn("Failed to create subscriber for '" + topic +"' (" + msg_type + ")");
 			}

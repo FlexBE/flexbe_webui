@@ -208,5 +208,8 @@ Please use the following publications for reference when using FlexBE and the Fl
 
   * On some Ubuntu 24.04 systems with older NVidia GPUs, there is an issue that causes the FlexBE WebUI
     client to display a blank screen when running with GazeboSim or Turtlesim.
-    * Use the `--qt_software` flag to force software rendering; e.g., `ros2 run flexbe_webui webui_client --qt_software`
-    * or you may access with web browser as described above.
+    * Use the `--disable_gpu` flag to disable GPU rendering for Chromium windows (preferred)
+      * e.g., `ros2 run flexbe_webui webui_client --disable_gpu`
+    * Or, use the `--qt_software` flag to force software rendering
+      * e.g., `ros2 run flexbe_webui webui_client --qt_software`
+    * Or, you may access with web browser as described above.

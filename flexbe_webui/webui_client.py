@@ -289,12 +289,21 @@ def main(args=None):
                         help='Show Javascript debug lines with verbose output (default=False)')
     parser.add_argument('--flush', action='store_true', help='Flush python outputs immediately (default=False)')
     parser.add_argument('--qt_software', action='store_true', help='Use QT software rendering (default=False)')
+    parser.add_argument('--disable_gpu', action='store_true', help='Disable QT GPU rendering (default=False)')
 
     args, unknown = parser.parse_known_args()
 
     if args.qt_software:
-           os.environ["QT_QUICK_BACKEND"] = 'software'
-           print(f"Using QT_QUICK_BACKEND='{os.environ.get('QT_QUICK_BACKEND')}' rendering (instead of GPU)", flush=True)
+        os.environ["QT_QUICK_BACKEND"] = 'software'
+        print(f"Using QT_QUICK_BACKEND='{os.environ.get('QT_QUICK_BACKEND')}' rendering (instead of GPU)", flush=True)
+
+    if args.disable_gpu:
+        existing_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").strip()
+        disable_flags = "--disable-gpu --disable-gpu-compositing"
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+            f"{existing_flags} {disable_flags}".strip() if existing_flags else disable_flags
+        )
+        print(f"Disable GPU for QT WebEngine Chromium rendering", flush=True)
 
     if args.client_delay > 0.0:
         start = time.time()
