@@ -94,6 +94,7 @@ RC.PubSub = new (function() {
 	}
 
 	var behavior_feedback_callback = function (msg){
+		if (msg.text == undefined) return;
 		UI.RuntimeControl.displayBehaviorFeedback(msg.status_code, msg.text);
 	}
 
@@ -128,7 +129,7 @@ RC.PubSub = new (function() {
 			T.logInfo("Use 'Stop Execution' before closing the UI while a behavior is running.");
 		}
 
-		if (RC.Controller.isLocked() && msg.code == STARTED && msg.args.length > 0
+		if (RC.Controller.isLocked() && msg.code == STARTED && msg.args && msg.args.length > 0
 			&& RC.Controller.isCurrentState(Behavior.getStatemachine().getStateByPath(msg.args[0]), false)) {
 
 			RC.Sync.remove("Switch");
@@ -178,7 +179,7 @@ RC.PubSub = new (function() {
 		}
 
 		const behId = Behavior.getBehaviorId();
-		if (msg.behavior_id != 0 && behId != undefined && behId != msg.behavior_id) {
+		if (msg.behavior_id != undefined && msg.behavior_id != 0 && behId != undefined && behId != msg.behavior_id) {
 			console.log(`\x1b[93mOnboard heartbeat received ${JSON.stringify(msg)} with inconsistent behavior id ${behId}!\x1b[0m`);
 			RC.Sync.setProgress("Delay", 0.5, false);
 		}
@@ -187,7 +188,7 @@ RC.PubSub = new (function() {
 		// If onboard is running a behavior but we haven't tracked it yet (e.g., WebUI connected
 		// after an autonomously launched behavior started and missed the latched BEStatus.STARTED),
 		// fall back to the heartbeat to trigger the Attach button.
-		if (msg.behavior_id != 0 && !RC.Controller.isRunning() && !RC.Controller.isExternal() && !RC.Controller.isReadonly()) {
+		if (msg.behavior_id != undefined && msg.behavior_id != 0 && !RC.Controller.isRunning() && !RC.Controller.isExternal() && !RC.Controller.isReadonly()) {
 			console.log(`\x1b[93mOnboard heartbeat detected running behavior id=${msg.behavior_id} - signaling external.\x1b[0m`);
 			RC.Controller.signalConnected();
 			RC.Controller.signalExternal();
@@ -247,6 +248,10 @@ RC.PubSub = new (function() {
 
 	var state_map_callback = function (msg){
 		let state_map = Behavior.getStateMap();
+		if (msg.behavior_id == 0) {
+			console.log(`\x1b[93mstate_map_callback: ignoring message with behavior_id=0\x1b[0m`);
+			return;
+		}
 		if (Behavior.getBehaviorId() != msg.behavior_id) {
 			if (Behavior.getBehaviorId() != undefined) {
 				console.log(`\x1b[93m Updating behavior ID to ${msg.behavior_id} from ${Behavior.getBehaviorId()} and clear existing state map\x1b[0m`);
@@ -254,6 +259,11 @@ RC.PubSub = new (function() {
 			Behavior.setBehaviorId(msg.behavior_id); // presume state map message is the latest requested behavior
 			state_map.clear();
 			state_map.set(0, {path: '', state: Behavior.getStatemachine()}); // always add root
+		}
+		if (!Array.isArray(msg.state_ids) || !Array.isArray(msg.state_paths)
+				|| msg.state_ids.length !== msg.state_paths.length) {
+			T.logError("State map message has inconsistent or missing arrays");
+			return;
 		}
 		let stateMapValidationError = false;
 		for (let i=0; i < msg.state_ids.length; i++) {
@@ -416,7 +426,7 @@ RC.PubSub = new (function() {
 	var command_feedback_callback = function (msg) {
 		if (msg.command == "transition") {
 			transition_requests_pending -= 1;
-			if (msg.args[0] == msg.args[1]) {
+			if (msg.args && msg.args.length >= 2 && msg.args[0] == msg.args[1]) {
 				RC.Sync.setProgress("Transition", 0.8, false);
 			} else {
 				RC.Sync.setStatus("Transition", RC.Sync.STATUS_WARN);
@@ -428,9 +438,10 @@ RC.PubSub = new (function() {
 				console.log("\x1b[36mcommand feedback : " + JSON.stringify(msg) + "\x1b[0m");
 				console.log(`  transition response with ${transition_requests_pending} now pending`);
 				transition_requests_pending = 0;
+				if (RC.Sync.hasProcess("Transition")) RC.Sync.remove("Transition");
 			}
 		}
-		if (msg.command == "launch" && msg.args[0] == "blocked") {
+		if (msg.command == "launch" && msg.args && msg.args.length >= 1 && msg.args[0] == "blocked") {
 			if (RC.Sync.hasProcess("BehaviorStart")) {
 				RC.Sync.setProgress("BehaviorStart", 1, false);
 				RC.Sync.setStatus("BehaviorStart", RC.Sync.STATUS_ERROR);
@@ -446,7 +457,7 @@ RC.PubSub = new (function() {
 		}
 		if (msg.command == "attach") {
 			if (RC.Sync.hasProcess("Attach")) {
-				if (msg.args[0] == Behavior.getBehaviorName()) {
+				if (msg.args && msg.args.length >= 1 && msg.args[0] == Behavior.getBehaviorName()) {
 					// Sync the autonomy dropdown to the level reported by onboard (args[1])
 					if (msg.args.length > 1) {
 						let reported_level = parseInt(msg.args[1]);
@@ -458,7 +469,7 @@ RC.PubSub = new (function() {
 					RC.Controller.signalRunning();
 					RC.Sync.remove("Attach");
 				} else {
-					UI.RuntimeControl.displayBehaviorFeedback(3, "Failed to attach! Please load behavior: " + msg.args[0]);
+					UI.RuntimeControl.displayBehaviorFeedback(3, "Failed to attach! Please load behavior: " + (msg.args?.[0] ?? 'unknown'));
 					RC.Sync.setStatus("Attach", RC.Sync.STATUS_ERROR);
 				}
 			}
@@ -487,7 +498,7 @@ RC.PubSub = new (function() {
 			}
 		}
 		if (msg.command == "lock") {
-			if (msg.args[0] == msg.args[1]) {
+			if (msg.args && msg.args.length >= 2 && msg.args[0] == msg.args[1]) {
 				RC.Sync.remove("Lock");
 				RC.Sync.register("Changes", 0);
 				RC.Sync.setProgress("Changes", 1, false);
@@ -499,7 +510,7 @@ RC.PubSub = new (function() {
 			}
 		}
 		if (msg.command == "unlock") {
-			if (msg.args[0] == msg.args[1]) {
+			if (msg.args && msg.args.length >= 2 && msg.args[0] == msg.args[1]) {
 				RC.Sync.remove("Unlock");
 				RC.Sync.remove("Changes");
 				RC.Controller.signalUnlocked();
@@ -510,7 +521,7 @@ RC.PubSub = new (function() {
 		if (msg.command == "sync") {
 			RC.Sync.remove("Sync");
 		}
-		if (msg.command == "switch") {
+		if (msg.command == "switch" && msg.args && msg.args.length >= 1) {
 			if (msg.args[0] == "failed") 			RC.Sync.setStatus("Switch", RC.Sync.STATUS_ERROR);
 			if (msg.args[0] == "not_switchable")	RC.Sync.setStatus("Switch", RC.Sync.STATUS_WARN);
 			if (msg.args[0] == "received")			RC.Sync.setProgress("Switch", 0.2);
@@ -538,8 +549,16 @@ RC.PubSub = new (function() {
 			T.logError("Synthesis cancelled.");
 			return;
 		}
+		if (result.error_code == undefined) {
+			T.logError("Synthesis result missing error_code field.");
+			return;
+		}
 		if (result.error_code.value != 1) {
 			T.logError("Synthesis failed: " + result.error_code.value);
+			return;
+		}
+		if (root == undefined || root == null) {
+			T.logError("Synthesis result missing root path.");
 			return;
 		}
 		var root_split = root.split("/");
@@ -775,6 +794,7 @@ RC.PubSub = new (function() {
 		if (launcher_heartbeat_listener) launcher_heartbeat_listener.close();
 
 		if (behavior_status_listener) behavior_status_listener.close();
+		if (state_map_listener) state_map_listener.close();
 		if (ros_command_listener) ros_command_listener.close();
 
 		if (behavior_start_publisher) behavior_start_publisher.close();
@@ -818,6 +838,7 @@ RC.PubSub = new (function() {
 		last_launcher_status = undefined;
 
 		behavior_status_listener = undefined;
+		state_map_listener = undefined;
 		ros_command_listener = undefined;
 
 		behavior_start_publisher = undefined;
