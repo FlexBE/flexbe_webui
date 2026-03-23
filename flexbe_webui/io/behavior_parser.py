@@ -66,9 +66,11 @@ def parse_behavior_folder(folder: str, base_path: str,
 
 def parse_behavior_manifest_py(file_path: str, python_path: str,
                                editable: bool, encoding: str) -> Optional[BehaviorDefinition]:
-    """Parse behavior manifest.
+    """
+    Parse behavior manifest.
 
-    NOTE: Currently unused. Intended for future extension to Python-based manifests.
+    NOTE: Currently unused.
+    Intended for future extension to Python-based manifests.
     XML-based manifests (parse_behavior_manifest_xml) are used exclusively at this time.
     """
     try:
@@ -80,7 +82,7 @@ def parse_behavior_manifest_py(file_path: str, python_path: str,
         sys.modules[module_name] = module
         try:
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception:  # noqa: B902
             sys.modules.pop(module_name, None)
             print(f"\x1b[91mFailed to load module '{module_name}' from '{file_path}' - removed from sys.modules.\x1b[0m",
                   flush=True)

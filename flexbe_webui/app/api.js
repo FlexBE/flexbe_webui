@@ -59,6 +59,8 @@ const API = new (function(version) {
 			} else if (typeof payload.install_success === "boolean") {
 				normalized.success = payload.install_success;
 			} else {
+				// No explicit success field — defaulting to true; log so unexpected shapes are visible.
+				console.warn("normalizeResponse: no success/result/install_success field in response object", payload);
 				normalized.success = true;
 			}
 			normalized.data = payload;

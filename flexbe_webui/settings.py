@@ -191,10 +191,10 @@ class WebuiSettings(BaseModel):
             print(f"\x1b[93mInvalid server_timeout '{value}', using default 0.25s\x1b[0m", flush=True)
             return 0.25
         if timeout < 0.05:
-            print(f"\x1b[93mserver_timeout {timeout}s is below minimum, clamping to 0.05s\x1b[0m", flush=True)
+            print(f'\x1b[93mserver_timeout {timeout}s is below minimum, clamping to 0.05s\x1b[0m', flush=True)
             return 0.05
         if timeout > 10.0:
-            print(f"\x1b[93mserver_timeout {timeout}s exceeds maximum, clamping to 10.0s\x1b[0m", flush=True)
+            print(f'\x1b[93mserver_timeout {timeout}s exceeds maximum, clamping to 10.0s\x1b[0m', flush=True)
             return 10.0
         return round(timeout, 2)
 

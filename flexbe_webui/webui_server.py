@@ -1062,7 +1062,6 @@ class WebuiServer:
         if not supplied_token or not hmac.compare_digest(supplied_token, self._api_token):
             raise HTTPException(status_code=401, detail='Unauthorized')
 
-
     def run(self, port: int = 8000, host: str = '127.0.0.1', logging: str = 'warning'):
         """Run main web server loop."""
         print(f'  Configure uvicorn host/port={host}/{port} logging={logging} ...', flush=True)

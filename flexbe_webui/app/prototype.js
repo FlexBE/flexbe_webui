@@ -3,7 +3,8 @@
 //=====================
 
 Array.prototype.remove = function (element) {
-	this.splice(this.indexOf(element), 1);
+	const idx = this.indexOf(element);
+	if (idx >= 0) this.splice(idx, 1);
 }
 
 Array.prototype.clone = function() {
@@ -15,7 +16,7 @@ Array.prototype.clone = function() {
 
 Array.prototype.filter = function(predicate) {
 	var filtered_array = [];
-	this.forEach(function (element, i) {
+	this.forEach(function (element) {
 		if (predicate(element)) filtered_array.push(element);
 	});
 	return filtered_array;
