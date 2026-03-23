@@ -511,7 +511,14 @@ class WebuiServer:
                         save_settings = self._settings.copy()
                         save_settings.pop('license_text')
                         print(save_settings, flush=True)
-                        file_path = os.path.join(json_dict['folder_path'], json_dict['file_name'])
+                        file_path = os.path.realpath(
+                            os.path.join(json_dict['folder_path'], json_dict['file_name'])
+                        )
+                        allowed_root = os.path.realpath(self._config_file_folder)
+                        if not file_path.startswith(allowed_root + os.sep):
+                            raise ValueError(f"Config save path '{file_path}' is outside the config folder")
+                        if not file_path.endswith('.json'):
+                            raise ValueError(f"Config save path '{file_path}' must have a .json extension")
                         with open(file_path, 'w', encoding=self._settings['text_encoding']) as json_file:
                             json.dump(save_settings, json_file, indent=4, sort_keys=True)
                         print(f"Dictionary saved to '{file_path}'", flush=True)

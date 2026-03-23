@@ -14,9 +14,12 @@
 
 """Base model classes."""
 
+import re
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+_ROS_ACTION_TYPE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$')
 
 
 class State(BaseModel):
@@ -151,11 +154,27 @@ class ActionClientRequest(BaseModel):
     topic: str
     action_type: str
 
+    @field_validator('action_type')
+    @classmethod
+    def validate_action_type(cls, v):
+        """Validate action_type is a safe 'package/ActionName' string."""
+        if not _ROS_ACTION_TYPE_RE.match(v):
+            raise ValueError(f"action_type must be 'package/ActionName', got: {v!r}")
+        return v
+
 
 class ActionSchemaRequest(BaseModel):
     """Request model for action schema introspection."""
 
     action_type: str
+
+    @field_validator('action_type')
+    @classmethod
+    def validate_action_type(cls, v):
+        """Validate action_type is a safe 'package/ActionName' string."""
+        if not _ROS_ACTION_TYPE_RE.match(v):
+            raise ValueError(f"action_type must be 'package/ActionName', got: {v!r}")
+        return v
 
 
 class SendActionGoalRequest(BaseModel):
