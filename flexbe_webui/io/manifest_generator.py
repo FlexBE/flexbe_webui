@@ -79,17 +79,17 @@ class ManifestGenerator:
             content += '" label="' + param['label']
             content += '" hint="' + param['hint']
             content += '"'
-            if param['type'] == 'enum':
+            if param['type'] == 'enum' and param['additional']:
                 content += '>\n'
                 for add_param in param['additional']:
                     content += self.ws + self.ws + self.ws + '<option value="' + add_param + '" />\n'
                 content += self.ws + self.ws + '</param>\n'
-            elif param['type'] == 'numeric':
+            elif param['type'] == 'numeric' and param['additional']:
                 content += '>\n'
                 content += self.ws + self.ws + self.ws + '<min value="' + str(param['additional']['min']) + '" />\n'
                 content += self.ws + self.ws + self.ws + '<max value="' + str(param['additional']['max']) + '" />\n'
                 content += self.ws + self.ws + '</param>\n'
-            elif param['type'] == 'yaml':
+            elif param['type'] == 'yaml' and param['additional']:
                 content += '>\n'
                 content += self.ws + self.ws + self.ws + '<key name="' + param['additional']['key'] + '" />\n'
                 content += self.ws + self.ws + '</param>\n'

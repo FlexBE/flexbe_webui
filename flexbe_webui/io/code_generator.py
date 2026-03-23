@@ -469,8 +469,13 @@ class CodeGenerator:
         # state machine needs to start with initial state
         states = sm.states
         states.sort(key=lambda x: x.state_name)
-        init_trans = next(x for x in sm.transitions if x.from_state_name == 'INIT')
-        init_state = next(x for x in states if x.state_name == init_trans.to_state_name)
+        init_trans = next((x for x in (sm.transitions or []) if x.from_state_name == 'INIT'), None)
+        if init_trans is None:
+            raise ValueError(f"State machine '{sm.state_name}' has no INIT transition")
+        init_state = next((x for x in states if x.state_name == init_trans.to_state_name), None)
+        if init_state is None:
+            raise ValueError(f"State machine '{sm.state_name}' INIT transition targets"
+                             f" unknown state '{init_trans.to_state_name}'")
 
         if init_state != states[0]:
             states.remove(init_state)
@@ -511,7 +516,10 @@ class CodeGenerator:
         # class
         if state.state_machine:
             # temp = [x['sm'].state_path for x in self.sm_names]
-            sm_name = next(x for x in self.sm_names if x['sm'].state_path == state.state_path)['name']
+            sm_entry = next((x for x in self.sm_names if x['sm'].state_path == state.state_path), None)
+            if sm_entry is None:
+                raise ValueError(f"No state machine entry found for state path '{state.state_path}'")
+            sm_name = sm_entry['name']
             code += sm_name + ',\n'
         elif state.behavior_state:
             defkeys_str = ''
@@ -588,10 +596,9 @@ class CodeGenerator:
         state_transitions = [tran for tran in transitions if tran.from_state_name == state.state_name]
 
         for ndx, out in enumerate(state.outcomes):
-            outcome_transition = next(tran for tran in state_transitions if tran.outcome == out)
+            outcome_transition = next((tran for tran in state_transitions if tran.outcome == out), None)
             if outcome_transition is None:
-                raise Exception("outcome '" + out + "' in state '"
-                                + state.state_name + "' is not connected")
+                raise ValueError(f"outcome '{out}' in state '{state.state_name}' is not connected")
             if outcome_transition.to_state_name == state.state_name:
                 print("Looping transition for outcome '" + out
                       + "' in state '" + state.state_name + "' detected")
@@ -687,9 +694,6 @@ def extract_manual(code):
     manual_create_pattern_end = '# [/MANUAL_CREATE]'
     manual_func_pattern_begin = '# [MANUAL_FUNC]'
     manual_func_pattern_end = '# [/MANUAL_FUNC]'
-    comment_manual_pattern = '/s*# (Additional imports|Additional initialization code|Additional creation code \
-    |Private functions) can be added inside the following tags\n\r?/ig'
-
     # manual import section
     import_split_begin = code.split(manual_import_pattern_begin)
     if len(import_split_begin) == 2:
@@ -734,8 +738,6 @@ def extract_manual(code):
         if func_result != '':
             manual[3] = left_align_block(func_result, '', '')
         code = code.replace(manual_func_pattern_begin + func_split_end[0] + manual_func_pattern_end, '')
-
-    code = re.sub(comment_manual_pattern, '', code)
 
     return manual
 

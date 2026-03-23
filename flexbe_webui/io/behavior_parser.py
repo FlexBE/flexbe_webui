@@ -66,7 +66,11 @@ def parse_behavior_folder(folder: str, base_path: str,
 
 def parse_behavior_manifest_py(file_path: str, python_path: str,
                                editable: bool, encoding: str) -> Optional[BehaviorDefinition]:
-    """Parse behavior manifest."""
+    """Parse behavior manifest.
+
+    NOTE: Currently unused. Intended for future extension to Python-based manifests.
+    XML-based manifests (parse_behavior_manifest_xml) are used exclusively at this time.
+    """
     try:
         _, module_name = os.path.split(file_path)
         module_name = module_name[:-len('.py')]
@@ -74,7 +78,13 @@ def parse_behavior_manifest_py(file_path: str, python_path: str,
         spec = importlib.util.spec_from_file_location(module_name, file_path)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            print(f"\x1b[91mFailed to load module '{module_name}' from '{file_path}' - removed from sys.modules.\x1b[0m",
+                  flush=True)
+            raise
 
         manifest = module.__dict__.get(module_name[:-len('_manifest')])
 
@@ -136,15 +146,15 @@ def parse_behavior_manifest_xml(manifest_path: str,
 
         name = behavior_xml.attrib['name']
         description_xml = behavior_xml.find('description')
-        description_raw = description_xml.text.strip() if description_xml.text is not None else ''
+        description_raw = description_xml.text.strip() if description_xml is not None and description_xml.text is not None else ''
         # Keep the description lines left justified given indenting in manifest.xml
         description = '\n'.join([line.strip() for line in description_raw.split('\n')])
         tag_xml = behavior_xml.find('tagstring')
-        tags = tag_xml.text.strip() if tag_xml.text is not None else ''
+        tags = tag_xml.text.strip() if tag_xml is not None and tag_xml.text is not None else ''
         author_xml = behavior_xml.find('author')
-        author = author_xml.text.strip() if author_xml.text is not None else ''
+        author = author_xml.text.strip() if author_xml is not None and author_xml.text is not None else ''
         date_xml = behavior_xml.find('date')
-        date = date_xml.text.strip() if date_xml.text is not None else None
+        date = date_xml.text.strip() if date_xml is not None and date_xml.text is not None else None
 
         package_path = behavior_xml.find('executable').attrib['package_path'].split('.')
         rosnode_name = package_path[0]

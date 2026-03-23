@@ -997,6 +997,8 @@ class WebuiServer:
                 mg = ManifestGenerator(ws)
 
                 package = self.packages.get(behavior.behavior_package)
+                if package is None:
+                    raise ValueError(f"Invalid package '{behavior.behavior_package}' for manifest generation")
                 package_path = package.path
 
                 file_name = ''
