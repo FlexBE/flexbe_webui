@@ -188,10 +188,13 @@ class WebuiSettings(BaseModel):
         try:
             timeout = float(value)
         except (TypeError, ValueError):
-            timeout = 0.25
+            print(f"\x1b[93mInvalid server_timeout '{value}', using default 0.25s\x1b[0m", flush=True)
+            return 0.25
         if timeout < 0.05:
+            print(f"\x1b[93mserver_timeout {timeout}s is below minimum, clamping to 0.05s\x1b[0m", flush=True)
             return 0.05
         if timeout > 10.0:
+            print(f"\x1b[93mserver_timeout {timeout}s exceeds maximum, clamping to 10.0s\x1b[0m", flush=True)
             return 10.0
         return round(timeout, 2)
 
@@ -254,7 +257,7 @@ class WebuiSettings(BaseModel):
             matches = ENV_VAR_PATTERN.findall(source_code_root)
             if len(matches) > 0:
                 workspace_root = os.getenv(matches[0])
-                if workspace_root is not None:
+                if workspace_root is not None and workspace_root.strip() != '':
                     print(f"The '{matches[0]}' environment variable is set, update the source code root.", flush=True)
                     source_code_root = source_code_root.replace(f'${{{matches[0]}}}', workspace_root)
                     values['source_code_root'] = source_code_root

@@ -600,8 +600,7 @@ class CodeGenerator:
             if outcome_transition is None:
                 raise ValueError(f"outcome '{out}' in state '{state.state_name}' is not connected")
             if outcome_transition.to_state_name == state.state_name:
-                print("Looping transition for outcome '" + out
-                      + "' in state '" + state.state_name + "' detected")
+                print(f"Looping transition for outcome '{out}' in state '{state.state_name}' detected")
             transition_target = outcome_transition.to_state_name
             if outcome_transition.to_state_class == ':CONDITION':
                 transition_target = transition_target.split('#')[0]

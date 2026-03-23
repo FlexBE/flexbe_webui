@@ -55,9 +55,8 @@ class _RosWebsocketBridge:
 
     def __init__(self):
         """Initialize bridge state."""
-        self._websockets = {}
+        self._websockets = {}  # topic -> (websocket, loop)
         self._websocket_lock = threading.Lock()
-        self._websocket_loop = None
         self._diag_lock = threading.Lock()
         self._send_failures = 0
         self._send_successes = 0
@@ -66,12 +65,12 @@ class _RosWebsocketBridge:
     def publish_msg(self, topic, msg):
         """Serialize and forward ROS messages to an active websocket topic."""
         with self._websocket_lock:
-            websocket = self._websockets.get(topic)
-            websocket_loop = self._websocket_loop
+            entry = self._websockets.get(topic)
 
-        if websocket is None or websocket_loop is None:
+        if entry is None:
             print(f"\x1b[93mUI is offline (socket for '{topic}' does not exist)!\x1b[0m", flush=True)
             return
+        websocket, websocket_loop = entry
 
         try:
             msg_json = json.dumps(yaml.load(rosidl_runtime_py.convert.message_to_yaml(msg), Loader=yaml.SafeLoader))
@@ -93,7 +92,7 @@ class _RosWebsocketBridge:
                     print(f"\x1b[93mFailed to send data for '{topic}' - {exc}\x1b[0m", flush=True)
 
             send_future.add_done_callback(_log_send_failure)
-        except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+        except (RuntimeError, OSError, ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
             with self._diag_lock:
                 self._send_failures += 1
                 self._recent_failures.append({
@@ -109,8 +108,7 @@ class _RosWebsocketBridge:
         print(f"accepted websocket for '{raw_topic}'", flush=True)
         topic = raw_topic.replace('-', '/')
         with self._websocket_lock:
-            self._websocket_loop = asyncio.get_running_loop()
-            self._websockets[topic] = websocket
+            self._websockets[topic] = (websocket, asyncio.get_running_loop())
 
         try:
             while running_check():
@@ -391,7 +389,7 @@ class WebuiNode(Node):
 
                 self._pub_data[topic] = {'msg_class': msg_class, 'publisher': publisher}
                 return self._server.api_command_success()
-            except (ImportError, AttributeError, ValueError, TypeError, RuntimeError) as exc:
+            except (ImportError, AttributeError, IndexError, ValueError, TypeError, RuntimeError) as exc:
                 print(f"Failed to create publisher for '{topic}' - {exc}", flush=True)
                 return self._server.api_command_failure(exc)
 
@@ -426,7 +424,7 @@ class WebuiNode(Node):
                 self._sub_data[topic] = self.create_subscription(msg_class, topic, lambda msg: self._sub_callback(msg, topic), 10)
                 print(f"\x1b[92mCreated subscriber for '{topic}' ({msg_type}) \x1b[0m", flush=True)
                 return self._server.api_command_success()
-            except (ImportError, AttributeError, ValueError, TypeError, RuntimeError) as exc:
+            except (ImportError, AttributeError, IndexError, ValueError, TypeError, RuntimeError) as exc:
                 print(f"\x1b[91mFailed to create subscriber for '{topic}' - {exc}\x1b[0m", flush=True)
                 return self._server.api_command_failure(exc)
 
@@ -484,6 +482,8 @@ class WebuiNode(Node):
             try:
                 self._server.authorize_request(request)
                 action_class = self._load_action_class(action_type)
+                if topic in self._action_clients:
+                    self.destroy_client(self._action_clients[topic]['client'])
                 self._action_clients[topic] = {'client': ActionClient(self, action_class, topic),
                                                'class': action_class,
                                                'future': None,

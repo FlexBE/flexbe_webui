@@ -515,7 +515,7 @@ class WebuiServer:
                             os.path.join(json_dict['folder_path'], json_dict['file_name'])
                         )
                         allowed_root = os.path.realpath(self._config_file_folder)
-                        if not file_path.startswith(allowed_root + os.sep):
+                        if os.path.commonpath([allowed_root, file_path]) != allowed_root:
                             raise ValueError(f"Config save path '{file_path}' is outside the config folder")
                         if not file_path.endswith('.json'):
                             raise ValueError(f"Config save path '{file_path}' must have a .json extension")
@@ -961,7 +961,7 @@ class WebuiServer:
                 print(' done!', flush=True)
                 result_dict.update({'src_save_success': True})
                 return self.api_success(result_dict)
-            except (AttributeError, OSError, TypeError, ValueError, KeyError, RuntimeError) as exc:
+            except (AttributeError, IndexError, OSError, TypeError, ValueError, KeyError, RuntimeError) as exc:
                 print(f" Exception generating code for '{file_name}' in '{package_name}'  -- {exc}", flush=True)
                 import traceback
                 print(traceback.format_exc().replace('%', '%%'), flush=True)

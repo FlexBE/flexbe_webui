@@ -89,7 +89,7 @@ def parse_state(import_path: str, file_path: str) -> List[StateDefinition]:
             except NotImplementedError:  # this error type is expected
                 pass  # we do nothing because state_def has been updated already
             except (TypeError, ValueError, AttributeError, RuntimeError) as exc:  # any other error is passed onwards
-                raise Exception(
+                raise RuntimeError(
                     f"Cannot instantiate state '{cls.__name__}' to determine interface, "
                     "consider removing any code before 'super' in '__init__'. "
                     f'Error: {str(exc)}') from exc

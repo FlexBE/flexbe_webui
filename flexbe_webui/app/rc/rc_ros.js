@@ -30,8 +30,6 @@ RC.ROS = new (function() {
 		trying = false;
 		stopping = false;
 		connected = true;
-		UI.Settings.setRosProperties(namespace);
-		UI.RuntimeControl.setRosProperties(namespace);
 	}
 
 	this.setOfflineMode = function() {
@@ -79,8 +77,6 @@ RC.ROS = new (function() {
 		UI.Menu.displayOCSStatus("offline");
 		T.logInfo("ROS connection closed!");
 		stopping = false;
-		UI.Settings.setRosProperties('');
-		UI.RuntimeControl.setRosProperties('');
 	}
 
 	this.isConnected = function() {
