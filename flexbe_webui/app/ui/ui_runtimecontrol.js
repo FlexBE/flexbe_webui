@@ -179,7 +179,13 @@ UI.RuntimeControl = new (function() {
 
 					let child_state = current_states[child_ndx + 1];
 					if (child_state == undefined) {
-						return;
+						// Mirror only reports the container path when it first enters
+						// (e.g. PriorityContainer). Fall back to the container's initial
+						// state so the user can still browse the interior.
+						let initial = state_obj.getInitialState();
+						if (initial == undefined) return;
+						current_states[child_ndx + 1] = initial;
+						child_state = initial;
 					}
 					current_state = child_state;
 					that.updateStateDisplayDepth(child_state.getStatePath());
@@ -995,6 +1001,15 @@ UI.RuntimeControl = new (function() {
 			return; // not updating current state path if pending outcome request
 		}
 		RC.Controller.updateCurrentStatePath(targetPath);
+	}
+
+	this.clearOutcomeRequest = function() {
+		// Clear any pending outcome request without triggering a redraw.
+		// Used when the behavior auto-proceeds (e.g. autonomy raised to High while
+		// blocked) so that subsequent mirror state updates flow through normally.
+		outcome_request.target = undefined;
+		outcome_request.outcome = undefined;
+		pending_outcome_requests.clear();
 	}
 
 	this.displayOutcomeRequest = function(outcome, targetState) {

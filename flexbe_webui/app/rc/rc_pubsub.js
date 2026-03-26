@@ -454,6 +454,13 @@ RC.PubSub = new (function() {
 		}
 		if (msg.command == "autonomy") {
 			RC.Sync.remove("Autonomy");
+			// If a state was blocked waiting for operator approval and the user raised
+			// the autonomy level, the onboard may have auto-proceeded. Clear any pending
+			// outcome request so mirror state updates can flow through normally.
+			// The vis_update cycle will redraw the display on the next state message.
+			if (RC.Controller.isRunning()) {
+				UI.RuntimeControl.clearOutcomeRequest();
+			}
 		}
 		if (msg.command == "attach") {
 			if (RC.Sync.hasProcess("Attach")) {
