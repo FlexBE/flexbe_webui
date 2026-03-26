@@ -2,8 +2,23 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.1.1 (2026-03-25)
+------------------
+* Fix UI freeze when autonomy raised while behavior is blocked
+* Update PriorityContainer processing
+* Add external behavior detection, blocked launch feedback, and attach flow improvements
+* Validate action type format and restrict config save path to prevent traversal
+* Fix code generator and behavior IO crashes on malformed or incomplete inputs
+* Fix backend robustness: websocket loop race, settings validation, exception handling
+* Guard frontend message field accesses against malformed runtime messages
+* Fix Pydantic v1 API usage, add State model list length validation, guard synthesis container
+* Fix Array.prototype.remove, add API response warning, fix lint
+
 4.1.0 (2026-03-07)
 ------------------
+* Add ``--host`` argument to bind server to specific network interface (default: 127.0.0.1)
+* Default WebSocket URL to ``window.location.host`` so client works on non-localhost connections
+* Add ``--disable_gpu`` option to work around blank screen on systems with older NVIDIA GPUs
 * clarify that webui_client depends on local venv install of PySide6, and is not listed as a package dependency
 * update dependencies and documentation
 * Harden server startup, settings, and packaged configuration (`304046d`)
@@ -60,9 +75,6 @@ Changelog for package flexbe_webui
   * Added action-goal cancellation tests.
   * Added startup smoke tests and optional browser smoke coverage.
 
-* protect against invalid package folder without python_path defined
-* specify python3 in code generator
-* update setup.py requires
 
 4.0.3 (2025-03-26)
 ------------------

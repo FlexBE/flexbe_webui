@@ -21,7 +21,7 @@ The `flexbe_webui` has the look of the classic `flexbe_app` with some notable im
   * Improved tab handling.
   * Improved panning of the canvas for larger state machines using `Shift` + arrow keys, plus `Home` and `End`.
 
-> Note: This version `4.0+` of `flexbe_webui` is designed to work with version `4.0+` of the `flexbe_behavior_engine`.
+> Note: This version `4.1+` of `flexbe_webui` is designed to work with version `4.1+` of the `flexbe_behavior_engine`.
 > If using an earlier `3.x.x` version of `flexbe_behavior_engine`, use either the `flexbe_app` or the "beta-enhanced" branch of `flexbe_webui`. The FlexBE WebUI is not compatible with `flexbe_behavior_engine` version `2.x.x`.
 
 ## Quick Start
