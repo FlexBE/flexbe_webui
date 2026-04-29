@@ -419,3 +419,142 @@ def test_code_generator_aliases_colliding_behavior_imports_and_references():
     assert 'from pkg_b.bar_sm import SharedSM as pkg_b__SharedSM' in code
     assert "self.use_behavior(pkg_a__SharedSM, 'Behavior A')" in code
     assert "self.use_behavior(pkg_b__SharedSM, 'Behavior B')" in code
+
+
+def test_code_generator_encodes_multi_copy_outcome_comment_names():
+    """Outcome copy metadata comments should encode names that are not identifier-safe."""
+    generator = CodeGenerator()
+
+    simple_state = SimpleNamespace(
+        state_name='Alpha State',
+        state_path='/Alpha State',
+        state_class='SomeState',
+        state_pkg='pkg_a',
+        state_import='pkg_a.some_state',
+        state_machine=False,
+        behavior_state=False,
+        position_x=0,
+        position_y=0,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[],
+        input_mapping=[],
+        outcomes=['go now'],
+        autonomy=[0],
+        output_keys=[],
+        output_mapping=[],
+    )
+    root_sm = SimpleNamespace(
+        state_name='Container',
+        state_path='/Container',
+        states=[simple_state],
+        transitions=[
+            SimpleNamespace(from_state_name='INIT', to_state_name='Alpha State', to_state_class='pkg_a.SomeState'),
+            SimpleNamespace(
+                from_state_name='Alpha State',
+                to_state_name='task done#1',
+                to_state_class=':OUTCOME',
+                outcome='go now',
+                x=None,
+                y=None,
+                beg_x=None,
+                beg_y=None,
+                end_x=None,
+                end_y=None,
+            ),
+        ],
+        sm_outcomes=[
+            SimpleNamespace(state_name='task done', position_x=10, position_y=20),
+            SimpleNamespace(state_name='task done#1', position_x=30, position_y=40),
+        ],
+        outcomes=['task done'],
+        input_keys=[],
+        output_keys=[],
+        concurrent=False,
+        priority=False,
+        conditions={},
+    )
+
+    code = generator.generate_state_machine(root_sm, True, [simple_state])
+
+    assert '# task%20done:x:10 y:20, task%20done%231:x:30 y:40' in code
+    assert '# route: Alpha%20State>go%20now --> task%20done%231' in code
+
+
+def test_code_generator_keeps_root_outcome_copies_out_of_interface_outcomes():
+    """Root copied outcomes should stay in metadata comments, not real behavior outcomes."""
+    generator = CodeGenerator()
+
+    simple_state = SimpleNamespace(
+        state_name='Alpha State',
+        state_path='/Alpha State',
+        state_class='SomeState',
+        state_pkg='pkg_a',
+        state_import='pkg_a.some_state',
+        state_machine=False,
+        behavior_state=False,
+        position_x=0,
+        position_y=0,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[],
+        input_mapping=[],
+        outcomes=['go now'],
+        autonomy=[0],
+        output_keys=[],
+        output_mapping=[],
+    )
+    root_sm = SimpleNamespace(
+        state_name='',
+        state_path='',
+        states=[simple_state],
+        transitions=[
+            SimpleNamespace(from_state_name='INIT', to_state_name='Alpha State', to_state_class='pkg_a.SomeState'),
+            SimpleNamespace(
+                from_state_name='Alpha State',
+                to_state_name='finished#1',
+                to_state_class=':OUTCOME',
+                outcome='go now',
+                x=None,
+                y=None,
+                beg_x=None,
+                beg_y=None,
+                end_x=None,
+                end_y=None,
+            ),
+        ],
+        sm_outcomes=[
+            SimpleNamespace(state_name='finished', position_x=10, position_y=20),
+            SimpleNamespace(state_name='finished#1', position_x=30, position_y=40),
+        ],
+        outcomes=['finished'],
+        input_keys=[],
+        output_keys=[],
+        concurrent=False,
+        priority=False,
+        conditions={},
+    )
+    behavior = SimpleNamespace(
+        behavior_name='Demo Behavior',
+        behavior_description='desc',
+        author='tester',
+        creation_date='2026-03-31',
+        manual_code_import=[],
+        manual_code_init='',
+        manual_code_create='',
+        manual_code_func='',
+        comment_notes=[],
+        behavior_parameters=[],
+        private_variables=[],
+        interface_input_keys=[],
+        interface_output_keys=[],
+        default_userdata=[],
+        root_sm=root_sm,
+    )
+
+    code = generator.generate_behavior_code(behavior, 'dummy license\n')
+
+    assert '# finished:x:10 y:20, finished%231:x:30 y:40' in code
+    assert '# route: Alpha%20State>go%20now --> finished%231' in code
+    assert '_state_machine = OperatableStateMachine(outcomes=' + repr(['finished']) + ')' in code
+    assert 'finished#1' not in code.split('_state_machine = OperatableStateMachine(', 1)[1].split(')\n', 1)[0]

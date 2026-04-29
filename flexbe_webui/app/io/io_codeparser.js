@@ -64,12 +64,12 @@ IO.CodeParser = new (function() {
 		// [1] - name of the root statemachine variable
 	var return_sm_pattern = /^\s*return (\w+)/im;
 		// Matches all state machine definitions (root and subs)
-		// [1] - list of outcome positions, [2] - variable name of the sm, [3] - parameter collection (outcomes, input_keys, output_keys)
-	var sm_definition_pattern = /^(?:\s*# ((?:x:-?\d+ y:-?\d+(?:, )?)+))?\s*(\w+) = OperatableStateMachine\(([^)]+)\)/img;
+		// [1] - list of outcome positions (old: "x:N y:M" or new: "name:x:N y:M"), [2] - variable name of the sm, [3] - parameter collection (outcomes, input_keys, output_keys)
+	var sm_definition_pattern = /^(?:\s*# ((?:(?:[^,\n]+:)?x:-?\d+ y:-?\d+(?:, )?)+))?\s*(\w+) = OperatableStateMachine\(([^)]+)\)/img;
 		// [1] - list of outcome positions, [2] - variable name of the cc, [3] - parameter collection (outcomes, input_keys, output_keys, conditions)
 	var cc_definition_pattern = /^(?:\s*# ((?:x:-?\d+ y:-?\d+(?:, )?)+))?\s*(\w+) = ConcurrencyContainer\(((?:.|\n)*?)\s\]\)\n/img;
-		// [1] - list of outcome positions, [2] - variable name of the sm, [3] - parameter collection (outcomes, input_keys, output_keys)
-	var pc_definition_pattern = /^(?:\s*# ((?:x:-?\d+ y:-?\d+(?:, )?)+))?\s*(\w+) = PriorityContainer\(([^)]+)\)/img;
+		// [1] - list of outcome positions (old: "x:N y:M" or new: "name:x:N y:M"), [2] - variable name of the sm, [3] - parameter collection (outcomes, input_keys, output_keys)
+	var pc_definition_pattern = /^(?:\s*# ((?:(?:[^,\n]+:)?x:-?\d+ y:-?\d+(?:, )?)+))?\s*(\w+) = PriorityContainer\(([^)]+)\)/img;
 		// Matches all variable definitions (including sm! remove those first)
 		// [1] - variable name, [2] - variable value
 	var var_definition_pattern = /^\s*(\w+) = (.+)/img;
@@ -99,6 +99,14 @@ IO.CodeParser = new (function() {
 	var need_manual_init = false;
 	var need_manual_create = false;
 	var need_manual_func = false;
+
+	var decodeCommentName = function(value) {
+		try {
+			return decodeURIComponent(value);
+		} catch (_err) {
+			return value;
+		}
+	}
 
 
 	this.leftJustifyTextBlock = function(textBlock) {
@@ -324,6 +332,26 @@ IO.CodeParser = new (function() {
 	}
 
 
+	var parsePositions = function(positions) {
+		var pos = [];
+		if (positions != undefined && positions != "") {
+			positions.split(", ").forEach(function(element) {
+				var named_match = element.match(/^([^:]+):x:(-?\d+) y:(-?\d+)$/);
+				if (named_match) {
+					pos.push({
+						name: decodeCommentName(named_match[1]),
+						x: parseInt(named_match[2]),
+						y: parseInt(named_match[3])
+					});
+				} else {
+					var xy = element.replace("x:", "").replace("y:", "").split(" ");
+					pos.push({x: parseInt(xy[0]), y: parseInt(xy[1])});
+				}
+			});
+		}
+		return pos;
+	}
+
 	var parseCreateSection = function(code, only_interface, state_type_imports) {
 		// get root sm var name
 		var root_sm_name_result = code.match(return_sm_pattern);
@@ -331,41 +359,56 @@ IO.CodeParser = new (function() {
 		var root_sm_name = root_sm_name_result[1];
 		code = code.replace(return_sm_pattern, "");
 
+		// Pre-pass: extract # route: comments and associate with the SM variable they precede
+		var route_map = {};
+		var pending_routes = [];
+		var route_comment_re = /^[ \t]*# route: (.+?) --> (.+?)\s*$/;
+		var sm_var_next_re = /^\s*(\w+)\s*=\s*(?:OperatableStateMachine|ConcurrencyContainer|PriorityContainer)\(/;
+		var code_lines = code.split('\n');
+		for (var li = 0; li < code_lines.length; li++) {
+			var route_match = code_lines[li].match(route_comment_re);
+			if (route_match) {
+				var sources = route_match[1].split(', ').map(function(src) {
+					var parts = src.split('>');
+					return {
+						state: decodeCommentName(parts[0]),
+						outcome: decodeCommentName(parts.slice(1).join('>'))
+					};
+				});
+				pending_routes.push({
+					sources: sources,
+					dest_copy: decodeCommentName(route_match[2])
+				});
+				code_lines[li] = '';
+			} else {
+				if (pending_routes.length > 0) {
+					var sm_var_match = code_lines[li].match(sm_var_next_re);
+					if (sm_var_match) {
+						route_map[sm_var_match[1]] = pending_routes.slice();
+					}
+					// Clear pending on any non-comment, non-empty line
+					if (code_lines[li].trim() !== '' && !code_lines[li].match(/^\s*#/)) {
+						pending_routes = [];
+					}
+				}
+			}
+		}
+		code = code_lines.join('\n');
+
 		// get all sm definitions
 		var sm_defs = [];
 		code = code.replace(sm_definition_pattern, function(s, positions, name, params) {
-			var pos = [];
-			if (positions != undefined && positions != "") {
-				positions.split(", ").forEach(function (element) {
-					var xy = element.replace("x:", "").replace("y:", "").split(" ");
-					pos.push({x: parseInt(xy[0]), y: parseInt(xy[1])});
-				});
-			}
-			sm_defs.push({sm_name: name, sm_params: parseSMIDefinition(params), oc_positions: pos, sm_type: 'statemachine'});
+			sm_defs.push({sm_name: name, sm_params: parseSMIDefinition(params), oc_positions: parsePositions(positions), routes: route_map[name] || [], sm_type: 'statemachine'});
 			return "";
 		});
 		// get all cc definitions
 		code = code.replace(cc_definition_pattern, function(s, positions, name, params) {
-			var pos = [];
-			if (positions != undefined && positions != "") {
-				positions.split(", ").forEach(function (element) {
-					var xy = element.replace("x:", "").replace("y:", "").split(" ");
-					pos.push({x: parseInt(xy[0]), y: parseInt(xy[1])});
-				});
-			}
-			sm_defs.push({sm_name: name, sm_params: parseSMIDefinition(params), oc_positions: pos, sm_type: 'concurrency'});
+			sm_defs.push({sm_name: name, sm_params: parseSMIDefinition(params), oc_positions: parsePositions(positions), routes: [], sm_type: 'concurrency'});
 			return "";
 		});
 		// get all pc definitions
 		code = code.replace(pc_definition_pattern, function(s, positions, name, params) {
-			var pos = [];
-			if (positions != undefined && positions != "") {
-				positions.split(", ").forEach(function (element) {
-					var xy = element.replace("x:", "").replace("y:", "").split(" ");
-					pos.push({x: parseInt(xy[0]), y: parseInt(xy[1])});
-				});
-			}
-			sm_defs.push({sm_name: name, sm_params: parseSMIDefinition(params), oc_positions: pos, sm_type: 'priority'});
+			sm_defs.push({sm_name: name, sm_params: parseSMIDefinition(params), oc_positions: parsePositions(positions), routes: route_map[name] || [], sm_type: 'priority'});
 			return "";
 		});
 		// get root sm definition
@@ -921,5 +964,4 @@ IO.CodeParser = new (function() {
 		if (autonomy == "Autonomy.Full")		return 3;
 		return -1;
 	}
-
 }) ();

@@ -3,6 +3,23 @@ Tools = new (function() {
 
 	var clipboard = undefined;
 
+	var ensureOutcomeTarget = function(sm, target_state) {
+		var target_name = target_state.getStateName();
+		var existing = sm.getSMOutcomeByName(target_name);
+		if (existing != undefined) {
+			return existing;
+		}
+		if (sm.isConcurrent() || target_name.indexOf('#') == -1) {
+			return existing;
+		}
+
+		var copy = new State(target_name, WS.Statelib.getFromLib(':OUTCOME'));
+		copy.setPosition({x: target_state.getPosition().x, y: target_state.getPosition().y});
+		copy.setContainer(sm);
+		sm.getSMOutcomes().push(copy);
+		return copy;
+	}
+
 	var pasteStateInto = function(s, sm, no_add) {
 		let new_state = undefined;
 		if (s instanceof Statemachine) {
@@ -19,10 +36,10 @@ Tools = new (function() {
 				let new_to = new_state.getStateByName(element.getTo().getStateName());
 				let is_outcome = new_to == undefined;
 				if (is_outcome) {
-					new_to = new_state.getSMOutcomeByName(element.getTo().getStateName());
+					new_to = ensureOutcomeTarget(new_state, element.getTo());
 				}
 				new_state.addTransition(new Transition(new_from, new_to, element.getOutcome(), element.getAutonomy()));
-				if (new_state.isConcurrent() && is_outcome) {
+				if (is_outcome) {
 					new_state.tryDuplicateOutcome(element.getTo().getStateName().split('#')[0]);
 				}
 			});

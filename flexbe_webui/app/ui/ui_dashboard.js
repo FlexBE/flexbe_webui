@@ -7,6 +7,63 @@ UI.Dashboard = new (function() {
 	var listeners_to_cleanup = [];
 	var parameter_flip_focus = undefined;
 
+	var insertElementAt = function(parent, child, index) {
+		if (index == undefined || index < 0 || index >= parent.children.length || parent.insertBefore == undefined) {
+			parent.appendChild(child);
+			return;
+		}
+		parent.insertBefore(child, parent.children[index]);
+	}
+
+	var dashboardValueToId = function(value) {
+		return value.replace(' ', '_');
+	}
+
+	var outcomeToDashboardId = function(outcome) {
+		return dashboardValueToId(outcome);
+	}
+
+	var getDashboardValueCollision = function(row_prefix, input_prefix, value, exclude_value=undefined) {
+		let row_id = row_prefix + dashboardValueToId(value);
+		let row = document.getElementById(row_id);
+		if (row == undefined) {
+			return undefined;
+		}
+		let input = document.getElementById(input_prefix + dashboardValueToId(value));
+		let existing_value = input != undefined ? input.getAttribute("old_value") : undefined;
+		if (existing_value == undefined || existing_value == exclude_value || existing_value == value) {
+			return undefined;
+		}
+		return existing_value;
+	}
+
+	var getOutcomeCollision = function(outcome, exclude_outcome=undefined) {
+		return getDashboardValueCollision(
+			"db_field_outcome_table_row_",
+			"db_field_outcome_table_input_field_",
+			outcome,
+			exclude_outcome
+		);
+	}
+
+	var getInterfaceInputKeyCollision = function(key, exclude_key=undefined) {
+		return getDashboardValueCollision(
+			"db_field_input_key_table_row_",
+			"db_field_input_key_table_input_field_",
+			key,
+			exclude_key
+		);
+	}
+
+	var getInterfaceOutputKeyCollision = function(key, exclude_key=undefined) {
+		return getDashboardValueCollision(
+			"db_field_output_key_table_row_",
+			"db_field_output_key_table_input_field_",
+			key,
+			exclude_key
+		);
+	}
+
 	var tupleUsesDoubleQuotes = function(value) {
 		if (typeof value !== "string") {
 			return false;
@@ -1202,32 +1259,89 @@ UI.Dashboard = new (function() {
 	//	State Machine Interface
 	// =========================
 
-	this.removeBehaviorOutcome = function(outcome) {
+	this.removeBehaviorOutcome = function(outcome, skip_history=false) {
 		outcome = outcome.trim();
 		let index = Behavior.getInterfaceOutcomes().findIndex(function (element) {
 			return element.trim() == outcome.trim(); });
 		let childRow = document.getElementById("db_field_outcome_table_row_"+outcome.replace(' ', '_'));
 		if (index == -1 || childRow == undefined) {
 			console.log(`\x1b[93m removeBehaviorOutcome - unknown entry (${index}) or `
-						+`child row (${childRow}) for '${import_value}'\x1b[0m`);
+						+`child row (${childRow}) for '${outcome}'\x1b[0m`);
 			return;
 		}
 
-		Behavior.removeInterfaceOutcome(outcome);
+		let removed_snapshot = Behavior.removeInterfaceOutcome(outcome);
 		that.clearChildElements("db_field_outcome_table_remove_button_"+outcome.replace(' ', '_'));
 		that.clearChildElements("db_field_outcome_table_input_field_" + outcome.replace(' ', '_'));
 		document.getElementById("db_outcome_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_outcome_add").focus({ preventScroll: true });
 
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Removed behavior outcome " + outcome,
-			function() { that.addBehaviorOutcome(outcome); },
-			function() { that.removeBehaviorOutcome(outcome); }
-		);
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Removed behavior outcome " + outcome,
+				function() { that.restoreBehaviorOutcome(removed_snapshot, true); },
+				function() { removed_snapshot = that.removeBehaviorOutcome(outcome, true); }
+			);
+		}
 
 		if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
+		return removed_snapshot;
 	};
+
+	this.restoreBehaviorOutcome = function(removed_snapshot, skip_history=false) {
+		if (removed_snapshot == undefined || removed_snapshot.outcome == undefined) {
+			return false;
+		}
+
+		Behavior.restoreInterfaceOutcome(removed_snapshot);
+		return that._addBehaviorOutcome(removed_snapshot.outcome, removed_snapshot.index, skip_history, true);
+	}
+
+	this._changeBehaviorOutcome = function(new_value, old_value, skip_history=false) {
+		new_value = new_value.trim();
+		old_value = old_value.trim();
+
+		if (new_value == old_value) {
+			console.log(`Ignoring changeBehaviorOutcome for '${old_value}' with no change`);
+			return false;
+		}
+
+		let index = Behavior.getInterfaceOutcomes().findIndex((el) => { return el == old_value});
+		let keyElement = document.getElementById('db_field_outcome_table_input_field_' + outcomeToDashboardId(old_value));
+		if (index == -1 || keyElement == undefined) {
+			console.log(`\x1b[93m changeBehaviorOutcome - unknown entry (${index}) or key element (${keyElement}) for '${old_value}'\x1b[0m`);
+			console.log(`    ${JSON.stringify(Behavior.getInterfaceOutcomes())}`);
+			if (keyElement != undefined) {
+				keyElement.focus({ preventScroll: true });
+				keyElement.style.backgroundColor = "#f77";
+			}
+			return false;
+		}
+
+		Behavior.updateInterfaceOutcome(old_value, new_value);
+		keyElement.setAttribute("old_value", new_value);
+		keyElement.value = new_value;
+		keyElement.style.backgroundColor = "#fff";
+		keyElement.id = "db_field_outcome_table_input_field_" + outcomeToDashboardId(new_value);
+
+		let variableRow = document.getElementById("db_field_outcome_table_row_" + outcomeToDashboardId(old_value));
+		variableRow.setAttribute("id", "db_field_outcome_table_row_" + outcomeToDashboardId(new_value));
+		let removeElement = document.getElementById("db_field_outcome_table_remove_button_" + outcomeToDashboardId(old_value));
+		removeElement.id = "db_field_outcome_table_remove_button_" + outcomeToDashboardId(new_value);
+
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
+				"Modified outcome name '" + old_value + "' to '" + new_value + "'",
+				function() { that._changeBehaviorOutcome(old_value, new_value, true); },
+				function() { that._changeBehaviorOutcome(new_value, old_value, true); }
+			);
+		}
+
+		if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
+
+		return true;
+	}
 
 
 	this.changeBehaviorOutcome = async function(new_value, old_value) {
@@ -1263,34 +1377,29 @@ UI.Dashboard = new (function() {
 			return false;
 		}
 
-		Behavior.updateInterfaceOutcome(old_value, new_value);
-		keyElement.setAttribute("old_value", new_value);
-		keyElement.value = new_value;
-		keyElement.style.backgroundColor = "#fff";
-		keyElement.id = "db_field_outcome_table_input_field_" + new_value.replace(' ', '_');
+		let collision = getOutcomeCollision(new_value, old_value);
+		if (collision != undefined) {
+			T.logWarn("Dashboard outcome id collision between '" + old_value + "' and '" + collision
+				+ "' would make '" + new_value + "' ambiguous in the editor.");
+			await UI.Tools.customAcknowledge("Outcome name '" + new_value + "' conflicts with the Dashboard row id used by '"
+											+ collision + "'.<br><br>Rename one of them to continue.");
+			keyElement.focus({ preventScroll: true });
+			keyElement.style.backgroundColor = "#f77";
+			return false;
+		}
 
-		// Update the other element ids with new key value
-		let variableRow = document.getElementById("db_field_outcome_table_row_" + old_value.replace(' ', '_'));
-		variableRow.id = "db_field_outcome_table_row_" + new_value.replace(' ', '_');
-		let removeElement = document.getElementById("db_field_outcome_table_remove_button_" + old_value.replace(' ', '_'));
-		removeElement.id = "db_field_outcome_table_remove_button_" + new_value.replace(' ', '_');
-
-
-		ActivityTracer.addActivity(ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE,
-			"Modified outcome name '" + old_value + "' to '" + new_value + "'",
-			function() { that.changeBehaviorOutcome(old_value, new_value); },
-			function() { that.changeBehaviorOutcome(new_value, old_value); }
-		);
-
-		if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
-
-		return true;
+		return that._changeBehaviorOutcome(new_value, old_value);
 	};
 
-	this._addBehaviorOutcome = function(new_outcome) {
+	this._addBehaviorOutcome = function(new_outcome, insert_idx=undefined, skip_history=false, skip_model_add=false) {
 		new_outcome = new_outcome.trim();
 
-		const new_id = new_outcome.replace(' ', '_');
+		const new_id = outcomeToDashboardId(new_outcome);
+		let collision = getOutcomeCollision(new_outcome);
+		if (collision != undefined) {
+			T.logWarn("Dashboard outcome id collision between '" + new_outcome + "' and '" + collision
+				+ "' may make Dashboard editing ambiguous.");
+		}
 
 		let input_field = document.createElement("input");
 		input_field.setAttribute("id", "db_field_outcome_table_input_field_"+new_id);
@@ -1358,19 +1467,24 @@ UI.Dashboard = new (function() {
 		td_input_field.appendChild(input_field);
 		td_remove_button.appendChild(remove_button);
 
-		Behavior.addInterfaceOutcome(new_outcome);
+		if (!skip_model_add) {
+			Behavior.addInterfaceOutcome(new_outcome);
+		}
 
 		let tr = document.createElement("tr");
-		tr.id = "db_field_outcome_table_row_"+new_outcome.replace(' ', '_')
+		tr.setAttribute("id", "db_field_outcome_table_row_"+new_outcome.replace(' ', '_'));
 		tr.appendChild(td_input_field);
 		tr.appendChild(td_remove_button);
-		document.getElementById("db_outcome_table").appendChild(tr);
+		insertElementAt(document.getElementById("db_outcome_table"), tr, insert_idx);
 
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Added behavior outcome " + new_outcome,
-			function() { that.removeBehaviorOutcome(new_outcome); },
-			function() { that.addBehaviorOutcome(new_outcome); }
-		);
+		if (!skip_history) {
+			let removed_snapshot = undefined;
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Added behavior outcome " + new_outcome,
+				function() { removed_snapshot = that.removeBehaviorOutcome(new_outcome, true); },
+				function() { that.restoreBehaviorOutcome(removed_snapshot, true); }
+			);
+		}
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_outcome_add").value = "";
 		document.getElementById("input_db_outcome_add").focus({preventScroll: true});
@@ -1379,26 +1493,76 @@ UI.Dashboard = new (function() {
 
 	}
 
-	this.removeInterfaceInputKey = function(key) {
+	this.removeInterfaceInputKey = function(key, skip_history=false) {
 		let index = Behavior.getInterfaceInputKeys().findIndex((el) => { return el == key});
-		let childRow = document.getElementById("db_field_input_key_table_row_" + key.replace(' ', '_'));
+		let childRow = document.getElementById("db_field_input_key_table_row_" + dashboardValueToId(key));
 		if (index == -1 || childRow == undefined) {
 			console.log(`\x1b[93m removeInterfaceInputKey - unknown entry (${index}) or child row (${childRow}) for '${key}'\x1b[0m`);
 			return false;
 		}
 
 		Behavior.removeInterfaceInputKey(key);
-		that.clearChildElements("db_field_input_key_table_remove_button_" + key.replace(' ', '_'));
-		that.clearChildElements("db_field_input_key_table_input_field_" + key.replace(' ', '_'));
+		that.clearChildElements("db_field_input_key_table_remove_button_" + dashboardValueToId(key));
+		that.clearChildElements("db_field_input_key_table_input_field_" + dashboardValueToId(key));
 		document.getElementById("db_input_key_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_input_key_add").focus({ preventScroll: true });
 
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Removed behavior input key " + key,
-			function() { that.addInterfaceInputKey(key); },
-			function() { that.removeInterfaceInputKey(key); }
-		);
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Removed behavior input key " + key,
+				function() { that._addInterfaceInputKey(key, true); },
+				function() { that.removeInterfaceInputKey(key, true); }
+			);
+		}
+
+		return true;
+	};
+
+	this._changeInterfaceInputKey = function(new_key, old_key, skip_history=false) {
+		new_key = new_key.trim();
+		old_key = old_key.trim();
+
+		if (new_key == old_key) {
+			console.log(`Ignoring changeInterfaceInputKey for '${old_key}' with no change`);
+			return false;
+		}
+
+		const index = Behavior.getInterfaceInputKeys().findIndex((el) => { return el == old_key});
+		let keyElement = document.getElementById('db_field_input_key_table_input_field_' + dashboardValueToId(old_key));
+		if (index == -1 || keyElement == undefined) {
+			console.log(`\x1b[93m changeInterfaceInputKey - unknown entry (${index}) or key element (${keyElement}) for '${old_key}'\x1b[0m`);
+			if (keyElement != undefined) {
+				keyElement.focus({ preventScroll: true });
+				keyElement.style.backgroundColor = "#f77";
+			}
+			return false;
+		}
+
+		Behavior.updateInterfaceInputKeys(old_key, new_key);
+		keyElement.setAttribute("old_value", new_key);
+		keyElement.value = new_key;
+		keyElement.style.backgroundColor = "#fff";
+
+		const old_id = dashboardValueToId(old_key);
+		const new_id = dashboardValueToId(new_key);
+		keyElement.id = 'db_field_input_key_table_input_field_' + new_id;
+
+		let variableRow = document.getElementById("db_field_input_key_table_row_" + old_id);
+		variableRow.id = "db_field_input_key_table_row_" + new_id;
+
+		let removeElement = document.getElementById("db_field_input_key_table_remove_button_" + old_id);
+		removeElement.id = "db_field_input_key_table_remove_button_" + new_id;
+
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Renamed input key '" + old_key + "' to '" + new_key + "'",
+				function() { that._changeInterfaceInputKey(old_key, new_key, true)},
+				function() { that._changeInterfaceInputKey(new_key, old_key, true)}
+			);
+		}
+
+		if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
 
 		return true;
 	};
@@ -1434,35 +1598,27 @@ UI.Dashboard = new (function() {
 			return false;
 		}
 
-		Behavior.updateInterfaceInputKeys(old_key, new_key);
-		keyElement.setAttribute("old_value", new_key);
-		keyElement.value = new_key;
-		keyElement.style.backgroundColor = "#fff";
+		let collision = getInterfaceInputKeyCollision(new_key, old_key);
+		if (collision != undefined) {
+			T.logWarn("Dashboard input key id collision between '" + new_key + "' and '" + collision
+				+ "' would make the Dashboard rows ambiguous.");
+			await UI.Tools.customAcknowledge("Input key '" + new_key + "' conflicts with the Dashboard row id used by '"
+											+ collision + "'.<br><br>Rename one of them to continue.");
+			keyElement.focus({ preventScroll: true });
+			keyElement.style.backgroundColor = "#f77";
+			return false;
+		}
 
-		// Update the other element ids with new key value
-		const old_id = old_key.replace(' ', '_');
-		const new_id = new_key.replace(' ', '_');
-		keyElement.id = 'db_field_input_key_table_input_field_' + new_id;
-
-		let variableRow = document.getElementById("db_field_input_key_table_row_" + old_id);
-		variableRow.id = "db_field_input_key_table_row_" + new_id;
-
-		let removeElement = document.getElementById("db_field_input_key_table_remove_button_" + old_id);
-		removeElement.id = "db_field_input_key_table_remove_button_" + new_id;
-
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Renamed input key '" + old_key + "' to '" + new_key + "'",
-			function() { that.changeInterfaceInputKey(old_key, new_key)},
-			function() { that.changeInterfaceInputKey(new_key, old_key)}
-		);
-
-		if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
-
-		return true;
+		return that._changeInterfaceInputKey(new_key, old_key);
 	};
 
-	this._addInterfaceInputKey = function(new_key) {
-		const new_id = new_key.replace(' ', '_');
+	this._addInterfaceInputKey = function(new_key, skip_history=false, skip_model_add=false) {
+		const new_id = dashboardValueToId(new_key);
+		let collision = getInterfaceInputKeyCollision(new_key);
+		if (collision != undefined) {
+			T.logWarn("Dashboard input key id collision between '" + new_key + "' and '" + collision
+				+ "' may make Dashboard editing ambiguous.");
+		}
 
 		let input_field = document.createElement("input");
 		input_field.setAttribute("id", "db_field_input_key_table_input_field_"+new_id);
@@ -1535,38 +1691,92 @@ UI.Dashboard = new (function() {
 		tr.appendChild(td_remove_button);
 		document.getElementById("db_input_key_table").appendChild(tr);
 
-		Behavior.addInterfaceInputKey(new_key);
+		if (!skip_model_add) {
+			Behavior.addInterfaceInputKey(new_key);
+		}
 
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Added behavior input key " + new_key,
-			function() { that.removeInterfaceInputKey(new_key); },
-			function() { that.addInterfaceInputKey(new_key); }
-		);
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Added behavior input key " + new_key,
+				function() { that.removeInterfaceInputKey(new_key, true); },
+				function() { that._addInterfaceInputKey(new_key, true); }
+			);
+		}
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_input_key_add").value = "";
 		document.getElementById("input_db_input_key_add").focus({preventScroll: true});
+		return true;
 	}
 
-	this.removeInterfaceOutputKey = function(key) {
+	this.removeInterfaceOutputKey = function(key, skip_history=false) {
 		let index = Behavior.getInterfaceOutputKeys().findIndex((el) => { return el == key});
-		let childRow = document.getElementById("db_field_output_key_table_row_" + key.replace(' ', '_'));
+		let childRow = document.getElementById("db_field_output_key_table_row_" + dashboardValueToId(key));
 		if (index == -1 || childRow == undefined) {
 			console.log(`\x1b[93m removeInterfaceOutputKey - unknown entry (${index}) or child row (${childRow}) for '${key}'\x1b[0m`);
 			return false;
 		}
 
 		Behavior.removeInterfaceOutputKey(key);
-		that.clearChildElements("db_field_output_key_table_remove_button_" + key.replace(' ', '_'));
-		that.clearChildElements("db_field_output_key_table_input_field_" + key.replace(' ', '_'));
+		that.clearChildElements("db_field_output_key_table_remove_button_" + dashboardValueToId(key));
+		that.clearChildElements("db_field_output_key_table_input_field_" + dashboardValueToId(key));
 		document.getElementById("db_output_key_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
-		document.getElementById("input_db_output_key_table").focus({ preventScroll: true });
+		document.getElementById("input_db_output_key_add").focus({ preventScroll: true });
 
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Removed behavior output key " + key,
-			function() { that.addInterfaceOutputKey(key); },
-			function() { that.removeInterfaceOutputKey(key); }
-		);
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Removed behavior output key " + key,
+				function() { that._addInterfaceOutputKey(key, true); },
+				function() { that.removeInterfaceOutputKey(key, true); }
+			);
+		}
+		return true;
+	};
+
+	this._changeInterfaceOutputKey = function(new_key, old_key, skip_history=false) {
+		new_key = new_key.trim();
+		old_key = old_key.trim();
+
+		if (new_key == old_key) {
+			console.log(`Ignoring changeInterfaceOutputKey for '${old_key}' with no change`);
+			return false;
+		}
+
+		const index = Behavior.getInterfaceOutputKeys().findIndex((el) => { return el == old_key});
+		let keyElement = document.getElementById('db_field_output_key_table_input_field_' + dashboardValueToId(old_key));
+		if (index == -1 || keyElement == undefined) {
+			console.log(`\x1b[93m changeInterfaceOutputKey - unknown entry (${index}) or key element (${keyElement}) for '${old_key}'\x1b[0m`);
+			if (keyElement != undefined) {
+				keyElement.focus({ preventScroll: true });
+				keyElement.style.backgroundColor = "#f77";
+			}
+			return false;
+		}
+
+		const old_id = dashboardValueToId(old_key);
+		const new_id = dashboardValueToId(new_key);
+
+		Behavior.updateInterfaceOutputKeys(old_key, new_key);
+		keyElement.setAttribute("old_value", new_key);
+		keyElement.value = new_key;
+		keyElement.style.backgroundColor = "#fff";
+		keyElement.id = "db_field_output_key_table_input_field_" + new_id;
+
+		let variableRow = document.getElementById("db_field_output_key_table_row_" + old_id);
+		variableRow.id = "db_field_output_key_table_row_" + new_id;
+
+		let removeElement = document.getElementById("db_field_output_key_table_remove_button_" + old_id);
+		removeElement.id = "db_field_output_key_table_remove_button_" + new_id;
+
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Renamed behavior output key '" + old_key + "' to '" + new_key + "'",
+				function() { that._changeInterfaceOutputKey(old_key, new_key, true)},
+				function() { that._changeInterfaceOutputKey(new_key, old_key, true)});
+		}
+
+		if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
+
 		return true;
 	};
 
@@ -1600,38 +1810,28 @@ UI.Dashboard = new (function() {
 			return false;
 		}
 
-		const old_id = old_key.replace(' ', '_');
-		const new_id = new_key.replace(' ', '_');
+		let collision = getInterfaceOutputKeyCollision(new_key, old_key);
+		if (collision != undefined) {
+			T.logWarn("Dashboard output key id collision between '" + new_key + "' and '" + collision
+				+ "' would make the Dashboard rows ambiguous.");
+			await UI.Tools.customAcknowledge("Output key '" + new_key + "' conflicts with the Dashboard row id used by '"
+											+ collision + "'.<br><br>Rename one of them to continue.");
+			keyElement.focus({ preventScroll: true });
+			keyElement.style.backgroundColor = "#f77";
+			return false;
+		}
 
-		Behavior.updateInterfaceOutputKeys(old_key, new_key);
-		keyElement.setAttribute("old_value", new_key);
-		keyElement.value = new_key;
-		keyElement.style.backgroundColor = "#fff";
-		keyElement.id = "db_field_output_key_table_input_field_" + new_id;
-
-		// Update the other element ids with new key value
-		keyElement.id = 'db_field_output_key_table_input_field_' + new_id;
-
-		let variableRow = document.getElementById("db_field_output_key_table_row_" + old_id);
-		variableRow.id = "db_field_output_key_table_row_" + new_id;
-
-		let removeElement = document.getElementById("db_field_output_key_table_remove_button_" + old_id);
-		removeElement.id = "db_field_output_key_table_remove_button_" + new_id;
-
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Renamed behavior output key '" + old_key + "' to '" + new_key + "'",
-			function() { that.changeInterfaceOutputKey(old_key, new_key)},
-			function() { that.changeInterfaceOutputKey(new_key, old_key)});
-
-		if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
-
-		return true;
+		return that._changeInterfaceOutputKey(new_key, old_key);
 	};
 
 
-	this._addInterfaceOutputKey = function(new_key) {
-
-		const new_id = new_key.replace(' ', '_');
+	this._addInterfaceOutputKey = function(new_key, skip_history=false, skip_model_add=false) {
+		const new_id = dashboardValueToId(new_key);
+		let collision = getInterfaceOutputKeyCollision(new_key);
+		if (collision != undefined) {
+			T.logWarn("Dashboard output key id collision between '" + new_key + "' and '" + collision
+				+ "' may make Dashboard editing ambiguous.");
+		}
 
 		let input_field = document.createElement("input");
 		input_field.setAttribute("id", "db_field_output_key_table_input_field_"+new_id);
@@ -1699,7 +1899,9 @@ UI.Dashboard = new (function() {
 		td_input_field.appendChild(input_field);
 		td_remove_button.appendChild(remove_button);
 
-		Behavior.addInterfaceOutputKey(new_key);
+		if (!skip_model_add) {
+			Behavior.addInterfaceOutputKey(new_key);
+		}
 
 		let tr = document.createElement("tr");
 		tr.id = "db_field_output_key_table_row_" + new_id
@@ -1707,14 +1909,17 @@ UI.Dashboard = new (function() {
 		tr.appendChild(td_remove_button);
 		document.getElementById("db_output_key_table").appendChild(tr);
 
-		ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
-			"Added behavior output key " + new_key,
-			function() { removeFunction(new_key); },
-			function() { addFunction(new_key); }
-		);
+		if (!skip_history) {
+			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
+				"Added behavior output key " + new_key,
+				function() { that.removeInterfaceOutputKey(new_key, true); },
+				function() { that._addInterfaceOutputKey(new_key, true); }
+			);
+		}
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_output_key_add").value = "";
 		document.getElementById("input_db_output_key_add").focus({preventScroll: true});
+		return true;
 	}
 
 	this.createBehaviorParameterEdit = function(param_name) {
@@ -2696,6 +2901,16 @@ UI.Dashboard = new (function() {
 			return false;
 		}
 
+		let collision = getOutcomeCollision(new_outcome);
+		if (collision != undefined) {
+			T.logWarn("Dashboard outcome id collision between '" + new_outcome + "' and '" + collision
+				+ "' would make the Dashboard rows ambiguous.");
+			await UI.Tools.customAcknowledge("Outcome name '" + new_outcome + "' conflicts with the Dashboard row id used by '"
+											+ collision + "'.<br><br>Rename one of them to continue.");
+			document.getElementById("input_db_outcome_add").focus({ preventScroll: true });
+			return false;
+		}
+
 		return that._addBehaviorOutcome(new_outcome);
 	}
 
@@ -2723,6 +2938,16 @@ UI.Dashboard = new (function() {
 			document.getElementById("input_db_input_key_add").focus({ preventScroll: true });
 			return false;
 		}
+
+		let collision = getInterfaceInputKeyCollision(new_key);
+		if (collision != undefined) {
+			T.logWarn("Dashboard input key id collision between '" + new_key + "' and '" + collision
+				+ "' would make the Dashboard rows ambiguous.");
+			await UI.Tools.customAcknowledge("Input key '" + new_key + "' conflicts with the Dashboard row id used by '"
+											+ collision + "'.<br><br>Rename one of them to continue.");
+			document.getElementById("input_db_input_key_add").focus({ preventScroll: true });
+			return false;
+		}
 		return that._addInterfaceInputKey(new_key);
 	}
 
@@ -2747,6 +2972,16 @@ UI.Dashboard = new (function() {
 			console.log(`Output key '${new_key}' already exists!`);
 			await UI.Tools.customAcknowledge(`Output key '${new_key}' already exists!<br><br>`
 											+`Select button to continue.`)
+			document.getElementById("input_db_output_key_add").focus({ preventScroll: true });
+			return false;
+		}
+
+		let collision = getInterfaceOutputKeyCollision(new_key);
+		if (collision != undefined) {
+			T.logWarn("Dashboard output key id collision between '" + new_key + "' and '" + collision
+				+ "' would make the Dashboard rows ambiguous.");
+			await UI.Tools.customAcknowledge("Output key '" + new_key + "' conflicts with the Dashboard row id used by '"
+											+ collision + "'.<br><br>Rename one of them to continue.");
 			document.getElementById("input_db_output_key_add").focus({ preventScroll: true });
 			return false;
 		}

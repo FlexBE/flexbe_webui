@@ -646,7 +646,7 @@ UI.Panels.StateProperties = new (function() {
 					|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 					) return;
 				let removed_outcome = remove_button.getAttribute("outcome");
-				state.removeOutcome(removed_outcome);
+				let removed_snapshot = state.removeOutcome(removed_outcome);
 				let row = remove_button.parentNode;
 				row.parentNode.removeChild(row);
 				UI.Statemachine.refreshView();
@@ -655,7 +655,7 @@ UI.Panels.StateProperties = new (function() {
 					"Removed outcome from container " + current_prop_state.getStateName(),
 					function() { // undo
 						let container = Behavior.getStatemachine().getStateByPath(container_path);
-						container.addOutcome(removed_outcome);
+						container.restoreOutcome(removed_snapshot);
 						UI.Statemachine.refreshView();
 						if (container == current_prop_state)
 							that.displayPropertiesForStatemachine(current_prop_state);
@@ -1804,21 +1804,28 @@ UI.Panels.StateProperties = new (function() {
 		UI.Statemachine.refreshView();
 	}
 
-	this.addSMOutcome = function() {
+	this.addSMOutcome = async function() {
 		that.removeHover();
-		if (document.getElementById("input_prop_outcome_add").value == "") return;
+		let input_field = document.getElementById("input_prop_outcome_add");
+		let new_outcome = input_field.value.trim();
+		if (new_outcome == "") return;
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
 			|| Behavior.isReadonly()
 			|| RC.Controller.isLocked() && RC.Controller.isStateLocked(current_prop_state.getStatePath())
 			|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 			) return;
+		if (current_prop_state.getOutcomes().contains(new_outcome)) {
+			await UI.Tools.customAcknowledge("Outcome name '" + new_outcome + "' already exists!<br><br>"
+											+ "Select button to continue.");
+			input_field.focus({ preventScroll: true });
+			return;
+		}
 
 		let container_path = current_prop_state.getStatePath();
-		let new_outcome = document.getElementById("input_prop_outcome_add").value;
 		current_prop_state.addOutcome(new_outcome);
 
-		document.getElementById("input_prop_outcome_add").value = "";
+		input_field.value = "";
 		UI.Statemachine.refreshView();
 		that.displayPropertiesForStatemachine(current_prop_state);
 
@@ -1841,23 +1848,30 @@ UI.Panels.StateProperties = new (function() {
 		);
 	}
 
-	this.addSMInputKey = function() {
+	this.addSMInputKey = async function() {
 		that.removeHover();
-		if (document.getElementById("input_prop_input_key_add").value == "") return;
+		let input_field = document.getElementById("input_prop_input_key_add");
+		let new_input_key = input_field.value.trim();
+		if (new_input_key == "") return;
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
 			|| Behavior.isReadonly()
 			|| RC.Controller.isLocked() && RC.Controller.isStateLocked(current_prop_state.getStatePath())
 			|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 			) return;
+		if (current_prop_state.getInputKeys().contains(new_input_key)) {
+			await UI.Tools.customAcknowledge("Input key '" + new_input_key + "' already exists!<br><br>"
+											+ "Select button to continue.");
+			input_field.focus({ preventScroll: true });
+			return;
+		}
 
 		let container_path = current_prop_state.getStatePath();
 		let insert_idx = current_prop_state.getInputKeys().length;
-		let new_input_key = document.getElementById("input_prop_input_key_add").value;
 		current_prop_state.getInputKeys().push(new_input_key);
 		current_prop_state.getInputMapping().push(new_input_key);
 
-		document.getElementById("input_prop_input_key_add").value = "";
+		input_field.value = "";
 		if (UI.Statemachine.isDataflow())
 			UI.Statemachine.refreshView();
 		that.displayPropertiesForStatemachine(current_prop_state);
@@ -1886,23 +1900,30 @@ UI.Panels.StateProperties = new (function() {
 		);
 	}
 
-	this.addSMOutputKey = function() {
+	this.addSMOutputKey = async function() {
 		that.removeHover();
-		if (document.getElementById("input_prop_output_key_add").value == "") return;
+		let input_field = document.getElementById("input_prop_output_key_add");
+		let new_output_key = input_field.value.trim();
+		if (new_output_key == "") return;
 		if (RC.Controller.isReadonly()
 			|| UI.Statemachine.getDisplayedSM().isInsideDifferentBehavior()
 			|| Behavior.isReadonly()
 			|| RC.Controller.isLocked() && RC.Controller.isStateLocked(current_prop_state.getStatePath())
 			|| RC.Controller.isOnLockedPath(current_prop_state.getStatePath())
 			) return;
+		if (current_prop_state.getOutputKeys().contains(new_output_key)) {
+			await UI.Tools.customAcknowledge("Output key '" + new_output_key + "' already exists!<br><br>"
+											+ "Select button to continue.");
+			input_field.focus({ preventScroll: true });
+			return;
+		}
 
 		let container_path = current_prop_state.getStatePath();
 		let insert_idx = current_prop_state.getOutputKeys().length;
-		let new_output_key = document.getElementById("input_prop_output_key_add").value;
 		current_prop_state.getOutputKeys().push(new_output_key);
 		current_prop_state.getOutputMapping().push(new_output_key);
 
-		document.getElementById("input_prop_output_key_add").value = "";
+		input_field.value = "";
 		if (UI.Statemachine.isDataflow())
 			UI.Statemachine.refreshView();
 		that.displayPropertiesForStatemachine(current_prop_state);
@@ -1988,22 +2009,24 @@ UI.Panels.StateProperties = new (function() {
 				let container = Behavior.getStatemachine().getStateByPath(container_path);
 				changeType(container, prev_type, new_concurrent, new_priority);
 				if (new_concurrent != prev_concurrent) {
-					container.setSMOutcomes(old_sm_outcomes);
-					transitions.forEach(function(t) {
-						if (t.getOutcome() == "" && t.getFrom().getStateName() == "INIT") {
-							let old_target = t.getTo();
-							if (initial_name != "") {
-								container.setInitialState(container.getStateByName(initial_name));
+					container.withOutcomeCopyNormalizationSuspended(function() {
+						container.setSMOutcomes(old_sm_outcomes);
+						transitions.forEach(function(t) {
+							if (t.getOutcome() == "" && t.getFrom().getStateName() == "INIT") {
+								let old_target = t.getTo();
+								if (initial_name != "") {
+									container.setInitialState(container.getStateByName(initial_name));
+								}
+							} else {
+								t.setFrom(container.getStateByName(t.getFrom().getStateName()));
+								let target = container.getStateByName(t.getTo().getStateName());
+								if (target == undefined) {
+									target = container.getSMOutcomeByName(t.getTo().getStateName());
+								}
+								t.setTo(target);
+								container.addTransition(t);
 							}
-						} else {
-							t.setFrom(container.getStateByName(t.getFrom().getStateName()));
-							let target = container.getStateByName(t.getTo().getStateName());
-							if (target == undefined) {
-								target = container.getSMOutcomeByName(t.getTo().getStateName());
-							}
-							t.setTo(target);
-							container.addTransition(t);
-						}
+						});
 					});
 				}
 				UI.Statemachine.refreshView();

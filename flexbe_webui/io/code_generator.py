@@ -16,6 +16,7 @@
 
 import datetime
 import re
+from urllib.parse import quote
 
 from flexbe_webui.tools import break_long_line, format_state_code_string, left_align_block
 
@@ -64,11 +65,65 @@ class CodeGenerator:
             return f'{state.state_pkg}__{state.state_class}'
         return state.state_class
 
+    def _encode_comment_name(self, name):
+        """Encode names for parser round-tripping in comment metadata."""
+        return quote(str(name), safe='')
+
+    def _has_multi_copy_outcomes(self, sm):
+        """Return whether a non-concurrent state machine has copied outcome connectors."""
+        return not sm.concurrent and any(
+            out.state_name != out.state_name.split('#')[0]
+            or any(
+                o2.state_name.startswith(out.state_name + '#')
+                for o2 in sm.sm_outcomes
+            )
+            for out in sm.sm_outcomes
+        )
+
+    def _generate_outcome_comment_lines(self, sm):
+        """Generate outcome position and route metadata comments for round-tripping."""
+        outcomes_with_transitions = set()
+        for t in (sm.transitions or []):
+            if getattr(t, 'to_state_class', None) == ':OUTCOME':
+                outcomes_with_transitions.add(t.to_state_name)
+
+        has_multi_copy = self._has_multi_copy_outcomes(sm)
+        pos = []
+        if has_multi_copy:
+            # Named format: emit base copy always; non-base only if it has transitions.
+            for out in sm.sm_outcomes:
+                base = out.state_name.split('#')[0]
+                if out.state_name == base or out.state_name in outcomes_with_transitions:
+                    pos.append(self._encode_comment_name(out.state_name) + ':x:' + str(round(out.position_x))
+                               + ' y:' + str(round(out.position_y)))
+        else:
+            for out in sm.sm_outcomes:
+                pos.append('x:' + str(round(out.position_x))
+                           + ' y:' + str(round(out.position_y)))
+
+        comment_lines = ['# ' + ', '.join(pos)]
+
+        if has_multi_copy:
+            for out in sm.sm_outcomes:
+                if '#' not in out.state_name:
+                    continue
+                if out.state_name not in outcomes_with_transitions:
+                    continue
+                sources = []
+                for t in (sm.transitions or []):
+                    if t.to_state_name == out.state_name:
+                        sources.append(self._encode_comment_name(t.from_state_name)
+                                       + '>' + self._encode_comment_name(t.outcome))
+                if sources:
+                    comment_lines.append('# route: ' + ', '.join(sources)
+                                         + ' --> ' + self._encode_comment_name(out.state_name))
+
+        return comment_lines
+
     def generate_behavior_code(self, behavior, license_text):
         """Generate the behavior python code."""
         class_name = re.sub(r'[^\w]', '', behavior.behavior_name)
         states = get_all_states(behavior.root_sm)
-        outcomes = behavior.root_sm.sm_outcomes
         self.author = behavior.author
         self.creation_date = behavior.creation_date
         self.manual = [behavior.manual_code_import,
@@ -111,7 +166,6 @@ class CodeGenerator:
                                    states, behavior.comment_notes)
         code += ''
         code += self.generate_creation(behavior.private_variables,
-                                       outcomes,
                                        behavior.interface_input_keys,
                                        behavior.interface_output_keys,
                                        behavior.default_userdata,
@@ -362,7 +416,7 @@ class CodeGenerator:
 
         return code
 
-    def generate_creation(self, private_vars, outcomes, input_keys, output_keys, user_data, states, root_sm):
+    def generate_creation(self, private_vars, input_keys, output_keys, user_data, states, root_sm):
         """Generate behavior creation block."""
         code = ''
         code += self.ws + 'def create(self):\n'
@@ -376,13 +430,10 @@ class CodeGenerator:
 
         # root declaration
         code += self.ws + self.ws + '# Root state machine\n'
-        pos = []
-        for out in outcomes:
-            pos.append('x:' + str(round(out.position_x)) + ' y:' + str(round(out.position_y)))
-
-        code += self.ws + self.ws + '# ' + ', '.join(pos) + '\n'
+        for line in self._generate_outcome_comment_lines(root_sm):
+            code += self.ws + self.ws + line + '\n'
         code += self.ws + self.ws +\
-            "_state_machine = OperatableStateMachine(outcomes=['" + "', '".join([out.state_name for out in outcomes]) + "']"
+            "_state_machine = OperatableStateMachine(outcomes=['" + "', '".join(root_sm.outcomes) + "']"
         if len(input_keys) > 0:
             code += ", input_keys=['" + "', '".join(input_keys) + "']"
 
@@ -428,11 +479,8 @@ class CodeGenerator:
         self.sm_names.append({'sm': sm, 'name': sm_name})
 
         if include_header:
-            pos = []
-            for out in sm.sm_outcomes:
-                pos.append('x:' + str(round(out.position_x))
-                           + ' y:' + str(round(out.position_y)))
-            code += self.ws + self.ws + '# ' + ', '.join(pos) + '\n'
+            for line in self._generate_outcome_comment_lines(sm):
+                code += self.ws + self.ws + line + '\n'
 
             if sm.concurrent:
                 prefix = self.ws + self.ws + sm_name + ' = ConcurrencyContainer('
@@ -599,7 +647,7 @@ class CodeGenerator:
             if outcome_transition.to_state_name == state.state_name:
                 print(f"Looping transition for outcome '{out}' in state '{state.state_name}' detected")
             transition_target = outcome_transition.to_state_name
-            if outcome_transition.to_state_class == ':CONDITION':
+            if outcome_transition.to_state_class in (':CONDITION', ':OUTCOME'):
                 transition_target = transition_target.split('#')[0]
 
             if (outcome_transition.x is not None or outcome_transition.beg_x is not None

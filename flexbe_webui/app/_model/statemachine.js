@@ -13,6 +13,7 @@ const Statemachine = function(sm_name, sm_definition) {
 
 	var initial_state = undefined;
 	var sm_outcomes = [];
+	var outcome_copy_normalization_suspended = false;
 
 	var addSMOutcome = function(outcome) {
 		var outcome_state = new State(outcome + (concurrent? ('#' + sm_outcomes.length) : ''), WS.Statelib.getFromLib(concurrent? ":CONDITION" : ":OUTCOME"));
@@ -28,6 +29,69 @@ const Statemachine = function(sm_name, sm_definition) {
 		}
 	}
 	generateSMOutcomes();
+
+	var copyPoint = function(point) {
+		if (point == undefined) {
+			return undefined;
+		}
+		return {x: point.x, y: point.y};
+	}
+
+	var serializeTransition = function(transition, index) {
+		var beginning = transition.getBeginning();
+		var end = transition.getEnd();
+		return {
+			index: index,
+			from: transition.getFrom().getStateName(),
+			to: transition.getTo() ? transition.getTo().getStateName() : undefined,
+			outcome: transition.getOutcome(),
+			autonomy: transition.getAutonomy(),
+			x: transition.getX(),
+			y: transition.getY(),
+			beginning: copyPoint(beginning),
+			end: copyPoint(end)
+		};
+	}
+
+	var restoreTransition = function(container, transition_data) {
+		var from = transition_data.from == "INIT"
+			? container.getInitialTransition().getFrom()
+			: container.getStateByName(transition_data.from);
+		var to = transition_data.to == undefined
+			? undefined
+			: container.getStateByName(transition_data.to);
+		if (to == undefined && transition_data.to != undefined) {
+			to = container.getSMOutcomeByName(transition_data.to);
+		}
+		if (from == undefined || (transition_data.to != undefined && to == undefined)) {
+			T.debugWarn("Failed to restore transition from '" + transition_data.from
+				+ "' to '" + transition_data.to + "' in " + container.getStateName());
+			return undefined;
+		}
+		return new Transition(
+			from,
+			to,
+			transition_data.outcome,
+			transition_data.autonomy,
+			transition_data.x,
+			transition_data.y,
+			transition_data.beginning ? transition_data.beginning.x : undefined,
+			transition_data.beginning ? transition_data.beginning.y : undefined,
+			transition_data.end ? transition_data.end.x : undefined,
+			transition_data.end ? transition_data.end.y : undefined
+		);
+	}
+
+	var insertOutcomeReference = function(list, outcome, outcome_index) {
+		var insert_index = list.length;
+		for (var i = 0; i < list.length; ++i) {
+			if (that.getOutcomes().indexOf(list[i]) > outcome_index) {
+				insert_index = i;
+				break;
+			}
+		}
+		list.splice(insert_index, 0, outcome);
+	}
 
 	var clearTransitions = function() {
 		states.forEach(that.removeConnectedTransitions);
@@ -140,11 +204,81 @@ const Statemachine = function(sm_name, sm_definition) {
 		}
 		transitions.push(transition);
 		transition.getFrom().connect(transition.getOutcome());
+		var target_outcome = getSequentialOutcomeBaseName(transition.getTo());
+		if (target_outcome != undefined) {
+			normalizeOutcomeCopies(target_outcome);
+		}
+	}
+
+	var addSMOutcomeCopy = function(name) {
+		var existing = sm_outcomes.filter(function(s) {
+			return s.getStateName() === name || s.getStateName().startsWith(name + '#');
+		});
+		var next_copy_index = existing.reduce(function(max_index, state) {
+			var state_name = state.getStateName();
+			if (state_name === name) {
+				return max_index;
+			}
+			return Math.max(max_index, parseInt(state_name.split('#')[1], 10));
+		}, 0) + 1;
+		var copy_name = name + '#' + next_copy_index;
+		var outcome_state = new State(copy_name, WS.Statelib.getFromLib(":OUTCOME"));
+		var last = existing[existing.length - 1];
+		var gridsize = (UI.Statemachine && UI.Statemachine.getGridSize) ? UI.Statemachine.getGridSize() : 50;
+		outcome_state.setPosition({x: last.getPosition().x, y: last.getPosition().y + gridsize * 3});
+		sm_outcomes.push(outcome_state);
+		outcome_state.setContainer(that);
+	}
+
+	var withOutcomeCopyNormalizationSuspended = function(callback) {
+		var previous = outcome_copy_normalization_suspended;
+		outcome_copy_normalization_suspended = true;
+		try {
+			return callback();
+		} finally {
+			outcome_copy_normalization_suspended = previous;
+		}
+	}
+
+	var getSequentialOutcomeBaseName = function(target) {
+		if (concurrent || target == undefined || !sm_outcomes.contains(target)) {
+			return undefined;
+		}
+		return target.getStateName().split('#')[0];
+	}
+
+	var normalizeOutcomeCopies = function(outcome) {
+		if (concurrent || outcome_copy_normalization_suspended) {
+			return;
+		}
+		var outcome_states = sm_outcomes.filter(function(state) {
+			return state.getStateName() === outcome || state.getStateName().startsWith(outcome + '#');
+		});
+		if (outcome_states.length == 0) {
+			return;
+		}
+		var free_outcomes = outcome_states.clone();
+		transitions.forEach(function(transition) {
+			if (free_outcomes.contains(transition.getTo())) {
+				free_outcomes.remove(transition.getTo());
+			}
+		});
+		if (free_outcomes.length == 0) {
+			addSMOutcomeCopy(outcome);
+			return;
+		}
+		while (free_outcomes.length > 1) {
+			sm_outcomes.remove(free_outcomes.pop());
+		}
 	}
 
 	this.tryDuplicateOutcome = function(outcome) {
+		if (!concurrent) {
+			normalizeOutcomeCopies(outcome);
+			return;
+		}
 		let outcome_states = sm_outcomes.filter(function(state) {
-			return state.getStateName().startsWith(outcome);
+			return state.getStateName() === outcome || state.getStateName().startsWith(outcome + '#');
 		});
 		transitions.forEach(function(transition) {
 			if (outcome_states.contains(transition.getTo())) {
@@ -152,13 +286,21 @@ const Statemachine = function(sm_name, sm_definition) {
 			}
 		});
 		if (outcome_states.length == 0) {
-			addSMOutcome(outcome);
+			if (concurrent) {
+				addSMOutcome(outcome);
+			} else {
+				addSMOutcomeCopy(outcome);
+			}
 		}
 	}
 
 	this.removeTransitionObject = function(transition) {
+		var target_outcome = getSequentialOutcomeBaseName(transition.getTo());
 		transitions.remove(transition);
 		transition.getFrom().unconnect(transition.getOutcome());
+		if (target_outcome != undefined) {
+			normalizeOutcomeCopies(target_outcome);
+		}
 	}
 
 	this.removeTransitionFrom = function(state, outcome) {
@@ -166,7 +308,26 @@ const Statemachine = function(sm_name, sm_definition) {
 			return element.getFrom() == state && element.getOutcome() == outcome;
 		});
 		if (trans != undefined) {
+			var target_outcome = getSequentialOutcomeBaseName(trans.getTo());
 			transitions.remove(trans);
+			if (target_outcome != undefined) {
+				normalizeOutcomeCopies(target_outcome);
+			}
+		}
+	}
+
+	this.retargetTransition = function(transition, target) {
+		var previous_outcome = getSequentialOutcomeBaseName(transition.getTo());
+		transition.setTo(target);
+		if (concurrent || outcome_copy_normalization_suspended) {
+			return;
+		}
+		var next_outcome = getSequentialOutcomeBaseName(target);
+		if (previous_outcome != undefined) {
+			normalizeOutcomeCopies(previous_outcome);
+		}
+		if (next_outcome != undefined && next_outcome != previous_outcome) {
+			normalizeOutcomeCopies(next_outcome);
 		}
 	}
 	this.removeConnectedTransitions = function(state) {
@@ -236,6 +397,10 @@ const Statemachine = function(sm_name, sm_definition) {
 		sm_outcomes = _sm_outcomes;
 	}
 
+	this.withOutcomeCopyNormalizationSuspended = function(callback) {
+		return withOutcomeCopyNormalizationSuspended(callback);
+	}
+
 	this.getSMOutcomeByName = function(name) {
 		for(var i=0; i<sm_outcomes.length; ++i) {
 			if ((sm_outcomes[i].getStateName() == name)
@@ -258,18 +423,54 @@ const Statemachine = function(sm_name, sm_definition) {
 	}
 
 	this.removeOutcome = function(outcome) {
-		// remove transition away
-		if (that.getContainer() != undefined) {
-			that.getContainer().removeTransitionFrom(that, outcome);
+		var outcome_index = that.getOutcomes().indexOf(outcome);
+		if (outcome_index == -1) {
+			T.debugWarn("Trying to remove unavailable outcome '" + outcome + "' from " + that.getStateName());
+			return undefined;
 		}
-		// remove outcome object
-		var old_element = sm_outcomes.findElement(function(element) {
-			return element.getStateName() == outcome;
-		});
-		sm_outcomes.remove(old_element);
+		var removed = {
+			outcome: outcome,
+			outcome_index: outcome_index,
+			autonomy: that.getAutonomy()[outcome_index],
+			sm_outcomes: [],
+			transitions: [],
+			container_transition: undefined
+		};
+		var parent_container = that.getContainer();
+		if (parent_container != undefined) {
+			var parent_transition = parent_container.getTransitions().findElement(function(element) {
+				return element.getFrom() == that && element.getOutcome() == outcome;
+			});
+			if (parent_transition != undefined) {
+				removed.container_transition = serializeTransition(parent_transition);
+			}
+		}
 
-		// remove transitions to
-		that.removeConnectedTransitions(old_element);
+		// remove transition away
+		if (parent_container != undefined) {
+			parent_container.removeTransitionFrom(that, outcome);
+		}
+		// remove all copies (base name and any #N variants)
+		var copies = sm_outcomes.filter(function(element) {
+			return element.getStateName() === outcome || element.getStateName().startsWith(outcome + '#');
+		});
+		copies.forEach(function(old_element) {
+			removed.sm_outcomes.push({
+				name: old_element.getStateName(),
+				state_class: old_element.getStateClass(),
+				position: copyPoint(old_element.getPosition()),
+				index: sm_outcomes.indexOf(old_element)
+			});
+		});
+		transitions.forEach(function(transition, index) {
+			if (copies.contains(transition.getTo())) {
+				removed.transitions.push(serializeTransition(transition, index));
+			}
+		});
+		copies.forEach(function(old_element) {
+			sm_outcomes.remove(old_element);
+			that.removeConnectedTransitions(old_element);
+		});
 
 		// remove outcome
 		that.getOutcomes().remove(outcome);
@@ -279,15 +480,82 @@ const Statemachine = function(sm_name, sm_definition) {
 			that.getOutcomesConnected().remove(outcome);
 
 		sm_definition.removeOutcome(outcome);
+		return removed;
+	}
+
+	this.restoreOutcome = function(removed) {
+		if (removed == undefined || removed.outcome == undefined) {
+			return;
+		}
+		if (that.getOutcomes().contains(removed.outcome)) {
+			T.debugWarn("Trying to restore already existing outcome '" + removed.outcome + "' in " + that.getStateName());
+			return;
+		}
+
+		var outcome_index = Math.min(removed.outcome_index, that.getOutcomes().length);
+		that.getOutcomes().splice(outcome_index, 0, removed.outcome);
+		that.getAutonomy().splice(outcome_index, 0, removed.autonomy);
+		insertOutcomeReference(that.getOutcomesUnconnected(), removed.outcome, outcome_index);
+		if (sm_definition.insertOutcome != undefined) {
+			sm_definition.insertOutcome(removed.outcome, Math.min(removed.outcome_index, sm_definition.getOutcomes().length));
+		} else {
+			sm_definition.addOutcome(removed.outcome);
+		}
+
+		withOutcomeCopyNormalizationSuspended(function() {
+			removed.sm_outcomes.sort(function(a, b) {
+				return a.index - b.index;
+			}).forEach(function(outcome_state) {
+				var restored = new State(outcome_state.name, WS.Statelib.getFromLib(outcome_state.state_class));
+				restored.setPosition(copyPoint(outcome_state.position));
+				restored.setContainer(that);
+				sm_outcomes.splice(Math.min(outcome_state.index, sm_outcomes.length), 0, restored);
+			});
+
+			removed.transitions.sort(function(a, b) {
+				return a.index - b.index;
+			}).forEach(function(transition_data) {
+				var restored = restoreTransition(that, transition_data);
+				if (restored != undefined) {
+					that.addTransition(restored);
+				}
+			});
+		});
+		normalizeOutcomeCopies(removed.outcome);
+
+		if (removed.container_transition != undefined && that.getContainer() != undefined) {
+			var restored_transition = restoreTransition(that.getContainer(), removed.container_transition);
+			if (restored_transition != undefined) {
+				that.getContainer().addTransition(restored_transition);
+			}
+		}
 	}
 
 	this.updateOutcome = function(outcome_old, outcome_new) {
-		var oc_element = sm_outcomes.findElement(function(element) {
-			return element.getStateName() == outcome_old;
+		sm_outcomes.forEach(function(element) {
+			var name = element.getStateName();
+			if (name === outcome_old) {
+				element.setStateName(outcome_new);
+			} else if (name.startsWith(outcome_old + '#')) {
+				element.setStateName(outcome_new + '#' + name.split('#')[1]);
+			}
 		});
-		oc_element.setStateName(outcome_new);
-		that.getOutcomes().remove(outcome_old);
-		that.getOutcomes().push(outcome_new);
+		var outcome_index = that.getOutcomes().indexOf(outcome_old);
+		if (outcome_index != -1) {
+			that.getOutcomes()[outcome_index] = outcome_new;
+		}
+		var unconnected_index = that.getOutcomesUnconnected().indexOf(outcome_old);
+		if (unconnected_index != -1) {
+			that.getOutcomesUnconnected()[unconnected_index] = outcome_new;
+		}
+		var connected_index = that.getOutcomesConnected().indexOf(outcome_old);
+		if (connected_index != -1) {
+			that.getOutcomesConnected()[connected_index] = outcome_new;
+		}
+		var definition_index = sm_definition.getOutcomes().indexOf(outcome_old);
+		if (definition_index != -1) {
+			sm_definition.getOutcomes()[definition_index] = outcome_new;
+		}
 	}
 
 	this.isPriority = function() {

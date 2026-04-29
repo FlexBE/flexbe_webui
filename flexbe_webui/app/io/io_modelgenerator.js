@@ -1,6 +1,51 @@
 IO.ModelGenerator = new (function() {
 	var that = this;
 
+	var dashboardValueToId = function(value) {
+		return value.replace(' ', '_');
+	}
+
+	var validateInterfaceValues = function(values, value_label) {
+		var seen_values = [];
+		var seen_ids = {};
+		values.forEach(function(value) {
+			if (seen_values.contains(value)) {
+				throw new Error("Loaded behavior contains duplicate " + value_label + " '" + value + "'");
+			}
+			seen_values.push(value);
+			var dashboard_id = dashboardValueToId(value);
+			if (seen_ids[dashboard_id] != undefined && seen_ids[dashboard_id] != value) {
+				throw new Error("Loaded behavior " + value_label + " '" + value
+					+ "' conflicts with the Dashboard row id used by '" + seen_ids[dashboard_id] + "'");
+			}
+			seen_ids[dashboard_id] = value;
+		});
+	}
+
+	var addInterfaceOutcome = function(outcome) {
+		if (UI.Dashboard._addBehaviorOutcome != undefined) {
+			UI.Dashboard._addBehaviorOutcome(outcome, undefined, true, false);
+			return;
+		}
+		UI.Dashboard.addBehaviorOutcome(outcome);
+	}
+
+	var addInterfaceInputKey = function(key) {
+		if (UI.Dashboard._addInterfaceInputKey != undefined) {
+			UI.Dashboard._addInterfaceInputKey(key, true, false);
+			return;
+		}
+		UI.Dashboard.addInterfaceInputKey(key);
+	}
+
+	var addInterfaceOutputKey = function(key) {
+		if (UI.Dashboard._addInterfaceOutputKey != undefined) {
+			UI.Dashboard._addInterfaceOutputKey(key, true, false);
+			return;
+		}
+		UI.Dashboard.addInterfaceOutputKey(key);
+	}
+
 	var resolveBehaviorDefinition = function(behavior_ref) {
 		if (behavior_ref == undefined) {
 			return undefined;
@@ -25,6 +70,10 @@ IO.ModelGenerator = new (function() {
 	}
 
 	this.generateBehaviorAttributes = function(data, manifest) {
+		validateInterfaceValues(data.smi_outcomes, "outcome");
+		validateInterfaceValues(data.smi_input, "input key");
+		validateInterfaceValues(data.smi_output, "output key");
+
 		UI.Dashboard.setBehaviorName(manifest.name);
 		UI.Dashboard.setBehaviorPackage(manifest.rosnode_name);
 		UI.Dashboard.setBehaviorDescription(manifest.description);
@@ -56,13 +105,13 @@ IO.ModelGenerator = new (function() {
 		});
 
 		data.smi_outcomes.forEach(function(element, i) {
-			UI.Dashboard.addBehaviorOutcome(element);
+			addInterfaceOutcome(element);
 		});
 		data.smi_input.forEach(function(element, i) {
-			UI.Dashboard.addInterfaceInputKey(element);
+			addInterfaceInputKey(element);
 		});
 		data.smi_output.forEach(function(element, i) {
-			UI.Dashboard.addInterfaceOutputKey(element);
+			addInterfaceOutputKey(element);
 		});
 
 		// code given as a block of text, separate into individual import lines
@@ -254,11 +303,63 @@ IO.ModelGenerator = new (function() {
 				}
 			});
 		}
-		// Alternate approach to setting positions
-		var oc_pos_len = Math.min(oc_objs.length, container_sm_def.oc_positions.length);
-		for (var i = 0; i < oc_pos_len; i++) {
-			oc_objs[i].setPosition(container_sm_def.oc_positions[i]);
+		// Apply outcome positions from code position comment
+		var named_positions = container_sm_def.oc_positions.some(function(p) { return p.name !== undefined; });
+		if (named_positions) {
+			// Named format: match by name, creating extra copies as needed
+			container_sm_def.oc_positions.forEach(function(p) {
+				var oc_arr = container_sm.getSMOutcomes();
+				var existing = null;
+				for (var j = 0; j < oc_arr.length; j++) {
+					if (oc_arr[j].getStateName() === p.name) { existing = oc_arr[j]; break; }
+				}
+				if (existing) {
+					existing.setPosition({x: p.x, y: p.y});
+				} else {
+					// Extra copy (e.g. done#1) not yet in model — create it
+					var copy = new State(p.name, WS.Statelib.getFromLib(':OUTCOME'));
+					copy.setPosition({x: p.x, y: p.y});
+					copy.setContainer(container_sm);
+					container_sm.getSMOutcomes().push(copy);
+				}
+			});
+		} else {
+			// Old positional format: apply by index
+			var oc_pos_len = Math.min(oc_objs.length, container_sm_def.oc_positions.length);
+			for (var i = 0; i < oc_pos_len; i++) {
+				oc_objs[i].setPosition(container_sm_def.oc_positions[i]);
+			}
 		}
+
+		// Apply route info: rewire transitions from base copy to the specified non-base copy
+		(container_sm_def.routes || []).forEach(function(route) {
+			var dest_copy = container_sm.getSMOutcomeByName(route.dest_copy);
+			if (!dest_copy) {
+				T.logWarn('Route references unknown outcome copy: ' + route.dest_copy);
+				return;
+			}
+			route.sources.forEach(function(src) {
+				var from_state = container_sm.getStateByName(src.state);
+				if (!from_state) {
+					T.logWarn('Route references unknown state: ' + src.state);
+					return;
+				}
+				var trans = container_sm.getTransitions().findElement(function(t) {
+					return t.getFrom() === from_state && t.getOutcome() === src.outcome;
+				});
+				if (trans) {
+					trans.setTo(dest_copy);
+				}
+			});
+		});
+
+		// Create a spare free copy of each outcome that has all copies connected
+		if (!container_sm.isConcurrent()) {
+			container_sm.getOutcomes().forEach(function(outcome_name) {
+				container_sm.tryDuplicateOutcome(outcome_name);
+			});
+		}
+
 		return container_sm;
 	}
 

@@ -206,9 +206,39 @@ const Behavior = new (function() {
 		root_sm.addOutcome(to_add);
 	}
 	this.removeInterfaceOutcome = function(to_remove) {
-		interface_outcomes.remove(to_remove);
+		let index = interface_outcomes.indexOf(to_remove);
+		if (index == -1) {
+			T.debugWarn("Trying to remove unavailable interface outcome '" + to_remove + "'");
+			return undefined;
+		}
+		interface_outcomes.splice(index, 1);
 
-		root_sm.removeOutcome(to_remove);
+		return {
+			outcome: to_remove,
+			index: index,
+			sm_snapshot: root_sm.removeOutcome(to_remove)
+		};
+	}
+	this.restoreInterfaceOutcome = function(removed_outcome) {
+		if (removed_outcome == undefined || removed_outcome.outcome == undefined) {
+			return;
+		}
+		if (interface_outcomes.contains(removed_outcome.outcome)) {
+			T.debugWarn("Trying to restore already existing interface outcome '" + removed_outcome.outcome + "'");
+			return;
+		}
+
+		let insert_idx = Math.min(
+			removed_outcome.index == undefined ? interface_outcomes.length : removed_outcome.index,
+			interface_outcomes.length
+		);
+		interface_outcomes.splice(insert_idx, 0, removed_outcome.outcome);
+
+		if (removed_outcome.sm_snapshot != undefined && root_sm.restoreOutcome != undefined) {
+			root_sm.restoreOutcome(removed_outcome.sm_snapshot);
+		} else {
+			root_sm.addOutcome(removed_outcome.outcome);
+		}
 	}
 	this.updateInterfaceOutcome = function(old_value, new_value) {
 		for (let i = interface_outcomes.length - 1; i >= 0; i--) {
@@ -239,10 +269,9 @@ const Behavior = new (function() {
 		for (let i = interface_input_keys.length - 1; i >= 0; i--) {
 			if (interface_input_keys[i] == old_value) {
 				interface_input_keys[i] = new_value;
-				root_sm.getInputKeys().remove(old_value);
-				root_sm.getInputKeys().push(new_value);
 			}
 		};
+		root_sm.setInputKeys(interface_input_keys);
 	}
 
 	this.getInterfaceOutputKeys = function() {
@@ -264,10 +293,9 @@ const Behavior = new (function() {
 		for (let i = interface_output_keys.length - 1; i >= 0; i--) {
 			if (interface_output_keys[i] == old_value) {
 				interface_output_keys[i] = new_value;
-				root_sm.getOutputKeys().remove(old_value);
-				root_sm.getOutputKeys().push(new_value);
 			}
 		};
+		root_sm.setOutputKeys(interface_output_keys);
 	}
 
 	this.getManualCodeImport = function() {
@@ -431,19 +459,20 @@ const Behavior = new (function() {
 
 				result.autonomy = s.getAutonomy();
 				let transitions = s.getContainer().getTransitions();
-				for (let i=0; i<result.outcomes.length; i++) {
-					let transition = transitions.findElement(function(element) {
-						return element.getFrom().getStateName() == s.getStateName() && element.getOutcome() == result.outcomes[i];
-					});
-					if (transition == undefined || transition.getTo() == undefined) {
-						throw {path: result.path, error: `missing transition target for outcome '${result.outcomes[i]}'`};
+					for (let i=0; i<result.outcomes.length; i++) {
+						let transition = transitions.findElement(function(element) {
+							return element.getFrom().getStateName() == s.getStateName() && element.getOutcome() == result.outcomes[i];
+						});
+						if (transition == undefined || transition.getTo() == undefined) {
+							throw {path: result.path, error: `missing transition target for outcome '${result.outcomes[i]}'`};
+						}
+						let target_name = transition.getTo().getStateName();
+						if ((s.getContainer().isConcurrent() && transition.getTo().getStateClass() == ':CONDITION')
+							|| transition.getTo().getStateClass() == ':OUTCOME') {
+							target_name = target_name.split('#')[0];
+						}
+						result.transitions.push(target_name);
 					}
-					let target_name = transition.getTo().getStateName();
-					if (s.getContainer().isConcurrent() && transition.getTo().getStateClass() == ':CONDITION') {
-						target_name = target_name.split('#')[0];
-					}
-					result.transitions.push(target_name);
-				}
 
 			}
 

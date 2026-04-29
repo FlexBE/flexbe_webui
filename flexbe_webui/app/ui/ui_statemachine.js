@@ -1013,6 +1013,11 @@ UI.Statemachine = new (function() {
 
 		if (!is_initial) {
 			displayed_sm.removeTransitionObject(drag_transition);
+			if (!displayed_sm.isConcurrent()
+				&& to != undefined
+				&& displayed_sm.getOutcomes().contains(to.split('#')[0])) {
+				displayed_sm.tryDuplicateOutcome(to.split('#')[0]);
+			}
 		} else {
 			displayed_sm.setInitialState(undefined);
 		}
@@ -1078,10 +1083,16 @@ UI.Statemachine = new (function() {
 		}
 
 		if (!is_initial) {
-			drag_transition.setTo(state);
-
 			if (!has_transition) {
+				drag_transition.setTo(state);
 				displayed_sm.addTransition(drag_transition);
+			} else {
+				displayed_sm.retargetTransition(drag_transition, state);
+				if (!displayed_sm.isConcurrent()
+					&& undo_end != undefined
+					&& displayed_sm.getOutcomes().contains(undo_end.split('#')[0])) {
+					displayed_sm.tryDuplicateOutcome(undo_end.split('#')[0]);
+				}
 			}
 			if (displayed_sm.isConcurrent()) {
 				displayed_sm.tryDuplicateOutcome(state.getStateName().split('#')[0]);
@@ -1103,7 +1114,11 @@ UI.Statemachine = new (function() {
 			function() {
 				let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
 				let target = container.getStateByName(undo_end);
-				if (target == undefined && container.getOutcomes().contains(undo_end)) target = container.getSMOutcomeByName(undo_end);
+				if (target == undefined
+					&& undo_end != undefined
+					&& container.getOutcomes().contains(undo_end.split('#')[0])) {
+					target = container.getSMOutcomeByName(undo_end);
+				}
 				if (is_initial) {
 					container.setInitialState(target);
 				} else {
@@ -1111,7 +1126,7 @@ UI.Statemachine = new (function() {
 						return trans.getFrom().getStateName() == from && trans.getOutcome() == outcome;
 					});
 					if (target != undefined) {
-						transition.setTo(target);
+						container.retargetTransition(transition, target);
 					} else {
 						transition.getFrom().unconnect(outcome);
 						container.removeTransitionFrom(transition.getFrom(), outcome);
@@ -1130,7 +1145,7 @@ UI.Statemachine = new (function() {
 						return trans.getFrom().getStateName() == from && trans.getOutcome() == outcome;
 					});
 					if (transition != undefined) {
-						transition.setTo(target);
+						container.retargetTransition(transition, target);
 					} else {
 						container.addTransition(new Transition(container.getStateByName(from), target, outcome, autonomy));
 					}

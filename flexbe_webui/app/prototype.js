@@ -14,10 +14,13 @@ Array.prototype.clone = function() {
 	return copy;
 }
 
-Array.prototype.filter = function(predicate) {
+Array.prototype.filter = function(predicate, this_arg) {
+	if (typeof predicate !== "function") {
+		throw new TypeError("Array.prototype.filter predicate must be a function");
+	}
 	var filtered_array = [];
-	this.forEach(function (element) {
-		if (predicate(element)) filtered_array.push(element);
+	this.forEach(function (element, index, array) {
+		if (predicate.call(this_arg, element, index, array)) filtered_array.push(element);
 	});
 	return filtered_array;
 }

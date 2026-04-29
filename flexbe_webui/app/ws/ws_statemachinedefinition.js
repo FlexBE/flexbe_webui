@@ -14,5 +14,6 @@ WS.StateMachineDefinition = function(outcomes, input_keys, output_keys) {
 	this.getOutcomes = function() { return outcomes; }
 
 	this.addOutcome = function(oc) { outcomes.push(oc); };
+	this.insertOutcome = function(oc, index) { outcomes.splice(index, 0, oc); };
 	this.removeOutcome = function(oc) { outcomes.remove(oc); };
 };

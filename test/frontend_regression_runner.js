@@ -32,11 +32,47 @@ function makeElement(id = '') {
     parentNode: { removeChild() {} },
     appendChild(child) {
       child.parentNode = this;
+      child.parentElement = this;
       this.children.push(child);
       this.options.push(child);
       return child;
     },
-    removeChild() {},
+    insertBefore(child, referenceChild) {
+      child.parentNode = this;
+      child.parentElement = this;
+      const existingChildIndex = this.children.indexOf(child);
+      if (existingChildIndex !== -1) {
+        this.children.splice(existingChildIndex, 1);
+      }
+      const existingOptionIndex = this.options.indexOf(child);
+      if (existingOptionIndex !== -1) {
+        this.options.splice(existingOptionIndex, 1);
+      }
+      const referenceIndex = this.children.indexOf(referenceChild);
+      if (referenceIndex === -1) {
+        this.children.push(child);
+        this.options.push(child);
+      } else {
+        this.children.splice(referenceIndex, 0, child);
+        this.options.splice(referenceIndex, 0, child);
+      }
+      return child;
+    },
+    removeChild(child) {
+      const childIndex = this.children.indexOf(child);
+      if (childIndex !== -1) {
+        this.children.splice(childIndex, 1);
+      }
+      const optionIndex = this.options.indexOf(child);
+      if (optionIndex !== -1) {
+        this.options.splice(optionIndex, 1);
+      }
+      if (child) {
+        child.parentNode = undefined;
+        child.parentElement = undefined;
+      }
+      return child;
+    },
     setAttribute(name, value) {
       this[name] = value;
     },
@@ -101,6 +137,7 @@ function setupGlobals() {
   const feedMessages = [];
   const acknowledgements = [];
   const consoleMessages = [];
+  let strictElementLookup = false;
 
   global.window = global;
   global.Mousetrap = {
@@ -120,18 +157,49 @@ function setupGlobals() {
     activeElement: { blur() {} },
     getElementById(id) {
       if (!elements.has(id)) {
+        if (strictElementLookup) {
+          return undefined;
+        }
         elements.set(id, makeElement(id));
       }
       return elements.get(id);
     },
+    setStrictElementLookup(enabled) {
+      strictElementLookup = enabled;
+    },
     createElement() {
       const element = makeElement();
+      let elementId = '';
+      Object.defineProperty(element, 'id', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return elementId;
+        },
+        set(value) {
+          if (elementId !== '' && elements.get(elementId) === this) {
+            elements.delete(elementId);
+          }
+          elementId = value;
+          if (value !== '' && value !== undefined) {
+            elements.set(value, this);
+          }
+        },
+      });
       const baseSetAttribute = element.setAttribute;
       element.setAttribute = function(name, value) {
         baseSetAttribute.call(this, name, value);
         if (name === 'id') {
           elements.set(value, this);
         }
+      };
+      const baseRemoveAttribute = element.removeAttribute;
+      element.removeAttribute = function(name) {
+        if (name === 'id' && elementId !== '' && elements.get(elementId) === this) {
+          elements.delete(elementId);
+          elementId = '';
+        }
+        baseRemoveAttribute.call(this, name);
       };
       return element;
     },
@@ -158,6 +226,7 @@ function setupGlobals() {
     logInfo(message) { logs.push({ level: 'info', message: String(message) }); },
     logError(message) { logs.push({ level: 'error', message: String(message) }); },
     logWarn(message) { logs.push({ level: 'warn', message: String(message) }); },
+    debugWarn() {},
     clearLog() {},
   };
 
@@ -887,6 +956,709 @@ async function runDashboardParameterEditCase() {
   assert.strictEqual(document.getElementById('db_field_parameter_edit_table_value_input').type, 'text');
 }
 
+async function runBehaviorInterfaceKeyRenameCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  global.WS = {
+    StateMachineDefinition: function() {},
+  };
+  global.Statemachine = function() {
+    let inputKeys = [];
+    let outputKeys = [];
+    this.setInputKeys = function(keys) {
+      inputKeys = keys;
+    };
+    this.getInputKeys = function() {
+      return inputKeys;
+    };
+    this.setOutputKeys = function(keys) {
+      outputKeys = keys;
+    };
+    this.getOutputKeys = function() {
+      return outputKeys;
+    };
+    this.addOutcome = function() {};
+    this.removeOutcome = function() {};
+    this.updateOutcome = function() {};
+  };
+
+  loadScript('flexbe_webui/app/_model/behavior.js');
+
+  Behavior.resetBehavior();
+
+  Behavior.addInterfaceInputKey('goal');
+  Behavior.updateInterfaceInputKeys('goal', 'goal_pose');
+  assert.deepStrictEqual(Behavior.getInterfaceInputKeys(), ['goal_pose']);
+  assert.deepStrictEqual(Behavior.getStatemachine().getInputKeys(), ['goal_pose']);
+
+  Behavior.removeInterfaceInputKey('goal_pose');
+  assert.deepStrictEqual(Behavior.getInterfaceInputKeys(), []);
+  assert.deepStrictEqual(Behavior.getStatemachine().getInputKeys(), []);
+
+  Behavior.addInterfaceInputKey('goal_pose');
+  assert.deepStrictEqual(Behavior.getInterfaceInputKeys(), ['goal_pose']);
+  assert.deepStrictEqual(Behavior.getStatemachine().getInputKeys(), ['goal_pose']);
+
+  Behavior.addInterfaceOutputKey('result');
+  Behavior.updateInterfaceOutputKeys('result', 'final_result');
+  assert.deepStrictEqual(Behavior.getInterfaceOutputKeys(), ['final_result']);
+  assert.deepStrictEqual(Behavior.getStatemachine().getOutputKeys(), ['final_result']);
+
+  Behavior.removeInterfaceOutputKey('final_result');
+  assert.deepStrictEqual(Behavior.getInterfaceOutputKeys(), []);
+  assert.deepStrictEqual(Behavior.getStatemachine().getOutputKeys(), []);
+}
+
+async function runBehaviorInterfaceOutcomeRenameCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  function makeStateDefinition(stateClass, outcomes = [], autonomy = []) {
+    return {
+      getStateClass() { return stateClass; },
+      getStatePath() { return `demo_pkg/${stateClass.toLowerCase()}`; },
+      getStatePackage() { return 'demo_pkg'; },
+      getParameters() { return []; },
+      getDefaultParameterValues() { return []; },
+      getOutcomes() { return outcomes.slice(); },
+      getDefaultAutonomy() { return autonomy.slice(); },
+      getInputKeys() { return []; },
+      getOutputKeys() { return []; },
+    };
+  }
+
+  WS.StateMachineDefinition = function(outcomes, inputKeys, outputKeys) {
+    let smOutcomes = outcomes.slice();
+    this.getStateClass = function() { return ':STATEMACHINE'; };
+    this.getStatePath = function() { return 'demo_pkg/statemachine'; };
+    this.getStatePackage = function() { return 'demo_pkg'; };
+    this.getParameters = function() { return []; };
+    this.getDefaultParameterValues = function() { return []; };
+    this.getOutcomes = function() { return smOutcomes; };
+    this.getDefaultAutonomy = function() { return smOutcomes.map(function() { return -1; }); };
+    this.getInputKeys = function() { return inputKeys.slice(); };
+    this.getOutputKeys = function() { return outputKeys.slice(); };
+    this.addOutcome = function(outcome) { smOutcomes.push(outcome); };
+    this.insertOutcome = function(outcome, index) { smOutcomes.splice(index, 0, outcome); };
+    this.removeOutcome = function(outcome) { smOutcomes.remove(outcome); };
+  };
+
+  UI.Statemachine.getPanShift = function() {
+    return { x: 0, y: 0 };
+  };
+  UI.Statemachine.getR = function() {
+    return { width: 400, height: 300 };
+  };
+  UI.Statemachine.getGridSize = function() {
+    return 50;
+  };
+
+  WS.Statelib.getFromLib = function(stateClass) {
+    if (stateClass === ':INIT') {
+      return makeStateDefinition(':INIT');
+    }
+    if (stateClass === ':OUTCOME') {
+      return makeStateDefinition(':OUTCOME');
+    }
+    if (stateClass === ':CONDITION') {
+      return makeStateDefinition(':CONDITION');
+    }
+    return makeStateDefinition(stateClass);
+  };
+  global.BehaviorState = function() {};
+
+  loadScript('flexbe_webui/app/_model/transition.js');
+  loadScript('flexbe_webui/app/_model/state.js');
+  loadScript('flexbe_webui/app/_model/statemachine.js');
+  loadScript('flexbe_webui/app/_model/behavior.js');
+
+  Behavior.resetBehavior();
+
+  Behavior.addInterfaceOutcome('finished');
+  Behavior.addInterfaceOutcome('failed');
+  Behavior.addInterfaceOutcome('aborted');
+  Behavior.updateInterfaceOutcome('finished', 'complete');
+
+  assert.deepStrictEqual(Behavior.getInterfaceOutcomes(), ['complete', 'failed', 'aborted']);
+  assert.deepStrictEqual(Behavior.getStatemachine().getOutcomes(), ['complete', 'failed', 'aborted']);
+  assert.strictEqual(Behavior.getStatemachine().getSMOutcomes()[0].getStateName(), 'complete');
+
+  Behavior.getStatemachine().setConcurrent(true);
+
+  assert.deepStrictEqual(Behavior.getStatemachine().getOutcomes(), ['complete', 'failed', 'aborted']);
+  assert.deepStrictEqual(
+    Behavior.getStatemachine().getSMOutcomes().map(function(state) { return state.getStateName(); }),
+    ['complete#0', 'failed#1', 'aborted#2']
+  );
+
+  Behavior.getStatemachine().setConcurrent(false);
+
+  assert.deepStrictEqual(Behavior.getStatemachine().getOutcomes(), ['complete', 'failed', 'aborted']);
+  assert.deepStrictEqual(
+    Behavior.getStatemachine().getSMOutcomes().map(function(state) { return state.getStateName(); }),
+    ['complete', 'failed', 'aborted']
+  );
+}
+
+async function runDashboardOutcomeUndoCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  function makeStateDefinition(stateClass, outcomes = [], autonomy = []) {
+    return {
+      getStateClass() { return stateClass; },
+      getStatePath() { return `demo_pkg/${stateClass.toLowerCase()}`; },
+      getStatePackage() { return 'demo_pkg'; },
+      getParameters() { return []; },
+      getDefaultParameterValues() { return []; },
+      getOutcomes() { return outcomes.slice(); },
+      getDefaultAutonomy() { return autonomy.slice(); },
+      getInputKeys() { return []; },
+      getOutputKeys() { return []; },
+    };
+  }
+
+  UI.Statemachine.getPanShift = function() {
+    return { x: 0, y: 0 };
+  };
+  UI.Statemachine.getR = function() {
+    return { width: 400, height: 300 };
+  };
+  UI.Statemachine.getGridSize = function() {
+    return 50;
+  };
+  UI.Statemachine.refreshView = function() {};
+  UI.Menu.isPageStatemachine = function() { return false; };
+
+  WS.StateMachineDefinition = function(outcomes, inputKeys, outputKeys) {
+    let smOutcomes = outcomes.slice();
+    this.getStateClass = function() { return ':STATEMACHINE'; };
+    this.getStatePath = function() { return 'demo_pkg/statemachine'; };
+    this.getStatePackage = function() { return 'demo_pkg'; };
+    this.getParameters = function() { return []; };
+    this.getDefaultParameterValues = function() { return []; };
+    this.getOutcomes = function() { return smOutcomes; };
+    this.getDefaultAutonomy = function() { return smOutcomes.map(function() { return -1; }); };
+    this.getInputKeys = function() { return inputKeys.slice(); };
+    this.getOutputKeys = function() { return outputKeys.slice(); };
+    this.addOutcome = function(outcome) { smOutcomes.push(outcome); };
+    this.insertOutcome = function(outcome, index) { smOutcomes.splice(index, 0, outcome); };
+    this.removeOutcome = function(outcome) { smOutcomes.remove(outcome); };
+  };
+
+  WS.Statelib.getFromLib = function(stateClass) {
+    if (stateClass === ':INIT') {
+      return makeStateDefinition(':INIT');
+    }
+    if (stateClass === ':OUTCOME') {
+      return makeStateDefinition(':OUTCOME');
+    }
+    if (stateClass === ':CONDITION') {
+      return makeStateDefinition(':CONDITION');
+    }
+    if (stateClass === 'WorkerState') {
+      return makeStateDefinition('WorkerState', ['done'], [0]);
+    }
+    return makeStateDefinition(stateClass);
+  };
+  global.BehaviorState = function() {};
+
+  loadScript('flexbe_webui/app/_model/transition.js');
+  loadScript('flexbe_webui/app/_model/state.js');
+  loadScript('flexbe_webui/app/_model/statemachine.js');
+  loadScript('flexbe_webui/app/_model/behavior.js');
+  loadScript('flexbe_webui/app/ui/ui_dashboard.js');
+
+  UI.Dashboard.updateTabTargets = function() {
+    return [];
+  };
+
+  const activities = [];
+  ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE = 'behavior_interface_change';
+  ActivityTracer.addActivity = function(type, description, undo, redo) {
+    activities.push({ type, description, undo, redo });
+  };
+
+  document.getElementById('db_outcome_table').innerHTML = '';
+  document.getElementById('input_db_outcome_add').value = '';
+
+  Behavior.resetBehavior();
+
+  Behavior.addInterfaceOutcome('done');
+  Behavior.addInterfaceOutcome('failed');
+  UI.Dashboard._addBehaviorOutcome('done', 0, true, true);
+  UI.Dashboard._addBehaviorOutcome('failed', 1, true, true);
+
+  const root = Behavior.getStatemachine();
+  const alpha = new State('Alpha', WS.Statelib.getFromLib('WorkerState'));
+  const beta = new State('Beta', WS.Statelib.getFromLib('WorkerState'));
+  root.addState(alpha);
+  root.addState(beta);
+
+  const baseOutcome = root.getSMOutcomeByName('done');
+  baseOutcome.setPosition({ x: 320, y: 80 });
+  root.addTransition(new Transition(alpha, baseOutcome, 'done', 0));
+  root.tryDuplicateOutcome('done');
+
+  const copiedOutcome = root.getSMOutcomeByName('done#1');
+  copiedOutcome.setPosition({ x: 320, y: 180 });
+  root.addTransition(new Transition(beta, copiedOutcome, 'done', 0));
+  root.tryDuplicateOutcome('done');
+
+  const spareOutcome = root.getSMOutcomeByName('done#2');
+  spareOutcome.setPosition({ x: 320, y: 280 });
+  assert(spareOutcome);
+
+  const removedSnapshot = UI.Dashboard.removeBehaviorOutcome('done');
+  assert(removedSnapshot);
+  assert.strictEqual(activities.length, 1);
+  assert.deepStrictEqual(Behavior.getInterfaceOutcomes(), ['failed']);
+  assert.deepStrictEqual(root.getOutcomes(), ['failed']);
+  assert.strictEqual(root.getSMOutcomeByName('done'), undefined);
+  assert.strictEqual(root.getSMOutcomeByName('done#1'), undefined);
+  assert.strictEqual(document.getElementById('db_outcome_table').children.length, 1);
+  assert.strictEqual(document.getElementById('db_outcome_table').children[0].id, 'db_field_outcome_table_row_failed');
+
+  activities[0].undo();
+
+  const restoredAlpha = root.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Alpha' && transition.getOutcome() === 'done';
+  });
+  const restoredBeta = root.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Beta' && transition.getOutcome() === 'done';
+  });
+  assert(restoredAlpha);
+  assert.strictEqual(restoredAlpha.getTo().getStateName(), 'done');
+  assert(restoredBeta);
+  assert.strictEqual(restoredBeta.getTo().getStateName(), 'done#1');
+  assert.deepStrictEqual(Behavior.getInterfaceOutcomes(), ['done', 'failed']);
+  assert.deepStrictEqual(root.getOutcomes(), ['done', 'failed']);
+  assert.strictEqual(root.getSMOutcomeByName('done#1').getPosition().y, 180);
+  assert.strictEqual(root.getSMOutcomeByName('done#2').getPosition().y, 280);
+  assert.strictEqual(document.getElementById('db_outcome_table').children.length, 2);
+  assert.strictEqual(document.getElementById('db_outcome_table').children[0].id, 'db_field_outcome_table_row_done');
+  assert.strictEqual(document.getElementById('db_outcome_table').children[1].id, 'db_field_outcome_table_row_failed');
+
+  activities[0].redo();
+
+  assert.deepStrictEqual(Behavior.getInterfaceOutcomes(), ['failed']);
+  assert.deepStrictEqual(root.getOutcomes(), ['failed']);
+  assert.strictEqual(root.getSMOutcomeByName('done#1'), undefined);
+  assert.strictEqual(document.getElementById('db_outcome_table').children.length, 1);
+  assert.strictEqual(document.getElementById('db_outcome_table').children[0].id, 'db_field_outcome_table_row_failed');
+}
+
+async function runDashboardOutcomeCollisionCase() {
+  const { acknowledgements, logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const interfaceOutcomes = [];
+  global.Behavior = {
+    getInterfaceOutcomes() {
+      return interfaceOutcomes;
+    },
+    addInterfaceOutcome(outcome) {
+      interfaceOutcomes.push(outcome);
+    },
+    removeInterfaceOutcome(outcome) {
+      interfaceOutcomes.remove(outcome);
+      return { outcome };
+    },
+    restoreInterfaceOutcome(removed) {
+      interfaceOutcomes.push(removed.outcome);
+    },
+    updateInterfaceOutcome(oldValue, newValue) {
+      const index = interfaceOutcomes.indexOf(oldValue);
+      if (index !== -1) {
+        interfaceOutcomes[index] = newValue;
+      }
+    },
+  };
+
+  UI.Menu.isPageStatemachine = function() { return false; };
+  ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE = 'behavior_interface_change';
+  ActivityTracer.ACT_INTERNAL_CONFIG_CHANGE = 'internal_config_change';
+  ActivityTracer.addActivity = function() {};
+
+  loadScript('flexbe_webui/app/ui/ui_dashboard.js');
+
+  UI.Dashboard.updateTabTargets = function() {
+    return [];
+  };
+
+  document.getElementById('db_outcome_table').innerHTML = '';
+  document.getElementById('input_db_outcome_add').value = '';
+  document.setStrictElementLookup(true);
+
+  UI.Dashboard._addBehaviorOutcome('alpha_beta', 0, true, false);
+  assert.deepStrictEqual(interfaceOutcomes, ['alpha_beta']);
+
+  let addResult = await UI.Dashboard.addBehaviorOutcome('alpha beta');
+  assert.strictEqual(addResult, false);
+  assert.deepStrictEqual(interfaceOutcomes, ['alpha_beta']);
+
+  UI.Dashboard._addBehaviorOutcome('gamma', 1, true, false);
+  let renameResult = await UI.Dashboard.changeBehaviorOutcome('alpha beta', 'gamma');
+  assert.strictEqual(renameResult, false);
+  assert.deepStrictEqual(interfaceOutcomes, ['alpha_beta', 'gamma']);
+
+  assert(
+    acknowledgements.some(message => message.includes("Outcome name 'alpha beta' conflicts with the Dashboard row id used by 'alpha_beta'.")),
+    `Expected collision acknowledgement, got ${JSON.stringify(acknowledgements)}`
+  );
+  assert(
+    logs.some(entry => entry.level === 'warn' && entry.message.includes("Dashboard outcome id collision between 'alpha beta' and 'alpha_beta'")),
+    `Expected collision warning log, got ${JSON.stringify(logs)}`
+  );
+}
+
+async function runDashboardInterfaceKeyFlowsCase() {
+  const { acknowledgements, logs, elements } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const interfaceInputKeys = [];
+  const interfaceOutputKeys = [];
+  global.Behavior = {
+    getInterfaceInputKeys() {
+      return interfaceInputKeys;
+    },
+    addInterfaceInputKey(key) {
+      interfaceInputKeys.push(key);
+    },
+    removeInterfaceInputKey(key) {
+      interfaceInputKeys.remove(key);
+    },
+    updateInterfaceInputKeys(oldValue, newValue) {
+      const index = interfaceInputKeys.indexOf(oldValue);
+      if (index !== -1) {
+        interfaceInputKeys[index] = newValue;
+      }
+    },
+    getInterfaceOutputKeys() {
+      return interfaceOutputKeys;
+    },
+    addInterfaceOutputKey(key) {
+      interfaceOutputKeys.push(key);
+    },
+    removeInterfaceOutputKey(key) {
+      interfaceOutputKeys.remove(key);
+    },
+    updateInterfaceOutputKeys(oldValue, newValue) {
+      const index = interfaceOutputKeys.indexOf(oldValue);
+      if (index !== -1) {
+        interfaceOutputKeys[index] = newValue;
+      }
+    },
+  };
+
+  UI.Menu.isPageStatemachine = function() { return false; };
+  UI.Statemachine.refreshView = function() {};
+
+  const activities = [];
+  ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE = 'behavior_interface_change';
+  ActivityTracer.addActivity = function(type, description, undo, redo) {
+    activities.push({ type, description, undo, redo });
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_dashboard.js');
+
+  UI.Dashboard.updateTabTargets = function() {
+    return [];
+  };
+
+  document.getElementById('db_input_key_table');
+  document.getElementById('db_output_key_table');
+  document.getElementById('input_db_input_key_add');
+  document.getElementById('input_db_output_key_add');
+  document.setStrictElementLookup(true);
+
+  let outputAddFocusCount = 0;
+  document.getElementById('input_db_output_key_add').focus = function() {
+    outputAddFocusCount += 1;
+  };
+
+  UI.Dashboard._addInterfaceInputKey('rename_source');
+  activities.length = 0;
+
+  let inputRenameSuccess = await UI.Dashboard.changeInterfaceInputKey('rename_target', 'rename_source');
+  assert.strictEqual(inputRenameSuccess, true);
+  assert.strictEqual(document.getElementById('db_field_input_key_table_input_field_rename_source'), undefined);
+  assert.strictEqual(document.getElementById('db_field_input_key_table_row_rename_source'), undefined);
+  assert.strictEqual(document.getElementById('db_field_input_key_table_remove_button_rename_source'), undefined);
+  assert.notStrictEqual(document.getElementById('db_field_input_key_table_input_field_rename_target'), undefined);
+
+  UI.Dashboard.removeInterfaceInputKey('rename_target', true);
+  activities.length = 0;
+
+  UI.Dashboard._addInterfaceInputKey('goal_pose');
+  activities.length = 0;
+  acknowledgements.length = 0;
+  logs.length = 0;
+
+  let inputAddResult = await UI.Dashboard.addInterfaceInputKey('goal pose');
+  assert.strictEqual(inputAddResult, false);
+  assert.deepStrictEqual(interfaceInputKeys, ['goal_pose']);
+
+  UI.Dashboard._addInterfaceInputKey('other');
+  activities.length = 0;
+
+  let inputRenameResult = await UI.Dashboard.changeInterfaceInputKey('goal pose', 'other');
+  assert.strictEqual(inputRenameResult, false);
+  assert.deepStrictEqual(interfaceInputKeys, ['goal_pose', 'other']);
+
+  assert(
+    acknowledgements.some(message => message.includes("Input key 'goal pose' conflicts with the Dashboard row id used by 'goal_pose'.")),
+    `Expected input-key collision acknowledgement, got ${JSON.stringify(acknowledgements)}`
+  );
+  assert(
+    logs.some(entry => entry.level === 'warn' && entry.message.includes("Dashboard input key id collision between 'goal pose' and 'goal_pose'")),
+    `Expected input-key collision warning log, got ${JSON.stringify(logs)}`
+  );
+
+  acknowledgements.length = 0;
+  logs.length = 0;
+  activities.length = 0;
+
+  let outputAddResult = await UI.Dashboard.addInterfaceOutputKey('result');
+  assert.strictEqual(outputAddResult, true);
+  assert.deepStrictEqual(interfaceOutputKeys, ['result']);
+  assert.strictEqual(activities.length, 1);
+
+  activities[0].undo();
+  assert.deepStrictEqual(interfaceOutputKeys, []);
+  assert.strictEqual(document.getElementById('db_output_key_table').children.length, 0);
+
+  activities[0].redo();
+  assert.deepStrictEqual(interfaceOutputKeys, ['result']);
+  assert.strictEqual(document.getElementById('db_output_key_table').children.length, 1);
+
+  activities.length = 0;
+  outputAddFocusCount = 0;
+  assert.strictEqual(document.getElementById('input_db_output_key_table'), undefined);
+  assert.strictEqual(elements.has('input_db_output_key_table'), false);
+
+  let removeResult = UI.Dashboard.removeInterfaceOutputKey('result');
+  assert.strictEqual(removeResult, true);
+  assert.deepStrictEqual(interfaceOutputKeys, []);
+  assert.strictEqual(outputAddFocusCount, 1);
+  assert.strictEqual(document.getElementById('input_db_output_key_table'), undefined);
+  assert.strictEqual(elements.has('input_db_output_key_table'), false);
+
+  acknowledgements.length = 0;
+  logs.length = 0;
+  activities.length = 0;
+
+  UI.Dashboard._addInterfaceOutputKey('final_result');
+  activities.length = 0;
+
+  let outputCollisionAddResult = await UI.Dashboard.addInterfaceOutputKey('final result');
+  assert.strictEqual(outputCollisionAddResult, false);
+  assert.deepStrictEqual(interfaceOutputKeys, ['final_result']);
+
+  UI.Dashboard._addInterfaceOutputKey('other_output');
+  activities.length = 0;
+
+  let outputRenameResult = await UI.Dashboard.changeInterfaceOutputKey('final result', 'other_output');
+  assert.strictEqual(outputRenameResult, false);
+  assert.deepStrictEqual(interfaceOutputKeys, ['final_result', 'other_output']);
+
+  assert(
+    acknowledgements.some(message => message.includes("Output key 'final result' conflicts with the Dashboard row id used by 'final_result'.")),
+    `Expected output-key collision acknowledgement, got ${JSON.stringify(acknowledgements)}`
+  );
+  assert(
+    logs.some(entry => entry.level === 'warn' && entry.message.includes("Dashboard output key id collision between 'final result' and 'final_result'")),
+    `Expected output-key collision warning log, got ${JSON.stringify(logs)}`
+  );
+}
+
+async function runModelGeneratorInterfaceValidationCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const addedValues = [];
+  UI.Dashboard.setBehaviorName = function() {};
+  UI.Dashboard.setBehaviorPackage = function() {};
+  UI.Dashboard.setBehaviorDescription = function() {};
+  UI.Dashboard.setBehaviorTags = function() {};
+  UI.Dashboard.setBehaviorAuthor = function() {};
+  UI.Dashboard.setBehaviorDate = function() {};
+  UI.Dashboard._addPrivateVariable = function() {};
+  UI.Dashboard.addDefaultUserdata = function() {};
+  UI.Dashboard.addPrivateFunction = function() {};
+  UI.Dashboard.addManualImport = function() {};
+  UI.Dashboard.addParameter = function() {};
+  UI.Dashboard._addBehaviorOutcome = function(outcome, insertIdx, skipHistory) {
+    addedValues.push({ type: 'outcome', value: outcome, skipHistory });
+  };
+  UI.Dashboard._addInterfaceInputKey = function(key, skipHistory) {
+    addedValues.push({ type: 'input', value: key, skipHistory });
+  };
+  UI.Dashboard._addInterfaceOutputKey = function(key, skipHistory) {
+    addedValues.push({ type: 'output', value: key, skipHistory });
+  };
+
+  Behavior.setManualCodeInit = function() {};
+  Behavior.setManualCodeCreate = function() {};
+  Behavior.setManualCodeFunc = function() {};
+  Behavior.setFiles = function() {};
+  Behavior.updateBehaviorParameter = function() {};
+
+  global.Note = function() {
+    this.setPosition = function() {};
+    this.setContainerPath = function() {};
+    this.setImportant = function() {};
+  };
+
+  loadScript('flexbe_webui/app/io/io_modelgenerator.js');
+
+  const manifest = {
+    name: 'DemoBehavior',
+    rosnode_name: 'demo_pkg',
+    description: '',
+    tags: '',
+    author: 'Tester',
+    date: '2026-03-31',
+    params: [],
+    codefile_relpath: 'demo_behavior.py',
+    codefile_name: 'demo_behavior.py',
+    manifest_path: '/tmp/demo_behavior.xml',
+  };
+  const baseData = {
+    creation_date: '2026-03-31',
+    manual_code: {
+      manual_init: '',
+      manual_create: '',
+      manual_func: '',
+      manual_import: '',
+    },
+    behavior_comments: [],
+    private_variables: [],
+    default_userdata: [],
+    private_functions: [],
+    smi_outcomes: ['done'],
+    smi_input: ['goal'],
+    smi_output: ['result'],
+  };
+
+  assert.throws(function() {
+    IO.ModelGenerator.generateBehaviorAttributes(Object.assign({}, baseData, {
+      smi_input: ['goal_pose', 'goal pose'],
+    }), manifest);
+  }, /conflicts with the Dashboard row id used by 'goal_pose'/);
+  assert.deepStrictEqual(addedValues, []);
+
+  IO.ModelGenerator.generateBehaviorAttributes(baseData, manifest);
+  assert.deepStrictEqual(addedValues, [
+    { type: 'outcome', value: 'done', skipHistory: true },
+    { type: 'input', value: 'goal', skipHistory: true },
+    { type: 'output', value: 'result', skipHistory: true },
+  ]);
+}
+
+async function runBehaviorStructureOutcomeCopyCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  global.WS = {
+    StateMachineDefinition: function(outcomes = []) {
+      this.getOutcomes = function() {
+        return outcomes.slice();
+      };
+    },
+  };
+
+  global.State = function(stateName, stateClass = 'State', outcomes = []) {
+    let container;
+    let pathOverride;
+    const autonomy = outcomes.map(function() { return 0; });
+    let stateId = -1;
+
+    this.getStateName = function() { return stateName; };
+    this.getStateClass = function() { return stateClass; };
+    this.getOutcomes = function() { return outcomes; };
+    this.getAutonomy = function() { return autonomy; };
+    this.getContainer = function() { return container; };
+    this.setContainer = function(value) { container = value; };
+    this.getStateId = function() { return stateId; };
+    this.setStateId = function(value) { stateId = value; };
+    this.setStatePath = function(value) { pathOverride = value; };
+    this.getStatePath = function() {
+      if (pathOverride !== undefined) {
+        return pathOverride;
+      }
+      if (!container) {
+        return stateName === '' ? '' : `/${stateName}`;
+      }
+      const parentPath = container.getStatePath();
+      return parentPath === '' ? `/${stateName}` : `${parentPath}/${stateName}`;
+    };
+  };
+
+  global.Statemachine = function(stateName, definition) {
+    State.call(this, stateName, ':STATEMACHINE', definition && definition.getOutcomes ? definition.getOutcomes() : []);
+    let states = [];
+    let transitions = [];
+    let concurrent = false;
+    let priority = false;
+
+    this.addState = function(state) {
+      states.push(state);
+      state.setContainer(this);
+    };
+    this.getStates = function() { return states; };
+    this.getTransitions = function() { return transitions; };
+    this.addTransition = function(transition) { transitions.push(transition); };
+    this.isConcurrent = function() { return concurrent; };
+    this.setConcurrent = function(value) { concurrent = value; };
+    this.isPriority = function() { return priority; };
+    this.setPriority = function(value) { priority = value; };
+    this.getStateByPath = function(path) {
+      if (path === '' || path === '/') {
+        return this;
+      }
+      return states.find(function(state) { return state.getStatePath() === path; });
+    };
+  };
+  global.Statemachine.prototype = Object.create(global.State.prototype);
+  global.Statemachine.prototype.constructor = global.Statemachine;
+
+  global.BehaviorState = function() {};
+  global.Transition = function(from, to, outcome) {
+    this.getFrom = function() { return from; };
+    this.getTo = function() { return to; };
+    this.getOutcome = function() { return outcome; };
+  };
+
+  loadScript('flexbe_webui/app/_model/behavior.js');
+  Behavior.resetBehavior();
+
+  const rootSm = new Statemachine('', new WS.StateMachineDefinition(['finished']));
+  rootSm.setStatePath('');
+  rootSm.setStateId(0);
+
+  const alpha = new State('Alpha State', 'SomeState', ['done']);
+  alpha.setStateId(1);
+  const copiedOutcome = new State('finished#1', ':OUTCOME');
+  copiedOutcome.setStateId(2);
+  copiedOutcome.setContainer(rootSm);
+
+  rootSm.addState(alpha);
+  rootSm.addTransition(new Transition(alpha, copiedOutcome, 'done'));
+
+  Behavior.setStatemachine(rootSm);
+
+  const structure = Behavior.createStructureInfo();
+  const alphaInfo = structure.find(function(entry) {
+    return entry.path === '/Alpha State';
+  });
+
+  assert(alphaInfo);
+  assert.deepStrictEqual(alphaInfo.outcomes, ['done']);
+  assert.deepStrictEqual(alphaInfo.transitions, ['finished']);
+}
+
 async function runRuntimeFlowsCase() {
   const { logs, consoleMessages, restoreConsole } = setupGlobals();
   const originalSetTimeout = global.setTimeout;
@@ -1244,6 +2016,101 @@ async function runStatePanelFlowsCase() {
   removeOutputButton.dispatchEvent({ type: 'click', preventDefault() {}, stopPropagation() {} });
   assert.deepStrictEqual(containerState.getOutputKeys(), ['out_second']);
   assert.deepStrictEqual(containerState.getOutputMapping(), ['done']);
+}
+
+async function runStatePanelDuplicateGuardsCase() {
+  const { acknowledgements } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_stateproperties.js');
+
+  UI.Panels.STATE_PROPERTIES_PANEL = 'state_properties';
+  UI.Panels.setActivePanel = function() {};
+  UI.Panels.hidePanelIfActive = function() {};
+  UI.Panels.updatePanelTabTargets = function() {};
+  UI.Panels.setFocus = function() {};
+
+  ActivityTracer.ACT_STATE_CHANGE = 'state_change';
+  ActivityTracer.addActivity = function() {
+    throw new Error('duplicate guard should not add history');
+  };
+
+  global.Statemachine = function() {};
+  Statemachine.prototype.isConcurrent = function() { return false; };
+  Statemachine.prototype.isPriority = function() { return false; };
+  global.BehaviorState = function() {};
+
+  const displayedSM = {
+    isInsideDifferentBehavior() { return false; },
+  };
+  UI.Statemachine.getDisplayedSM = function() {
+    return displayedSM;
+  };
+  UI.Statemachine.refreshView = function() {};
+  UI.Statemachine.isDataflow = function() { return false; };
+
+  RC.Controller.isReadonly = function() { return false; };
+  RC.Controller.isLocked = function() { return false; };
+  RC.Controller.isStateLocked = function() { return false; };
+  RC.Controller.isOnLockedPath = function() { return false; };
+  Behavior.isReadonly = function() { return false; };
+
+  const containerState = new Statemachine();
+  const outcomes = ['done'];
+  const autonomy = [-1];
+  const inputKeys = ['goal'];
+  const inputMapping = ['goal'];
+  const outputKeys = ['result'];
+  const outputMapping = ['result'];
+
+  containerState.getStateName = function() { return 'Container State'; };
+  containerState.getStatePath = function() { return '/container_state'; };
+  containerState.getOutcomes = function() { return outcomes; };
+  containerState.getAutonomy = function() { return autonomy; };
+  containerState.addOutcome = function(outcome) {
+    outcomes.push(outcome);
+    autonomy.push(-1);
+  };
+  containerState.getInputKeys = function() { return inputKeys; };
+  containerState.getInputMapping = function() { return inputMapping; };
+  containerState.getOutputKeys = function() { return outputKeys; };
+  containerState.getOutputMapping = function() { return outputMapping; };
+
+  Behavior.getStatemachine = function() {
+    return {
+      getStateByPath() {
+        return containerState;
+      },
+    };
+  };
+
+  UI.Panels.StateProperties.displayStateProperties(containerState);
+
+  document.getElementById('input_prop_outcome_add').value = 'done';
+  await UI.Panels.StateProperties.addSMOutcome();
+  assert.deepStrictEqual(outcomes, ['done']);
+
+  document.getElementById('input_prop_input_key_add').value = 'goal';
+  await UI.Panels.StateProperties.addSMInputKey();
+  assert.deepStrictEqual(inputKeys, ['goal']);
+  assert.deepStrictEqual(inputMapping, ['goal']);
+
+  document.getElementById('input_prop_output_key_add').value = 'result';
+  await UI.Panels.StateProperties.addSMOutputKey();
+  assert.deepStrictEqual(outputKeys, ['result']);
+  assert.deepStrictEqual(outputMapping, ['result']);
+
+  assert(
+    acknowledgements.some(message => message.includes("Outcome name 'done' already exists!")),
+    `Expected duplicate outcome acknowledgement, got ${JSON.stringify(acknowledgements)}`
+  );
+  assert(
+    acknowledgements.some(message => message.includes("Input key 'goal' already exists!")),
+    `Expected duplicate input acknowledgement, got ${JSON.stringify(acknowledgements)}`
+  );
+  assert(
+    acknowledgements.some(message => message.includes("Output key 'result' already exists!")),
+    `Expected duplicate output acknowledgement, got ${JSON.stringify(acknowledgements)}`
+  );
 }
 
 async function runApiClientCase() {
@@ -2416,6 +3283,894 @@ class DemoBehaviorSM(Behavior):
   assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_class, 'pkg_b__SharedSM');
 }
 
+async function runOutcomeCopyCommentEncodingCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/io/io_codeparser.js');
+
+  const code = `from pkg_a.some_state import SomeState
+from flexbe_core import Autonomy
+from flexbe_core import Behavior
+from flexbe_core import OperatableStateMachine
+
+
+class DemoBehaviorSM(Behavior):
+    """
+    Define Demo Behavior.
+
+    Created on 2026-03-31
+    @author: tester
+    """
+
+    def __init__(self, node):
+        super().__init__()
+        self.name = 'Demo Behavior'
+
+    def create(self):
+        # task%20done:x:10 y:20, task%20done%231:x:10 y:80
+        # route: Alpha%20State>go%20now --> task%20done%231
+        _state_machine = OperatableStateMachine(outcomes=['task done'])
+
+        with _state_machine:
+            OperatableStateMachine.add('Alpha State',
+                SomeState(),
+                transitions={'go now': 'task done'},
+                autonomy={'go now': Autonomy.Off})
+            OperatableStateMachine.add('Beta State',
+                SomeState(),
+                transitions={'go now': 'task done'},
+                autonomy={'go now': Autonomy.Off})
+
+        return _state_machine
+`;
+
+  const parsingResult = IO.CodeParser.parseCode(code);
+  assert.strictEqual(parsingResult.sm_defs[0].oc_positions[0].name, 'task done');
+  assert.strictEqual(parsingResult.sm_defs[0].oc_positions[1].name, 'task done#1');
+  assert.strictEqual(parsingResult.sm_defs[0].routes[0].dest_copy, 'task done#1');
+  assert.strictEqual(parsingResult.sm_defs[0].routes[0].sources[0].state, 'Alpha State');
+  assert.strictEqual(parsingResult.sm_defs[0].routes[0].sources[0].outcome, 'go now');
+}
+
+async function runOutcomeCopyBuildRoundTripCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/io/io_codeparser.js');
+
+  const code = `from pkg_a.some_state import SomeState
+from flexbe_core import Autonomy
+from flexbe_core import Behavior
+from flexbe_core import OperatableStateMachine
+
+
+class DemoBehaviorSM(Behavior):
+    """
+    Define Demo Behavior.
+
+    Created on 2026-03-31
+    @author: tester
+    """
+
+    def __init__(self, node):
+        super().__init__()
+        self.name = 'Demo Behavior'
+
+    def create(self):
+        # task%20done:x:10 y:20, task%20done%231:x:10 y:80
+        # route: Alpha%20State>go%20now --> task%20done%231
+        _state_machine = OperatableStateMachine(outcomes=['task done'])
+
+        with _state_machine:
+            OperatableStateMachine.add('Alpha State',
+                SomeState(),
+                transitions={'go now': 'task done'},
+                autonomy={'go now': Autonomy.Off})
+            OperatableStateMachine.add('Beta State',
+                SomeState(),
+                transitions={'go now': 'task done'},
+                autonomy={'go now': Autonomy.Off})
+
+        return _state_machine
+`;
+
+  const parsingResult = IO.CodeParser.parseCode(code);
+
+  function defineBaseStateApi(target, stateName, stateClass, outcomes = [], autonomy = []) {
+    let name = stateName;
+    let container;
+    let position = { x: 0, y: 0 };
+    let parameterValues = [];
+    let inputMapping = [];
+    let outputMapping = [];
+
+    target.getStateName = function() { return name; };
+    target.setStateName = function(newName) { name = newName; };
+    target.getStateClass = function() { return stateClass; };
+    target.getStateType = function() { return stateClass; };
+    target.getStatePath = function() {
+      return container ? `${container.getStatePath()}/${name}` : `/${name}`;
+    };
+    target.getParameters = function() { return []; };
+    target.getParameterValues = function() { return parameterValues; };
+    target.setParameterValues = function(values) { parameterValues = values; };
+    target.getAutonomy = function() { return autonomy; };
+    target.setAutonomy = function(values) { autonomy = values; };
+    target.getInputMapping = function() { return inputMapping; };
+    target.setInputMapping = function(values) { inputMapping = values; };
+    target.getOutputMapping = function() { return outputMapping; };
+    target.setOutputMapping = function(values) { outputMapping = values; };
+    target.getPosition = function() { return position; };
+    target.setPosition = function(value) { position = value; };
+    target.getContainer = function() { return container; };
+    target.setContainer = function(value) { container = value; };
+    target.getOutcomes = function() { return outcomes; };
+    target.getInputKeys = function() { return []; };
+    target.getOutputKeys = function() { return []; };
+  }
+
+  global.State = function(stateName, definition) {
+    const stateClass = definition && definition.state_class ? definition.state_class : 'State';
+    const outcomes = definition && definition.outcomes ? definition.outcomes.slice() : [];
+    const autonomy = definition && definition.autonomy ? definition.autonomy.slice() : [];
+    defineBaseStateApi(this, stateName, stateClass, outcomes, autonomy);
+  };
+
+  global.Statemachine = function(stateName, definition) {
+    const outcomes = definition ? definition.getOutcomes() : [];
+    defineBaseStateApi(this, stateName, ':STATEMACHINE', outcomes.slice(), []);
+    const that = this;
+
+    let states = [];
+    let transitions = [];
+    let initialState;
+    let concurrent = false;
+    let priority = false;
+    let conditions = [];
+    let smOutcomes = outcomes.map(function(outcomeName) {
+      const outcomeState = new State(outcomeName, { state_class: ':OUTCOME' });
+      outcomeState.setContainer(this);
+      return outcomeState;
+    }, this);
+
+    this.getStates = function() { return states; };
+    this.addState = function(state) {
+      states.push(state);
+      state.setContainer(that);
+    };
+    this.getStateByName = function(name) {
+      return states.find(function(state) { return state.getStateName() === name; });
+    };
+    this.getTransitions = function() { return transitions; };
+    this.addTransition = function(transition) {
+      transitions.push(transition);
+    };
+    this.getInitialState = function() { return initialState; };
+    this.setInitialState = function(state) { initialState = state; };
+    this.isConcurrent = function() { return concurrent; };
+    this.setConcurrent = function(value) { concurrent = value; };
+    this.isPriority = function() { return priority; };
+    this.setPriority = function(value) { priority = value; };
+    this.setConditions = function(value) { conditions = value; };
+    this.getConditions = function() { return conditions; };
+    this.getSMOutcomes = function() { return smOutcomes; };
+    this.getSMOutcomeByName = function(name) {
+      return smOutcomes.find(function(state) { return state.getStateName() === name; });
+    };
+    this.tryDuplicateOutcome = function(baseName) {
+      const copies = smOutcomes.filter(function(state) {
+        return state.getStateName() === baseName || state.getStateName().startsWith(`${baseName}#`);
+      });
+      const unused = copies.filter(function(copy) {
+        return !transitions.some(function(transition) { return transition.getTo() === copy; });
+      });
+      if (unused.length === 0) {
+        const copy = new State(`${baseName}#${copies.length}`, { state_class: ':OUTCOME' });
+        copy.setContainer(that);
+        smOutcomes.push(copy);
+      }
+    };
+  };
+
+  global.BehaviorState = function() {};
+  global.Transition = function(from, to, outcome, autonomy) {
+    let target = to;
+    this.getFrom = function() { return from; };
+    this.getTo = function() { return target; };
+    this.setTo = function(value) { target = value; };
+    this.getOutcome = function() { return outcome; };
+    this.getAutonomy = function() { return autonomy; };
+  };
+
+  WS.StateMachineDefinition = function(outcomes, inputKeys, outputKeys) {
+    this.getOutcomes = function() { return outcomes; };
+    this.getInputKeys = function() { return inputKeys; };
+    this.getOutputKeys = function() { return outputKeys; };
+  };
+  WS.Statelib.getClassFromLib = function(stateClass) {
+    if (stateClass === 'SomeState') {
+      return {
+        state_class: 'SomeState',
+        outcomes: ['go now'],
+        autonomy: [0],
+      };
+    }
+    return undefined;
+  };
+  WS.Statelib.isClassUnique = function() {
+    return true;
+  };
+  WS.Statelib.getFromLib = function(stateClass) {
+    if (stateClass === ':OUTCOME') {
+      return { state_class: ':OUTCOME' };
+    }
+    return undefined;
+  };
+
+  loadScript('flexbe_webui/app/io/io_modelgenerator.js');
+
+  const built = IO.ModelGenerator.buildStateMachine(
+    'Root',
+    parsingResult.root_sm_name,
+    parsingResult.sm_defs,
+    parsingResult.sm_states,
+    true
+  );
+
+  assert.strictEqual(built.getTransitions().length, 2);
+  const alphaTransition = built.getTransitions().find(function(transition) {
+    return transition.getFrom().getStateName() === 'Alpha State';
+  });
+  const betaTransition = built.getTransitions().find(function(transition) {
+    return transition.getFrom().getStateName() === 'Beta State';
+  });
+  assert(alphaTransition);
+  assert(betaTransition);
+  assert.strictEqual(alphaTransition.getOutcome(), 'go now');
+  assert.strictEqual(alphaTransition.getTo().getStateName(), 'task done#1');
+  assert.strictEqual(betaTransition.getTo().getStateName(), 'task done');
+  assert.strictEqual(built.getSMOutcomeByName('task done').getPosition().x, 10);
+  assert.strictEqual(built.getSMOutcomeByName('task done#1').getPosition().y, 80);
+  assert(built.getSMOutcomeByName('task done#2'));
+  assert(
+    !logs.some(entry => entry.level === 'warn' && entry.message.includes('Unknown transition target')),
+    `unexpected warnings while rebuilding copied outcomes: ${JSON.stringify(logs, null, 2)}`
+  );
+}
+
+function setupOutcomeCopyEditorHarness() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  function makeShape(initialAttrs = {}) {
+    const attrs = Object.assign({}, initialAttrs);
+    return {
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      data() { return this; },
+      mousemove() { return this; },
+      drag() { return this; },
+      click() { return this; },
+      toBack() { return this; },
+      toFront() { return this; },
+      translate() { return this; },
+      transform() { return ''; },
+      hide() { return this; },
+      show() { return this; },
+      remove() {},
+    };
+  }
+
+  global.Raphael = function() {
+    return {
+      width: 400,
+      height: 300,
+      rect() {
+        return makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+      },
+      circle() {
+        return makeShape({ cx: 0, cy: 0, opacity: 0 });
+      },
+      path() {
+        return makeShape();
+      },
+      remove() {},
+    };
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+  UI.Statemachine.initialize();
+  UI.Statemachine.removeSelection = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Menu.isPageStatemachine = function() { return false; };
+  T.debugWarn = function() {};
+
+  function makeStateDefinition(stateClass, outcomes = [], autonomy = []) {
+    return {
+      getStateClass() { return stateClass; },
+      getStatePath() { return `demo_pkg/${stateClass.toLowerCase()}`; },
+      getStatePackage() { return 'demo_pkg'; },
+      getParameters() { return []; },
+      getDefaultParameterValues() { return []; },
+      getOutcomes() { return outcomes.slice(); },
+      getDefaultAutonomy() { return autonomy.slice(); },
+      getInputKeys() { return []; },
+      getOutputKeys() { return []; },
+    };
+  }
+
+  WS.StateMachineDefinition = function(outcomes, inputKeys, outputKeys) {
+    let smOutcomes = outcomes.slice();
+    this.getStateClass = function() { return ':STATEMACHINE'; };
+    this.getStatePath = function() { return 'demo_pkg/statemachine'; };
+    this.getStatePackage = function() { return 'demo_pkg'; };
+    this.getParameters = function() { return []; };
+    this.getDefaultParameterValues = function() { return []; };
+    this.getOutcomes = function() { return smOutcomes.slice(); };
+    this.getDefaultAutonomy = function() { return smOutcomes.map(function() { return -1; }); };
+    this.getInputKeys = function() { return inputKeys.slice(); };
+    this.getOutputKeys = function() { return outputKeys.slice(); };
+    this.addOutcome = function(outcome) { smOutcomes.push(outcome); };
+    this.insertOutcome = function(outcome, index) { smOutcomes.splice(index, 0, outcome); };
+    this.removeOutcome = function(outcome) {
+      smOutcomes = smOutcomes.filter(function(entry) { return entry !== outcome; });
+    };
+  };
+
+  WS.Statelib.getFromLib = function(stateClass) {
+    if (stateClass === ':INIT') {
+      return makeStateDefinition(':INIT');
+    }
+    if (stateClass === ':OUTCOME') {
+      return makeStateDefinition(':OUTCOME');
+    }
+    if (stateClass === ':CONDITION') {
+      return makeStateDefinition(':CONDITION');
+    }
+    if (stateClass === 'WorkerState') {
+      return makeStateDefinition('WorkerState', ['done'], [0]);
+    }
+    return makeStateDefinition(stateClass);
+  };
+  global.BehaviorState = function() {};
+
+  loadScript('flexbe_webui/app/_model/transition.js');
+  loadScript('flexbe_webui/app/_model/state.js');
+  loadScript('flexbe_webui/app/_model/statemachine.js');
+
+  const activities = [];
+  ActivityTracer.ACT_TRANSITION = 'transition';
+  ActivityTracer.addActivity = function(type, description, undo, redo) {
+    activities.push({ type, description, undo, redo });
+  };
+
+  const sm = new Statemachine('Root', new WS.StateMachineDefinition(['done'], [], []));
+  sm.getStatePath = function() {
+    return '';
+  };
+  Behavior.getStatemachine = function() {
+    return sm;
+  };
+  UI.Statemachine.setDisplayedSM(sm);
+
+  return { activities, sm };
+}
+
+function buildOutcomeCopyTransitionFixture() {
+  const { activities, sm } = setupOutcomeCopyEditorHarness();
+
+  const alpha = new State('Alpha', WS.Statelib.getFromLib('WorkerState'));
+  const beta = new State('Beta', WS.Statelib.getFromLib('WorkerState'));
+  sm.addState(alpha);
+  sm.addState(beta);
+
+  const baseOutcome = sm.getSMOutcomeByName('done');
+  const alphaTransition = new Transition(alpha, baseOutcome, 'done', 0);
+  sm.addTransition(alphaTransition);
+  sm.tryDuplicateOutcome('done');
+
+  const copiedOutcome = sm.getSMOutcomeByName('done#1');
+  const betaTransition = new Transition(beta, copiedOutcome, 'done', 0);
+  sm.addTransition(betaTransition);
+  sm.tryDuplicateOutcome('done');
+
+  return {
+    activities,
+    sm,
+    baseOutcome,
+    copiedOutcome,
+    betaTransition,
+  };
+}
+
+async function runOutcomeCopyReconnectUndoCase() {
+  const fixture = buildOutcomeCopyTransitionFixture();
+
+  assert(fixture.sm.getSMOutcomeByName('done#2'));
+
+  UI.Statemachine.resetTransition(fixture.betaTransition);
+  UI.Statemachine.connectTransition(fixture.baseOutcome);
+
+  assert.strictEqual(fixture.betaTransition.getTo().getStateName(), 'done');
+  assert(fixture.sm.getSMOutcomeByName('done#1'));
+  assert.strictEqual(fixture.sm.getSMOutcomeByName('done#2'), undefined);
+  assert.strictEqual(fixture.activities.length, 1);
+  fixture.activities[0].undo();
+
+  const undone = fixture.sm.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Beta' && transition.getOutcome() === 'done';
+  });
+  assert(undone);
+  assert.strictEqual(undone.getTo().getStateName(), 'done#1');
+  assert(fixture.sm.getSMOutcomeByName('done#2'));
+
+  fixture.activities[0].redo();
+
+  const redone = fixture.sm.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Beta' && transition.getOutcome() === 'done';
+  });
+  assert(redone);
+  assert.strictEqual(redone.getTo().getStateName(), 'done');
+  assert(fixture.sm.getSMOutcomeByName('done#1'));
+  assert.strictEqual(fixture.sm.getSMOutcomeByName('done#2'), undefined);
+}
+
+async function runOutcomeCopyRemoveUndoCase() {
+  const fixture = buildOutcomeCopyTransitionFixture();
+
+  UI.Statemachine.resetTransition(fixture.betaTransition);
+  UI.Statemachine.removeTransition();
+
+  assert.strictEqual(fixture.sm.getTransitions().length, 2);
+  assert(fixture.sm.getSMOutcomeByName('done#1'));
+  assert.strictEqual(fixture.sm.getSMOutcomeByName('done#2'), undefined);
+  assert.strictEqual(fixture.activities.length, 1);
+
+  fixture.activities[0].undo();
+
+  const restored = fixture.sm.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Beta' && transition.getOutcome() === 'done';
+  });
+  assert(restored);
+  assert.strictEqual(restored.getTo().getStateName(), 'done#1');
+  assert(fixture.sm.getSMOutcomeByName('done#2'));
+
+  fixture.activities[0].redo();
+
+  const removedAgain = fixture.sm.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Beta' && transition.getOutcome() === 'done';
+  });
+  assert.strictEqual(removedAgain, undefined);
+  assert.strictEqual(fixture.sm.getTransitions().length, 2);
+  assert(fixture.sm.getSMOutcomeByName('done#1'));
+  assert.strictEqual(fixture.sm.getSMOutcomeByName('done#2'), undefined);
+}
+
+async function runOutcomeCopySingleSpareCase() {
+  const fixture = buildOutcomeCopyTransitionFixture();
+  const gamma = new State('Gamma', WS.Statelib.getFromLib('WorkerState'));
+  const delta = new State('Delta', WS.Statelib.getFromLib('WorkerState'));
+  fixture.sm.addState(gamma);
+  fixture.sm.addState(delta);
+
+  fixture.sm.retargetTransition(fixture.betaTransition, fixture.sm.getSMOutcomeByName('done#2'));
+
+  assert(fixture.sm.getSMOutcomeByName('done#1'));
+  assert(fixture.sm.getSMOutcomeByName('done#2'));
+  assert.strictEqual(fixture.sm.getSMOutcomeByName('done#3'), undefined);
+
+  const gammaTransition = new Transition(gamma, fixture.sm.getSMOutcomeByName('done#1'), 'done', 0);
+  fixture.sm.addTransition(gammaTransition);
+
+  assert(fixture.sm.getSMOutcomeByName('done#3'));
+
+  fixture.sm.removeTransitionObject(gammaTransition);
+
+  assert(fixture.sm.getSMOutcomeByName('done#1'));
+  assert(fixture.sm.getSMOutcomeByName('done#2'));
+  assert.strictEqual(fixture.sm.getSMOutcomeByName('done#3'), undefined);
+
+  const alphaTransition = fixture.sm.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Alpha' && transition.getOutcome() === 'done';
+  });
+  fixture.sm.removeTransitionObject(alphaTransition);
+
+  assert(fixture.sm.getSMOutcomeByName('done'));
+  assert.strictEqual(fixture.sm.getSMOutcomeByName('done#1'), undefined);
+  assert(fixture.sm.getSMOutcomeByName('done#2'));
+
+  const deltaTransition = new Transition(delta, fixture.sm.getSMOutcomeByName('done'), 'done', 0);
+  fixture.sm.addTransition(deltaTransition);
+
+  assert(fixture.sm.getSMOutcomeByName('done#2'));
+  assert(fixture.sm.getSMOutcomeByName('done#3'));
+}
+
+function buildOutcomeCopyContainerOutcomeFixture() {
+  const { activities, sm: root } = setupOutcomeCopyEditorHarness();
+  root.getStateName = function() { return ''; };
+
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_stateproperties.js');
+
+  UI.Panels.STATE_PROPERTIES_PANEL = 'state_properties';
+  UI.Panels.setActivePanel = function() {};
+  UI.Panels.hidePanelIfActive = function() {};
+  UI.Panels.updatePanelTabTargets = function() {};
+  UI.Panels.setFocus = function() {};
+
+  ActivityTracer.ACT_STATE_CHANGE = 'state_change';
+  ActivityTracer.addActivity = function(type, description, undo, redo) {
+    activities.push({ type, description, undo, redo });
+  };
+
+  RC.Controller.isReadonly = function() { return false; };
+  RC.Controller.isLocked = function() { return false; };
+  RC.Controller.isStateLocked = function() { return false; };
+  RC.Controller.isOnLockedPath = function() { return false; };
+  Behavior.isReadonly = function() { return false; };
+
+  const nested = new Statemachine('Nested', new WS.StateMachineDefinition(['done'], [], []));
+  root.addState(nested);
+
+  const alpha = new State('Alpha', WS.Statelib.getFromLib('WorkerState'));
+  const beta = new State('Beta', WS.Statelib.getFromLib('WorkerState'));
+  nested.addState(alpha);
+  nested.addState(beta);
+
+  const baseOutcome = nested.getSMOutcomeByName('done');
+  baseOutcome.setPosition({ x: 320, y: 80 });
+  nested.addTransition(new Transition(alpha, baseOutcome, 'done', 0));
+  nested.tryDuplicateOutcome('done');
+
+  const copiedOutcome = nested.getSMOutcomeByName('done#1');
+  copiedOutcome.setPosition({ x: 320, y: 180 });
+  nested.addTransition(new Transition(beta, copiedOutcome, 'done', 0));
+  nested.tryDuplicateOutcome('done');
+
+  const spareOutcome = nested.getSMOutcomeByName('done#2');
+  spareOutcome.setPosition({ x: 320, y: 280 });
+
+  root.addTransition(new Transition(nested, root.getSMOutcomeByName('done'), 'done', -1));
+
+  Behavior.getStatemachine = function() {
+    return root;
+  };
+  UI.Statemachine.setDisplayedSM(nested);
+
+  return {
+    activities,
+    root,
+    nested,
+    baseOutcome,
+    copiedOutcome,
+    spareOutcome,
+  };
+}
+
+async function runOutcomeCopyContainerOutcomeUndoCase() {
+  const fixture = buildOutcomeCopyContainerOutcomeFixture();
+
+  UI.Panels.StateProperties.displayStateProperties(fixture.nested);
+  const removeButton = document.getElementById('panel_prop_sm_outcomes_content_0_remove');
+  removeButton.dispatchEvent({ type: 'click', preventDefault() {}, stopPropagation() {} });
+
+  assert.strictEqual(fixture.activities.length, 1);
+  assert.deepStrictEqual(fixture.nested.getOutcomes(), []);
+  assert.strictEqual(fixture.nested.getTransitions().length, 1);
+  assert.strictEqual(fixture.root.getTransitions().length, 1);
+  assert.strictEqual(fixture.nested.getSMOutcomeByName('done'), undefined);
+  assert.strictEqual(fixture.nested.getSMOutcomeByName('done#1'), undefined);
+  assert.strictEqual(fixture.nested.getSMOutcomeByName('done#2'), undefined);
+
+  fixture.activities[0].undo();
+
+  const restoredAlpha = fixture.nested.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Alpha' && transition.getOutcome() === 'done';
+  });
+  const restoredBeta = fixture.nested.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Beta' && transition.getOutcome() === 'done';
+  });
+  const restoredParent = fixture.root.getTransitions().findElement(function(transition) {
+    return transition.getFrom().getStateName() === 'Nested' && transition.getOutcome() === 'done';
+  });
+  assert(restoredAlpha);
+  assert.strictEqual(restoredAlpha.getTo().getStateName(), 'done');
+  assert(restoredBeta);
+  assert.strictEqual(restoredBeta.getTo().getStateName(), 'done#1');
+  assert(restoredParent);
+  assert.strictEqual(restoredParent.getTo().getStateName(), 'done');
+  assert.strictEqual(fixture.nested.getSMOutcomeByName('done#1').getPosition().y, 180);
+  assert.strictEqual(fixture.nested.getSMOutcomeByName('done#2').getPosition().y, 280);
+  assert.deepStrictEqual(fixture.nested.getOutcomes(), ['done']);
+  assert.strictEqual(fixture.nested.getTransitions().length, 3);
+  assert.strictEqual(fixture.root.getTransitions().length, 2);
+
+  fixture.activities[0].redo();
+
+  assert.deepStrictEqual(fixture.nested.getOutcomes(), []);
+  assert.strictEqual(fixture.nested.getTransitions().length, 1);
+  assert.strictEqual(fixture.root.getTransitions().length, 1);
+  assert.strictEqual(fixture.nested.getSMOutcomeByName('done#1'), undefined);
+  assert.strictEqual(fixture.nested.getSMOutcomeByName('done#2'), undefined);
+}
+
+function setupToolsOutcomeCopyHarness() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  function defineBaseStateApi(target, stateName, stateClass, outcomes = [], autonomy = []) {
+    let name = stateName;
+    let container;
+    let position = { x: 0, y: 0 };
+    let parameterValues = [];
+    let inputMapping = [];
+    let outputMapping = [];
+
+    target.getStateName = function() { return name; };
+    target.setStateName = function(newName) { name = newName; };
+    target.getStateClass = function() { return stateClass; };
+    target.getStateType = function() { return stateClass; };
+    target.getStatePath = function() {
+      return container ? `${container.getStatePath()}/${name}` : `/${name}`;
+    };
+    target.getParameterValues = function() { return parameterValues; };
+    target.setParameterValues = function(values) { parameterValues = values; };
+    target.getAutonomy = function() { return autonomy; };
+    target.setAutonomy = function(values) { autonomy = values; };
+    target.getInputMapping = function() { return inputMapping; };
+    target.setInputMapping = function(values) { inputMapping = values; };
+    target.getOutputMapping = function() { return outputMapping; };
+    target.setOutputMapping = function(values) { outputMapping = values; };
+    target.getPosition = function() { return position; };
+    target.setPosition = function(value) { position = value; };
+    target.getContainer = function() { return container; };
+    target.setContainer = function(value) { container = value; };
+    target.getOutcomes = function() { return outcomes; };
+  }
+
+  global.State = function(stateName, definition) {
+    const stateClass = definition && definition.state_class ? definition.state_class : 'State';
+    const outcomes = definition && definition.outcomes ? definition.outcomes.slice() : [];
+    const autonomy = definition && definition.autonomy ? definition.autonomy.slice() : [];
+    defineBaseStateApi(this, stateName, stateClass, outcomes, autonomy);
+  };
+
+  global.Statemachine = function(stateName, definition) {
+    const outcomes = definition ? definition.getOutcomes() : [];
+    defineBaseStateApi(this, stateName, ':STATEMACHINE', outcomes.slice(), []);
+    const that = this;
+
+    let states = [];
+    let transitions = [];
+    let initialState;
+    let concurrent = false;
+    let priority = false;
+    let smOutcomes = outcomes.map(function(outcomeName) {
+      const outcomeState = new State(outcomeName, { state_class: ':OUTCOME' });
+      outcomeState.setContainer(this);
+      return outcomeState;
+    }, this);
+
+    this.getStates = function() { return states; };
+    this.addState = function(state) {
+      states.push(state);
+      state.setContainer(that);
+    };
+    this.getStateByName = function(name) {
+      return states.find(function(state) { return state.getStateName() === name; });
+    };
+    this.getStateByPath = function(path) {
+      if (path === '' || path === '/') {
+        return that;
+      }
+      const parts = path.split('/').filter(Boolean);
+      let current = that;
+      for (const part of parts) {
+        if (current.getStateName && current.getStateName() === part) {
+          continue;
+        }
+        if (!current.getStateByName) {
+          return undefined;
+        }
+        current = current.getStateByName(part);
+        if (current === undefined) {
+          return undefined;
+        }
+      }
+      return current;
+    };
+    this.getTransitions = function() { return transitions; };
+    this.addTransition = function(transition) {
+      transitions.push(transition);
+    };
+    this.removeState = function(state) {
+      states = states.filter(function(entry) { return entry !== state; });
+      state.setContainer(undefined);
+    };
+    this.getInitialState = function() { return initialState; };
+    this.setInitialState = function(state) { initialState = state; };
+    this.isConcurrent = function() { return concurrent; };
+    this.setConcurrent = function(value) { concurrent = value; };
+    this.isPriority = function() { return priority; };
+    this.setPriority = function(value) { priority = value; };
+    this.getSMOutcomes = function() { return smOutcomes; };
+    this.getSMOutcomeByName = function(name) {
+      return smOutcomes.find(function(state) { return state.getStateName() === name; });
+    };
+    this.getInputKeys = function() { return []; };
+    this.getOutputKeys = function() { return []; };
+    this.tryDuplicateOutcome = function(baseName) {
+      const copies = smOutcomes.filter(function(state) {
+        return state.getStateName() === baseName || state.getStateName().startsWith(`${baseName}#`);
+      });
+      const unused = copies.filter(function(copy) {
+        return !transitions.some(function(transition) { return transition.getTo() === copy; });
+      });
+      if (unused.length === 0) {
+        const copy = new State(`${baseName}#${copies.length}`, { state_class: ':OUTCOME' });
+        copy.setContainer(that);
+        smOutcomes.push(copy);
+      }
+    };
+  };
+
+  global.BehaviorState = function() {};
+  global.Transition = function(from, to, outcome, autonomy) {
+    let fromState = from;
+    let toState = to;
+    this.getFrom = function() { return from; };
+    this.setFrom = function(value) { fromState = value; };
+    this.getFrom = function() { return fromState; };
+    this.getTo = function() { return toState; };
+    this.setTo = function(value) { toState = value; };
+    this.getOutcome = function() { return outcome; };
+    this.getAutonomy = function() { return autonomy; };
+  };
+
+  WS.StateMachineDefinition = function(outcomes, inputKeys, outputKeys) {
+    this.getOutcomes = function() { return outcomes; };
+    this.getInputKeys = function() { return inputKeys; };
+    this.getOutputKeys = function() { return outputKeys; };
+  };
+  WS.Statelib.getFromLib = function(stateClass) {
+    if (stateClass === ':OUTCOME') {
+      return { state_class: ':OUTCOME' };
+    }
+    return {
+      state_class: 'WorkerState',
+      outcomes: ['done'],
+      autonomy: [0],
+    };
+  };
+
+  const activities = [];
+  ActivityTracer.ACT_COMPLEX_OPERATION = 'complex';
+  ActivityTracer.addActivity = function(type, description, undo, redo) {
+    activities.push({ type, description, undo, redo });
+  };
+  UI.Panels.StateProperties = {
+    isCurrentState() { return false; },
+    hide() {},
+  };
+  RC.Controller.isRunning = function() { return false; };
+  RC.Controller.isOnLockedPath = function() { return false; };
+
+  let selectedElements = [];
+  let displayedSm;
+  UI.Statemachine.getSelectedStatesAndTransitions = function() {
+    return selectedElements;
+  };
+  UI.Statemachine.removeSelection = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Statemachine.getDisplayedSM = function() {
+    return displayedSm;
+  };
+
+  loadScript('flexbe_webui/app/_helper/tools.js');
+
+  const targetContainer = new Statemachine('Root', new WS.StateMachineDefinition([], [], []));
+  targetContainer.getStatePath = function() {
+    return '';
+  };
+  Behavior.getStatemachine = function() {
+    return targetContainer;
+  };
+  displayedSm = targetContainer;
+
+  function createNestedGroup() {
+    const sourceSm = new Statemachine('Nested Group', new WS.StateMachineDefinition(['done'], [], []));
+    const childState = new State('Worker', WS.Statelib.getFromLib('WorkerState'));
+    childState.setPosition({ x: 20, y: 30 });
+    sourceSm.addState(childState);
+
+    const copiedOutcome = new State('done#1', { state_class: ':OUTCOME' });
+    copiedOutcome.setPosition({ x: 111, y: 222 });
+    copiedOutcome.setContainer(sourceSm);
+    sourceSm.getSMOutcomes().push(copiedOutcome);
+    sourceSm.addTransition(new Transition(childState, copiedOutcome, 'done', 0));
+    return sourceSm;
+  }
+
+  return {
+    activities,
+    targetContainer,
+    createNestedGroup,
+    setSelectedElements(elements) {
+      selectedElements = elements;
+    },
+    setDisplayedSm(sm) {
+      displayedSm = sm;
+    },
+  };
+}
+
+async function runToolsOutcomeCopyPasteCase() {
+  const harness = setupToolsOutcomeCopyHarness();
+  const sourceSm = harness.createNestedGroup();
+  harness.setSelectedElements([sourceSm]);
+
+  Tools.copy();
+  Tools.paste();
+
+  const pastedSm = harness.targetContainer.getStateByName('Nested Group');
+  assert(pastedSm);
+  assert.strictEqual(pastedSm.getTransitions().length, 1);
+  assert.strictEqual(pastedSm.getTransitions()[0].getTo().getStateName(), 'done#1');
+  assert.strictEqual(pastedSm.getSMOutcomeByName('done#1').getPosition().x, 111);
+  assert.strictEqual(pastedSm.getSMOutcomeByName('done#1').getPosition().y, 222);
+}
+
+async function runToolsOutcomeCopyPasteHistoryCase() {
+  const harness = setupToolsOutcomeCopyHarness();
+  const sourceSm = harness.createNestedGroup();
+  harness.setSelectedElements([sourceSm]);
+
+  Tools.copy();
+  Tools.paste();
+
+  assert.strictEqual(harness.activities.length, 1);
+  let pastedSm = harness.targetContainer.getStateByName('Nested Group');
+  assert(pastedSm);
+  assert.strictEqual(pastedSm.getTransitions()[0].getTo().getStateName(), 'done#1');
+
+  harness.activities[0].undo();
+  assert.strictEqual(harness.targetContainer.getStateByName('Nested Group'), undefined);
+
+  harness.activities[0].redo();
+  pastedSm = harness.targetContainer.getStateByName('Nested Group');
+  assert(pastedSm);
+  assert.strictEqual(pastedSm.getTransitions().length, 1);
+  assert.strictEqual(pastedSm.getTransitions()[0].getTo().getStateName(), 'done#1');
+  assert.strictEqual(pastedSm.getSMOutcomeByName('done#1').getPosition().x, 111);
+}
+
+async function runToolsOutcomeCopyCutHistoryCase() {
+  const harness = setupToolsOutcomeCopyHarness();
+  const sourceSm = harness.createNestedGroup();
+  harness.targetContainer.addState(sourceSm);
+  harness.setSelectedElements([sourceSm]);
+
+  Tools.cut();
+
+  assert.strictEqual(harness.activities.length, 1);
+  assert.strictEqual(harness.targetContainer.getStateByName('Nested Group'), undefined);
+
+  harness.activities[0].undo();
+
+  let restoredSm = harness.targetContainer.getStateByName('Nested Group');
+  assert(restoredSm);
+  assert.strictEqual(restoredSm.getTransitions().length, 1);
+  assert.strictEqual(restoredSm.getTransitions()[0].getTo().getStateName(), 'done#1');
+  assert.strictEqual(restoredSm.getSMOutcomeByName('done#1').getPosition().y, 222);
+
+  harness.activities[0].redo();
+  assert.strictEqual(harness.targetContainer.getStateByName('Nested Group'), undefined);
+}
+
 async function runBehaviorLoaderFailureCase() {
   setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -2676,6 +4431,34 @@ async function main() {
     await runDashboardParameterEditCase();
     return;
   }
+  if (caseName === 'dashboard_outcome_collision') {
+    await runDashboardOutcomeCollisionCase();
+    return;
+  }
+  if (caseName === 'dashboard_outcome_undo') {
+    await runDashboardOutcomeUndoCase();
+    return;
+  }
+  if (caseName === 'dashboard_interface_key_flows') {
+    await runDashboardInterfaceKeyFlowsCase();
+    return;
+  }
+  if (caseName === 'model_generator_interface_validation') {
+    await runModelGeneratorInterfaceValidationCase();
+    return;
+  }
+  if (caseName === 'behavior_interface_key_rename') {
+    await runBehaviorInterfaceKeyRenameCase();
+    return;
+  }
+  if (caseName === 'behavior_interface_outcome_rename') {
+    await runBehaviorInterfaceOutcomeRenameCase();
+    return;
+  }
+  if (caseName === 'behavior_structure_outcome_copy') {
+    await runBehaviorStructureOutcomeCopyCase();
+    return;
+  }
   if (caseName === 'runtime_flows') {
     await runRuntimeFlowsCase();
     return;
@@ -2690,6 +4473,10 @@ async function main() {
   }
   if (caseName === 'state_panel_flows') {
     await runStatePanelFlowsCase();
+    return;
+  }
+  if (caseName === 'state_panel_duplicate_guards') {
+    await runStatePanelDuplicateGuardsCase();
     return;
   }
   if (caseName === 'api_client') {
@@ -2738,6 +4525,42 @@ async function main() {
   }
   if (caseName === 'legacy_behavior_import_resolution') {
     await runLegacyBehaviorImportResolutionCase();
+    return;
+  }
+  if (caseName === 'outcome_copy_comment_encoding') {
+    await runOutcomeCopyCommentEncodingCase();
+    return;
+  }
+  if (caseName === 'outcome_copy_build_roundtrip') {
+    await runOutcomeCopyBuildRoundTripCase();
+    return;
+  }
+  if (caseName === 'outcome_copy_reconnect_undo') {
+    await runOutcomeCopyReconnectUndoCase();
+    return;
+  }
+  if (caseName === 'outcome_copy_remove_undo') {
+    await runOutcomeCopyRemoveUndoCase();
+    return;
+  }
+  if (caseName === 'outcome_copy_single_spare') {
+    await runOutcomeCopySingleSpareCase();
+    return;
+  }
+  if (caseName === 'outcome_copy_container_outcome_undo') {
+    await runOutcomeCopyContainerOutcomeUndoCase();
+    return;
+  }
+  if (caseName === 'tools_outcome_copy_paste') {
+    await runToolsOutcomeCopyPasteCase();
+    return;
+  }
+  if (caseName === 'tools_outcome_copy_paste_history') {
+    await runToolsOutcomeCopyPasteHistoryCase();
+    return;
+  }
+  if (caseName === 'tools_outcome_copy_cut_history') {
+    await runToolsOutcomeCopyCutHistoryCase();
     return;
   }
   if (caseName === 'behavior_loader_failure') {
