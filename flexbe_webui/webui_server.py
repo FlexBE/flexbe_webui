@@ -603,7 +603,7 @@ class WebuiServer:
                 )
                 match = next((
                     b for b in behaviors
-                    if (b.codefile_relpath or b.codefile_name) == codefile_name or b.codefile_name == codefile_name
+                    if (b.codefile_relpath or b.codefile_name) == codefile_name
                 ), None)
                 if match is None:
                     raise HTTPException(status_code=404,

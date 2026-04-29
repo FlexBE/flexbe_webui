@@ -17,6 +17,7 @@ UI.Statemachine = new (function() {
 	var drag_transition_drawing;
 	var previous_transition_end;
 	var connecting = false;
+	var connect_refresh_pending = false;
 	var just_connected;
 	var selecting = false;
 	var allow_panning = false;
@@ -37,7 +38,6 @@ UI.Statemachine = new (function() {
 
 	var drawn_sms = [];
 	var grid = [];
-	var grid_offset = {x: 0, y: 0};
 	var state_drawings_map = new Map();
 
 	var tab_targets = [];
@@ -188,7 +188,17 @@ UI.Statemachine = new (function() {
 
 	var updateMousePos = function(event) {
 		mouse_pos.attr({ cx: event.offsetX, cy: event.offsetY });
-		if (connecting) that.refreshView();
+		if (connecting) {
+			if (connect_refresh_pending) return;
+			connect_refresh_pending = true;
+			let scheduleRefresh = window.requestAnimationFrame || function(callback) {
+				setTimeout(callback, 0);
+			};
+			scheduleRefresh(function() {
+				connect_refresh_pending = false;
+				if (connecting) that.refreshView();
+			});
+		}
 	}
 
 	var createGrid = function() {
@@ -200,7 +210,6 @@ UI.Statemachine = new (function() {
 		for (let i = 0; i <= R.height + gridsize; i += gridsize) {
 			grid.push(R.path("M0," + i + "L" + (R.width + gridsize) + "," + i).attr({stroke: '#ddd'}).hide());
 		}
-		grid_offset = {x: 0, y: 0};
 	}
 	var displayGrid = function() {
 		createGrid();
@@ -208,7 +217,6 @@ UI.Statemachine = new (function() {
 		let ox = UI.Statemachine.getPanShift().x % gridsize;
 		let oy = UI.Statemachine.getPanShift().y % gridsize;
 		grid.forEach(function(el) { el.transform("t" + ox + "," + oy).show(); });
-		grid_offset = {x: ox, y: oy};
 	}
 	var hideGrid = function() {
 		grid.forEach(function(el) { el.hide(); });
@@ -931,7 +939,6 @@ UI.Statemachine = new (function() {
 		drag_transition = new Transition(state, undefined, label, autonomy);
 		previous_transition_end = undefined;
 
-		that.refreshView();
 		connecting = true;
 		that.refreshView();
 	}
@@ -1143,7 +1150,18 @@ UI.Statemachine = new (function() {
 		});
 
 		let drawings = states.filter(function(element) {
-			let b = element.drawing.getBBox();
+			let b;
+			if (element.drawing != undefined && element.drawing.cached_bbox != undefined) {
+				let pos = element.obj.getPosition();
+				b = {
+					x: pos.x + pan_shift.x,
+					y: pos.y + pan_shift.y,
+					width: element.drawing.cached_bbox.width,
+					height: element.drawing.cached_bbox.height,
+				};
+			} else {
+				b = element.drawing.getBBox();
+			}
 			return selection_area.isPointInside(b.x, b.y)
 				&& selection_area.isPointInside(b.x, b.y + b.height)
 				&& selection_area.isPointInside(b.x + b.width, b.y)

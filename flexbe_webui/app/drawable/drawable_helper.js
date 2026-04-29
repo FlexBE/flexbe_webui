@@ -3,6 +3,7 @@ Drawable.Helper = new (function() {
 
 	var ox = 0, oy = 0, lx = 0, ly = 0;
 	var traversed_positions = [];
+	var drag_intersection_cache = undefined;
 
 	var getRenderConfig = function() {
 		try {
@@ -62,16 +63,18 @@ Drawable.Helper = new (function() {
 		return parseFloat(base_width.toFixed(1));
 	}
 
-	this.intersectsAnyOther = function(target_drawing, target_object) {
+	this.intersectsAnyOther = function(target_drawing, target_object, cached_drawings) {
 		// var intersects = false;
-		const drawings = UI.Statemachine.getAllDrawings().filter(function (element) {
+		var drawings = cached_drawings || UI.Statemachine.getAllDrawings().filter(function(element) {
 			return element.obj.getStateName != undefined;
 		});
-		for (let i = 0; i < drawings.length; ++i) {
+		var target_bbox = target_drawing.getBBox();
+		for (var i = 0; i < drawings.length; ++i) {
 			// not compare with state self
 			if (drawings[i].obj.getStateName() == target_object.getStateName())
 				continue;
-			if (Raphael.isBBoxIntersect(target_drawing.getBBox(), drawings[i].drawing.getBBox()) ) {
+			var other_bbox = drawings[i].bbox || drawings[i].drawing.getBBox();
+			if (Raphael.isBBoxIntersect(target_bbox, other_bbox) ) {
 				// intersects = true;
 				return drawings[i];
 			}
@@ -189,7 +192,7 @@ Drawable.Helper = new (function() {
 		UI.Statemachine.getDragIndicator().attr({x: i_pos.x, y: i_pos.y, opacity: 1,
 				width: this.data("box").attr("width"),
 				height: this.data("box").attr("height")});
-		if(that.intersectsAnyOther(UI.Statemachine.getDragIndicator(), this.data("state")))
+		if(that.intersectsAnyOther(UI.Statemachine.getDragIndicator(), this.data("state"), drag_intersection_cache))
 			UI.Statemachine.getDragIndicator().attr({'stroke': '#F00', 'fill': 'rgba(100%, 0%, 0%, 50%)'});
 		else
 			UI.Statemachine.getDragIndicator().attr({'stroke': '#000', 'fill': 'rgba(50%, 100%, 40%, 15%)'});
@@ -228,6 +231,16 @@ Drawable.Helper = new (function() {
 		ly = this.data("state").getPosition().y + UI.Statemachine.getPanShift().y;
 		ox = this.data("state").getPosition().x + UI.Statemachine.getPanShift().x;
 		oy = this.data("state").getPosition().y + UI.Statemachine.getPanShift().y;
+		drag_intersection_cache = UI.Statemachine.getAllDrawings().filter(function(element) {
+			return element.obj.getStateName != undefined
+				&& element.obj.getStateName() != this.data("state").getStateName();
+		}, this).map(function(element) {
+			return {
+				obj: element.obj,
+				drawing: element.drawing,
+				bbox: element.drawing.getBBox(),
+			};
+		});
 	}
 
 	// Raphael func
@@ -268,6 +281,7 @@ Drawable.Helper = new (function() {
 		}
 
 		UI.Statemachine.getDragIndicator().attr({x: 0, y: 0, opacity: 0, width: 1, height: 1});
+		drag_intersection_cache = undefined;
 		state.setPosition(new_pos);
 		var old_transitions = UI.Statemachine.shiftTransitions(state, old_pos);
 		UI.Statemachine.refreshView();

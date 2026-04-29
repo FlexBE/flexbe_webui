@@ -43,7 +43,7 @@ WS.Behaviorlib = new (function() {
 	}
 
 	this.getBehaviorList = function() {
-		list = []
+		var list = []
 		for (var i=0; i<behaviorlib.length; ++i) {
 			list.push(behaviorlib[i]);
 		}

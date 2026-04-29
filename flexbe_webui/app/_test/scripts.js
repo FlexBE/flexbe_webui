@@ -29,22 +29,39 @@ Scripts = new (function() {
 		}
 		T.clearLog();
 		T.show();
-		var total = 0;
-		WS.Behaviorlib.getBehaviorList().forEach(function (bn) {
-			var bsm = bn.cloneBehaviorStatemachine();
-			var states = searchFunction(bsm, function(s) { return s.getStateClass() == class_name; });
-			if (states.length > 0) {
-				if (total == 0) {
-					T.logInfo("Found the following uses of state class " + class_name + ":");
-				}
-				T.logInfo(bn.getBehaviorName() + " (" + states.length + "x)");
-				states.forEach(function(s) { T.logInfo("&nbsp;&nbsp;" + s.getStatePath()); });
-			}
-			total += states.length;
-		});
-		if (total == 0) {
+		T.logInfo("Loading behavior state machines, please wait...");
+		var behavior_list = WS.Behaviorlib.getBehaviorList();
+		var remaining = behavior_list.length;
+		if (remaining === 0) {
 			T.logInfo("Did not find any usage of state class " + class_name + ".");
+			return;
 		}
+		var total = 0;
+		var report = [];
+		behavior_list.forEach(function(bn) {
+			bn.ensureBSMReady(function(success) {
+				if (success) {
+					var bsm = bn.cloneBehaviorStatemachine();
+					var states = searchFunction(bsm, function(s) { return s.getStateClass() == class_name; });
+					if (states.length > 0) {
+						report.push({ name: bn.getBehaviorName(), states: states });
+						total += states.length;
+					}
+				}
+				remaining -= 1;
+				if (remaining === 0) {
+					if (total === 0) {
+						T.logInfo("Did not find any usage of state class " + class_name + ".");
+					} else {
+						T.logInfo("Found the following uses of state class " + class_name + ":");
+						report.forEach(function(entry) {
+							T.logInfo(entry.name + " (" + entry.states.length + "x)");
+							entry.states.forEach(function(s) { T.logInfo("&nbsp;&nbsp;" + s.getStatePath()); });
+						});
+					}
+				}
+			});
+		});
 	}
 
 }) ();

@@ -1381,6 +1381,465 @@ async function runHelperFlowsCase() {
   assert.strictEqual(VarSolver.resolveVar('alias_bool', true), 'True');
 }
 
+async function runHelperDragCacheCase() {
+  setupGlobals();
+  global.Drawable = {};
+
+  function makeAttrTarget(initialAttrs) {
+    const attrs = Object.assign({}, initialAttrs);
+    return {
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        if (Array.isArray(arg)) {
+          const values = {};
+          arg.forEach(key => {
+            values[key] = attrs[key];
+          });
+          return values;
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      getAttrs() {
+        return attrs;
+      },
+    };
+  }
+
+  let otherBBoxCalls = 0;
+  let dragIndicatorBBoxCalls = 0;
+
+  const dragIndicator = makeAttrTarget({ x: 0, y: 0, width: 1, height: 1, opacity: 0 });
+  dragIndicator.getBBox = function() {
+    dragIndicatorBBoxCalls += 1;
+    const attrs = dragIndicator.getAttrs();
+    return {
+      x: attrs.x,
+      y: attrs.y,
+      x2: attrs.x + attrs.width,
+      y2: attrs.y + attrs.height,
+      width: attrs.width,
+      height: attrs.height,
+    };
+  };
+
+  const draggedState = {
+    getStateName() { return 'Dragged'; },
+    getPosition() { return { x: 0, y: 0 }; },
+  };
+  const otherState = {
+    getStateName() { return 'Other'; },
+  };
+  const selfDrawing = {
+    getBBox() {
+      throw new Error('self drawing should not be measured for drag cache');
+    },
+  };
+  const otherDrawing = {
+    getBBox() {
+      otherBBoxCalls += 1;
+      return {
+        x: 50,
+        y: 50,
+        x2: 90,
+        y2: 90,
+        width: 40,
+        height: 40,
+      };
+    },
+  };
+
+  global.UI.Statemachine = {
+    isConnecting() { return false; },
+    getPanShift() { return { x: 0, y: 0 }; },
+    getAllDrawings() {
+      return [
+        { obj: draggedState, drawing: selfDrawing },
+        { obj: otherState, drawing: otherDrawing },
+      ];
+    },
+    getR() { return { width: 400, height: 400 }; },
+    getDragIndicator() { return dragIndicator; },
+  };
+  global.Raphael = {
+    isBBoxIntersect(a, b) {
+      return !(
+        a.x2 < b.x || a.x > b.x2
+        || a.y2 < b.y || a.y > b.y2
+      );
+    },
+  };
+
+  loadScript('flexbe_webui/app/drawable/drawable_helper.js');
+
+  const box = makeAttrTarget({ width: 40, height: 40 });
+  const context = {
+    data(key) {
+      if (key === 'state') {
+        return draggedState;
+      }
+      if (key === 'box') {
+        return box;
+      }
+      throw new Error(`Unexpected key ${key}`);
+    },
+  };
+
+  Drawable.Helper.startFnc.call(context);
+  Drawable.Helper.moveFnc.call(context, 45, 45, 0, 0, { shiftKey: false });
+  Drawable.Helper.moveFnc.call(context, 48, 48, 0, 0, { shiftKey: false });
+
+  assert.strictEqual(otherBBoxCalls, 1);
+  assert.strictEqual(dragIndicatorBBoxCalls, 2);
+  assert.strictEqual(dragIndicator.getAttrs().stroke, '#F00');
+}
+
+async function runStatemachineBeginTransitionCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  function makeShape(initialAttrs = {}) {
+    const attrs = Object.assign({}, initialAttrs);
+    return {
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        if (Array.isArray(arg)) {
+          const values = {};
+          arg.forEach(key => {
+            values[key] = attrs[key];
+          });
+          return values;
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      drag() { return this; },
+      mousemove() { return this; },
+      click() { return this; },
+      toBack() { return this; },
+      toFront() { return this; },
+      translate() { return this; },
+      transform() { return ''; },
+      remove() {},
+    };
+  }
+
+  global.Raphael = function() {
+    return {
+      width: 400,
+      height: 300,
+      rect() {
+        return makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+      },
+      circle() {
+        return makeShape({ cx: 0, cy: 0, opacity: 0 });
+      },
+      path() {
+        return makeShape();
+      },
+      remove() {},
+    };
+  };
+
+  global.Transition = function(from, to, outcome, autonomy) {
+    this.getFrom = function() { return from; };
+    this.getTo = function() { return to; };
+    this.getOutcome = function() { return outcome; };
+    this.getAutonomy = function() { return autonomy; };
+  };
+
+  Behavior.getStatemachine = function() {
+    return {
+      getStates() { return []; },
+    };
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+  UI.Statemachine.initialize();
+
+  let refreshCalls = 0;
+  UI.Statemachine.refreshView = function() {
+    refreshCalls += 1;
+  };
+
+  const state = {
+    getOutcomes() { return ['done']; },
+    getAutonomy() { return [7]; },
+  };
+
+  UI.Statemachine.beginTransition(state, 'done');
+
+  assert.strictEqual(refreshCalls, 1);
+  assert.strictEqual(UI.Statemachine.isConnecting(), true);
+}
+
+async function runStatemachineSelectionCacheCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  let selectionArea;
+
+  function makeShape(initialAttrs = {}) {
+    const attrs = Object.assign({}, initialAttrs);
+    return {
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        if (Array.isArray(arg)) {
+          const values = {};
+          arg.forEach(key => {
+            values[key] = attrs[key];
+          });
+          return values;
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      data() { return this; },
+      drag() { return this; },
+      mousemove() { return this; },
+      click() { return this; },
+      toBack() { return this; },
+      toFront() { return this; },
+      translate() { return this; },
+      transform() { return ''; },
+      hide() { return this; },
+      show() { return this; },
+      remove() {},
+      isPointInside(x, y) {
+        return x >= attrs.x && x <= attrs.x + attrs.width
+          && y >= attrs.y && y <= attrs.y + attrs.height;
+      },
+    };
+  }
+
+  let rectCalls = 0;
+  global.Raphael = function() {
+    return {
+      width: 400,
+      height: 300,
+      rect() {
+        rectCalls += 1;
+        const shape = makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+        if (rectCalls === 2) {
+          selectionArea = shape;
+        }
+        return shape;
+      },
+      circle() {
+        return makeShape({ cx: 0, cy: 0, opacity: 0 });
+      },
+      path() {
+        return makeShape();
+      },
+      remove() {},
+    };
+  };
+
+  global.State = function(name) {
+    this.getStateName = function() { return name; };
+    this.getStateClass = function() { return ':INIT'; };
+  };
+
+  const insideState = {
+    getStateName() { return 'Inside'; },
+    getPosition() { return { x: 10, y: 10 }; },
+    getStateClass() { return 'Simple'; },
+  };
+  const outsideState = {
+    getStateName() { return 'Outside'; },
+    getPosition() { return { x: 200, y: 200 }; },
+    getStateClass() { return 'Simple'; },
+  };
+
+  Behavior.getStatemachine = function() {
+    return {
+      getStates() { return [insideState, outsideState]; },
+      getSMOutcomes() { return []; },
+      getTransitions() { return []; },
+      getDataflow() { return []; },
+      getCommentNotes() { return []; },
+      getStatePath() { return ''; },
+      updateDataflow() {},
+      isInsideDifferentBehavior() { return false; },
+    };
+  };
+  Behavior.getCommentNotes = function() {
+    return [];
+  };
+  Behavior.isReadonly = function() {
+    return false;
+  };
+  RC.Controller.isRunning = function() {
+    return false;
+  };
+  RC.Controller.isCurrentState = function() {
+    return false;
+  };
+  RC.Controller.isLocked = function() {
+    return false;
+  };
+  RC.Controller.isOnLockedPath = function() {
+    return false;
+  };
+  RC.Controller.isReadonly = function() {
+    return false;
+  };
+  UI.Menu.isPageStatemachine = function() {
+    return false;
+  };
+
+  global.Drawable = {
+    Transition: function() {},
+    Outcome: function() {
+      this.obj = { getStateName() { return 'OUTCOME'; }, getPosition() { return { x: 0, y: 0 }; } };
+      this.drawing = makeShape();
+    },
+    ContainerPath: function() {
+      this.obj = {};
+      this.drawing = makeShape();
+    },
+    State: function(state) {
+      this.obj = state;
+      this.drawing = makeShape();
+      this.drawing.cached_bbox = { width: 40, height: 30 };
+      this.drawing.getBBox = function() {
+        throw new Error('selection should not call getBBox for cached state drawings');
+      };
+    },
+    BehaviorState: function() {},
+    Statemachine: function() {},
+  };
+  global.Drawable.State.Mode = {
+    OUTCOME: 'outcome',
+  };
+  global.Drawable.Transition.PATH_CURVE = 'curve';
+  global.Drawable.Helper = {
+    endPointClick() {},
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+  UI.Statemachine.initialize();
+  UI.Statemachine.refreshView();
+
+  selectionArea.attr({ opacity: 1, x: 0, y: 0, width: 100, height: 100 });
+  const selectedStates = UI.Statemachine.getSelectedStates();
+
+  assert.deepStrictEqual(selectedStates.map(state => state.getStateName()), ['Inside']);
+}
+
+async function runStatemachineConnectThrottleCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  let background;
+  const rafCallbacks = [];
+
+  function makeShape(initialAttrs = {}) {
+    const attrs = Object.assign({}, initialAttrs);
+    return {
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        if (Array.isArray(arg)) {
+          const values = {};
+          arg.forEach(key => {
+            values[key] = attrs[key];
+          });
+          return values;
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      drag() { return this; },
+      click() { return this; },
+      toBack() { return this; },
+      toFront() { return this; },
+      translate() { return this; },
+      transform() { return ''; },
+      remove() {},
+      mousemove(handler) {
+        this.mousemoveHandler = handler;
+        return this;
+      },
+      triggerMousemove(event) {
+        this.mousemoveHandler(event);
+      },
+    };
+  }
+
+  let rectCalls = 0;
+  global.Raphael = function() {
+    return {
+      width: 400,
+      height: 300,
+      rect() {
+        rectCalls += 1;
+        const shape = makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+        if (rectCalls === 3) {
+          background = shape;
+        }
+        return shape;
+      },
+      circle() {
+        return makeShape({ cx: 0, cy: 0, opacity: 0 });
+      },
+      path() {
+        return makeShape();
+      },
+      remove() {},
+    };
+  };
+  global.requestAnimationFrame = function(callback) {
+    rafCallbacks.push(callback);
+  };
+
+  global.Transition = function(from, to, outcome, autonomy) {
+    this.getFrom = function() { return from; };
+    this.getTo = function() { return to; };
+    this.getOutcome = function() { return outcome; };
+    this.getAutonomy = function() { return autonomy; };
+  };
+
+  Behavior.getStatemachine = function() {
+    return {
+      getStates() { return []; },
+    };
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+  UI.Statemachine.initialize();
+
+  let refreshCalls = 0;
+  UI.Statemachine.refreshView = function() {
+    refreshCalls += 1;
+  };
+
+  const state = {
+    getOutcomes() { return ['done']; },
+    getAutonomy() { return [0]; },
+  };
+
+  UI.Statemachine.beginTransition(state, 'done');
+  refreshCalls = 0;
+
+  background.triggerMousemove({ offsetX: 10, offsetY: 15 });
+  background.triggerMousemove({ offsetX: 20, offsetY: 25 });
+
+  assert.strictEqual(rafCallbacks.length, 1);
+  assert.strictEqual(refreshCalls, 0);
+
+  rafCallbacks[0]();
+
+  assert.strictEqual(refreshCalls, 1);
+}
+
 async function runValidationReportCase() {
   const { logs } = setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -1913,6 +2372,8 @@ async function runBehaviorCollisionResolutionCase() {
 
   assert.strictEqual(pkgACount, 0);
   assert(pkgBCount >= 1);
+  WS.Behaviorlib.getBehaviorList();
+  assert.strictEqual(global.list, undefined);
   assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_class, 'SharedSM');
 }
 
@@ -2237,6 +2698,22 @@ async function main() {
   }
   if (caseName === 'helper_flows') {
     await runHelperFlowsCase();
+    return;
+  }
+  if (caseName === 'helper_drag_cache') {
+    await runHelperDragCacheCase();
+    return;
+  }
+  if (caseName === 'statemachine_begin_transition') {
+    await runStatemachineBeginTransitionCase();
+    return;
+  }
+  if (caseName === 'statemachine_selection_cache') {
+    await runStatemachineSelectionCacheCase();
+    return;
+  }
+  if (caseName === 'statemachine_connect_throttle') {
+    await runStatemachineConnectThrottleCase();
     return;
   }
   if (caseName === 'validation_report') {

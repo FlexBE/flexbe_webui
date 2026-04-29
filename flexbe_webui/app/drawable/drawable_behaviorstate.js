@@ -173,6 +173,7 @@ Drawable.BehaviorState = function(_state_obj, target_paper, readonly, mode, acti
 	state.push(state_box);
 	state.push(state_outer_box);
 	state.translate(state_obj.getPosition().x, state_obj.getPosition().y);
+	state.cached_bbox = {width: width, height: height};
 
 	this.drawing = state;
 	this.obj = state_obj;
