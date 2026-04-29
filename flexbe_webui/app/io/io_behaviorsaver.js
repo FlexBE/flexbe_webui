@@ -134,7 +134,8 @@ IO.BehaviorSaver = new (function() {
 			if (!(states[i] instanceof BehaviorState)) continue;
 
 			var contain_reference = contained_behaviors.findElement(function(element) {
-				return element.getStateClass() == states[i].getStateClass();
+				return element.getBehaviorName() == states[i].getBehaviorName()
+					&& element.getStatePackage() == states[i].getStatePackage();
 			});
 			if (contain_reference == undefined) {
 				contained_behaviors.push(states[i]);
@@ -142,7 +143,10 @@ IO.BehaviorSaver = new (function() {
 		}
 		var contained_behavior_names = []
 		for (var i = 0; i < contained_behaviors.length; i++) {
-			contained_behavior_names.push(contained_behaviors[i].getBehaviorName());
+			contained_behavior_names.push({
+				name: contained_behaviors[i].getBehaviorName(),
+				package: contained_behaviors[i].getStatePackage()
+			});
 		}
 
 		return contained_behavior_names;

@@ -583,6 +583,53 @@ class WebuiServer:
                 self._record_timing('parse_behaviors', endpoint, elapsed, False, package=package_name, error=str(exc))
                 return self.api_failure(f'Error in {package_name}: {exc}')
 
+        @app.get('/api/v1/io/behavior/{package_name}/{codefile_name:path}')
+        async def io_behavior_full(package_name: str, codefile_name: str):
+            """Return full BehaviorDefinition including codefile_content for a single behavior."""
+            start_clock = datetime.now().timestamp()
+            endpoint = '/api/v1/io/behavior/{package_name}/{codefile_name}'
+            try:
+                package = self.packages.get(package_name)
+                if package is None:
+                    raise HTTPException(status_code=404, detail=f'Package {package_name} not found!')
+
+                errors = []
+                behaviors = parse_behavior_folder(
+                    package.path,
+                    package.python_path,
+                    package.editable,
+                    self._settings['text_encoding'],
+                    errors=errors,
+                )
+                match = next((
+                    b for b in behaviors
+                    if (b.codefile_relpath or b.codefile_name) == codefile_name or b.codefile_name == codefile_name
+                ), None)
+                if match is None:
+                    raise HTTPException(status_code=404,
+                                        detail=f"Behavior '{codefile_name}' not found in '{package_name}'")
+
+                # Re-read the file to populate codefile_content for the full response
+                code_file = os.path.join(match.codefile_path, match.codefile_name + '.py')
+                with open(code_file, 'r', encoding=self._settings['text_encoding']) as fin:
+                    codefile_content = fin.read()
+
+                full_def = match.copy(update={'codefile_content': codefile_content})
+                elapsed = datetime.now().timestamp() - start_clock
+                self._record_timing('behavior_full', endpoint, elapsed, True,
+                                    package=package_name, behavior=codefile_name)
+                return self.api_success(full_def)
+            except HTTPException as exc:
+                elapsed = datetime.now().timestamp() - start_clock
+                self._record_timing('behavior_full', endpoint, elapsed, False,
+                                    package=package_name, behavior=codefile_name, error=str(exc))
+                raise exc
+            except (OSError, TypeError, ValueError) as exc:
+                elapsed = datetime.now().timestamp() - start_clock
+                self._record_timing('behavior_full', endpoint, elapsed, False,
+                                    package=package_name, behavior=codefile_name, error=str(exc))
+                return self.api_failure(f"Error loading '{codefile_name}' from '{package_name}': {exc}")
+
         @app.get('/api/v1/packages/states')
         async def packages_states():
             """Return list of packages with FlexBE states."""

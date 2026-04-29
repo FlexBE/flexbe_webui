@@ -12,12 +12,14 @@ UI.Panels.StateProperties = new (function() {
 		document.getElementById(id).style.backgroundColor = "";
 	}
 
-	this.addHoverDocumentation = function(el, type, name, state_class, behavior_name) {
+	this.addHoverDocumentation = function(el, type, name, state_class, behavior_name, behavior_pkg) {
 		let def = undefined;
 		if (state_class) {
 			def = WS.Statelib.getFromLib(state_class);
 		} else if (behavior_name) {
-			def = WS.Behaviorlib.getByName(behavior_name);
+			def = behavior_pkg
+				? WS.Behaviorlib.getByKey(behavior_pkg, behavior_name)
+				: WS.Behaviorlib.getByName(behavior_name);
 		}
 		if (def == undefined) return;
 		let doc = undefined;
@@ -47,7 +49,7 @@ UI.Panels.StateProperties = new (function() {
 			}
 			let desc = document.createElement("div");
 			desc.style.whiteSpace = "pre-wrap";
-			desc.textContent = doc.desc;
+			desc.innerHTML = doc.desc;
 			tt.appendChild(desc);
 			document.getElementsByTagName("body")[0].appendChild(tt);
 		}
@@ -947,7 +949,7 @@ UI.Panels.StateProperties = new (function() {
 		document.getElementById("input_prop_be_name").value = state.getStateName();
 		document.getElementById("label_prop_be_class").innerText = state.getBehaviorName();
 		document.getElementById("label_prop_be_package").innerText = state.getStatePackage();
-		let behavior_definition = WS.Behaviorlib.getByName(state.getBehaviorName());
+		let behavior_definition = WS.Behaviorlib.getByKey(state.getStatePackage(), state.getBehaviorName());
 		document.getElementById("label_prop_be_desc").innerText = (behavior_definition != undefined)
 			? behavior_definition.getBehaviorDesc()
 			: "";
@@ -1103,7 +1105,7 @@ UI.Panels.StateProperties = new (function() {
 				row.appendChild(default_checkbox_td);
 				document.getElementById("panel_prop_be_parameters_content").appendChild(row);
 
-				that.addHoverDocumentation(row, "param", params[i], undefined, state.getBehaviorName());
+				that.addHoverDocumentation(row, "param", params[i], undefined, state.getBehaviorName(), state.getStatePackage());
 			}
 		} else {
 			document.getElementById("panel_prop_be_parameters").style.display = "none";
@@ -1772,6 +1774,7 @@ UI.Panels.StateProperties = new (function() {
 			let confirm_name = current_prop_state.getStateName();
 			if (new_name != confirm_name) {
 				T.logError("Error renaming " + type + " from " + old_name + " to " + new_name);
+				UI.Tools.customAcknowledge("A " + type + " named '" + new_name + "' already exists in this container.<br><br>Select OK to continue.");
 				return;
 			}
 			let container_path = current_prop_state.getContainer().getStatePath();

@@ -3,6 +3,7 @@ const Statemachine = function(sm_name, sm_definition) {
 	var that = this;
 
 	var states = [];
+	var state_map = new Map();
 	var transitions = [];
 	transitions.push(new Transition(new State("INIT", WS.Statelib.getFromLib(":INIT")), undefined, "", 0));
 	var dataflow = [];
@@ -47,11 +48,7 @@ const Statemachine = function(sm_name, sm_definition) {
 	}
 
 	this.getStateByName = function(name) {
-		for(var i=0; i<states.length; ++i) {
-			if (states[i].getStateName() == name)
-				return states[i];
-		}
-		//T.debugWarn("State '" + name + "' not found in " + that.getStateName());
+		return state_map.get(name);
 	}
 
 	this.getStateById = function(id) {
@@ -104,16 +101,22 @@ const Statemachine = function(sm_name, sm_definition) {
 
 	this.addState = function(state) {
 		states.push(state);
+		state_map.set(state.getStateName(), state);
 		state.setContainer(that);
 	}
 	this.removeState = function(state) {
 		states.remove(state);
+		state_map.delete(state.getStateName());
 		state.setContainer(undefined);
 		if (initial_state != undefined && initial_state.getStateName() == state.getStateName())
 			initial_state = undefined;
 
 		// remove connected transitions
 		that.removeConnectedTransitions(state);
+	}
+	this.notifyStateRenamed = function(old_name, new_name, state) {
+		state_map.delete(old_name);
+		state_map.set(new_name, state);
 	}
 
 	// Transitions
@@ -373,6 +376,8 @@ const Statemachine = function(sm_name, sm_definition) {
 	this.setStates = function(_states) {
 		T.debugWarn("DEPRECATED: " + "setStates");
 		states = _states;
+		state_map = new Map();
+		states.forEach(function(s) { state_map.set(s.getStateName(), s); });
 	}
 
 	this.getTransitions = function() {

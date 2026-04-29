@@ -35,6 +35,7 @@ class ManifestGenerator:
         content = ''
 
         file_name = re.sub(r'.py$', '', file_name)
+        file_name = re.sub(r'[\\/]+', '.', file_name)
         class_name = re.sub(r'[^\w]', '', behavior_name) + 'SM'
 
         content += self.ws + '<executable package_path="' + rosnode_name + '.'
@@ -53,11 +54,22 @@ class ManifestGenerator:
         return content
 
     def generate_manifest_contains(self, behavior_names):
-        """Generate manifest contains."""
+        """Generate manifest contains; each entry is a dict or ContainsEntry-like object with name and optional package."""
         content = self.ws + '<!-- Contained Behaviors -->\n'
 
-        for name in behavior_names:
-            content += self.ws + '<contains name="' + name + '" />\n'
+        for entry in behavior_names:
+            # Accept both dict and object (ContainsEntry / Pydantic model)
+            if isinstance(entry, dict):
+                be_name = entry.get('name', '')
+                be_pkg = entry.get('package') or None
+            else:
+                be_name = getattr(entry, 'name', str(entry))
+                be_pkg = getattr(entry, 'package', None) or None
+
+            if be_pkg:
+                content += self.ws + f'<contains name="{be_name}" package="{be_pkg}" />\n'
+            else:
+                content += self.ws + f'<contains name="{be_name}" />\n'
 
         return content
 

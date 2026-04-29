@@ -49,6 +49,12 @@ WS.Statelib = new (function() {
 	}
 
 	this.addToLib = function(state) {
+		var state_type = state.getStateType();
+		var existing = statelib.findElement(function(s) { return s.getStateType() == state_type; });
+		if (existing != undefined) {
+			T.logWarn("State type '" + state_type + "' is already in the library — skipping duplicate.");
+			return;
+		}
 		statelib.push(state);
 	}
 

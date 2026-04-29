@@ -559,6 +559,8 @@ IO.CodeParser = new (function() {
 			if (behavior_use_result != null) {
 				state_class = behavior_use_result[1];
 				state_type = "behavior";
+				if (!state_class.includes("__") && state_type_imports != undefined && state_type_imports[state_class] != undefined)
+					state_class = state_type_imports[state_class] + "__" + state_class;
 				if (behavior_use_result.length > 2 && behavior_use_result[2] == 'default_keys') {
 					behavior_use_result[3].replace(/["'\s]/g, '').split(',').forEach(key => {
 						remapping.push({

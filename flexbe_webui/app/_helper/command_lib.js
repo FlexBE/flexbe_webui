@@ -1,5 +1,64 @@
 const CommandLib = new (function() {
 
+	var getBehaviorNameCounts = function() {
+		var counts = {};
+		WS.Behaviorlib.getBehaviorList().forEach(function(entry) {
+			var name = entry.getBehaviorName();
+			counts[name] = (counts[name] || 0) + 1;
+		});
+		return counts;
+	}
+
+	var formatBehaviorCommandTarget = function(entry, name_counts) {
+		if ((name_counts[entry.getBehaviorName()] || 0) > 1) {
+			return entry.getStatePackage() + "::" + entry.getBehaviorName();
+		}
+		return entry.getBehaviorName();
+	}
+
+	var resolveBehaviorCommandTarget = function(target) {
+		var separator_index = target.indexOf("::");
+		if (separator_index !== -1) {
+			var pkg = target.slice(0, separator_index);
+			var behavior_name = target.slice(separator_index + 2);
+			var exact = WS.Behaviorlib.getByKey(pkg, behavior_name);
+			if (exact == undefined) {
+				T.logWarn("Behavior '" + target + "' not found.");
+			}
+			return exact;
+		}
+
+		var matches = WS.Behaviorlib.getBehaviorList().filter(function(entry) {
+			return entry.getBehaviorName() == target;
+		});
+		if (matches.length == 0) {
+			T.logWarn("Behavior '" + target + "' not found.");
+			return undefined;
+		}
+		if (matches.length > 1) {
+			var name_counts = getBehaviorNameCounts();
+			T.logError("Behavior name '" + target + "' is ambiguous. Use one of: "
+				+ matches.map(function(entry) { return formatBehaviorCommandTarget(entry, name_counts); }).join(", "));
+			return undefined;
+		}
+		return matches[0];
+	}
+
+	var getBehaviorCommandCompletions = function(exclude_current_behavior) {
+		var name_counts = getBehaviorNameCounts();
+		var current_name = Behavior.getBehaviorName ? Behavior.getBehaviorName() : undefined;
+		var current_pkg = Behavior.getBehaviorPackage ? Behavior.getBehaviorPackage() : undefined;
+
+		return WS.Behaviorlib.getBehaviorList().filter(function(entry) {
+			if (!exclude_current_behavior) {
+				return true;
+			}
+			return !(entry.getBehaviorName() == current_name && entry.getStatePackage() == current_pkg);
+		}).map(function(entry) {
+			return formatBehaviorCommandTarget(entry, name_counts);
+		});
+	}
+
 	var command_library = [
 		{
 			desc: "commands",
@@ -105,15 +164,17 @@ const CommandLib = new (function() {
 					T.logWarn('Unable to load a behavior while executing another one.');
 					return;
 				}
-				var manifest = WS.Behaviorlib.getByName(args[1]).getBehaviorManifest();
+				var entry = resolveBehaviorCommandTarget(args[1]);
+				if (entry == undefined) {
+					return;
+				}
+				var manifest = entry.getBehaviorManifest();
 				IO.BehaviorLoader.loadBehavior(manifest);
 				UI.Menu.toDashboardClicked();
 			},
 			text: "Loads the behavior with the given name.",
 			completions: [
-				function() {
-					return WS.Behaviorlib.getBehaviorList().map(function(element, index){return element.getBehaviorName();});
-				}
+				function() { return getBehaviorCommandCompletions(false); }
 
 			]
 		},
@@ -125,12 +186,16 @@ const CommandLib = new (function() {
 					T.logWarn("Cannot update a behavior while executing another one.");
 					return;
 				}
-				var be_name = args[1];
-				if (be_name == Behavior.getBehaviorName()) {
-					T.logWarn("Cannot update the behavior which is currently loaded. Please use 'load "+be_name+"' instead.");
+				var entry = resolveBehaviorCommandTarget(args[1]);
+				if (entry == undefined) {
 					return;
 				}
-				WS.Behaviorlib.updateEntry(WS.Behaviorlib.getByName(be_name), function() {
+				var entry_name = entry.getBehaviorName();
+				if (entry_name == Behavior.getBehaviorName() && entry.getStatePackage() == Behavior.getBehaviorPackage()) {
+					T.logWarn("Cannot update the behavior which is currently loaded. Please use 'load "+args[1]+"' instead.");
+					return;
+				}
+				WS.Behaviorlib.updateEntry(entry, function() {
 					var updated_entry = arguments[0];
 					if (updated_entry == undefined) {
 						return;
@@ -139,7 +204,11 @@ const CommandLib = new (function() {
 					var updated_states = 0;
 					var refreshNestedBehaviorStates = function(container) {
 						container.getStates().forEach(function(state) {
-							if (state instanceof BehaviorState && state.getStateClass() == updated_entry.getStateClass()) {
+							if (
+								state instanceof BehaviorState
+								&& state.getStatePackage() == updated_entry.getStatePackage()
+								&& state.getBehaviorName() == updated_entry.getBehaviorName()
+							) {
 								state.updateBehaviorDefinition(updated_entry);
 								updated_states += 1;
 								return;
@@ -159,8 +228,7 @@ const CommandLib = new (function() {
 			},
 			text: "Updates the implementation of a behavior in the background (except the one currently loaded).",
 			completions: [
-				function() { return WS.Behaviorlib.getBehaviorList().map(function(element, index){return element.getBehaviorName();})
-				.filter(function(be) { return be != Behavior.getBehaviorName(); }); }
+				function() { return getBehaviorCommandCompletions(true); }
 
 			]
 		},

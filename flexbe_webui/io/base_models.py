@@ -164,7 +164,7 @@ class BehaviorCodeGeneratorRequest(BaseModel):
     file_name: str
     save_as: bool = False
     explicit_package: bool
-    behavior_names: List[str]
+    behavior_names: List[Dict[str, Any]]  # list of {name, package?} ContainsEntry dicts
     behavior: Dict[str, Any]
 
 

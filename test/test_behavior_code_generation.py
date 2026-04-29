@@ -17,10 +17,13 @@
 import argparse
 import asyncio
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.routing import APIRoute
 
 from flexbe_webui.io.base_models import BehaviorCodeGeneratorRequest
+from flexbe_webui.io.code_generator import CodeGenerator
 from flexbe_webui.ros import PackageData
 from flexbe_webui.webui_server import WebuiServer
 
@@ -265,3 +268,154 @@ def test_behavior_code_generator_reports_inconsistent_package_paths(
     assert result['success'] is True
     assert result['data']['install_success'] is False
     assert 'Inconsistent paths!' in result['data']['error_msg']
+
+
+def test_behavior_code_generator_preserves_nested_relative_file_paths(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch
+):
+    """Saving an existing nested behavior should keep both code and manifest module paths nested."""
+    nested_dir = Path(server_with_package.packages['test_pkg'].python_path) / 'nested'
+    nested_dir.mkdir()
+    manifest_path = Path(server_with_package.packages['test_pkg'].path) / 'lib' / 'test_pkg' / 'manifest' / 'demo_behavior.xml'
+
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.save_as = False
+    request_payload.file_name = 'nested/demo_behavior'
+    request_payload.behavior['file_name'] = 'nested/demo_behavior'
+    request_payload.behavior['manifest_path'] = str(manifest_path)
+
+    server_with_package._settings['save_in_source'] = False
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+    monkeypatch.setattr('flexbe_webui.webui_server.validate_path_consistency', lambda *_args: True)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is True
+    assert result['data']['python_file_name'] == 'nested/demo_behavior'
+    assert (nested_dir / 'demo_behavior.py').exists()
+    manifest_text = manifest_path.read_text(encoding='utf-8')
+    assert 'package_path="test_pkg.nested.demo_behavior"' in manifest_text
+
+
+def test_io_behavior_full_accepts_nested_relative_paths(server_with_package):
+    """Full behavior fetch should use the relative module path, not just the basename."""
+    package_root = Path(server_with_package.packages['test_pkg'].python_path)
+    nested_dir = package_root / 'nested'
+    nested_dir.mkdir()
+    manifest_path = Path(server_with_package.packages['test_pkg'].path) / 'lib' / 'test_pkg' / 'manifest' / 'demo_behavior.xml'
+    manifest_path.write_text(
+        """
+<behavior name="Demo Behavior">
+    <description>demo</description>
+    <tagstring>tag</tagstring>
+    <author>tester</author>
+    <date>2026-03-30</date>
+    <executable package_path="test_pkg.nested.demo_behavior" class="DemoBehaviorSM" />
+</behavior>
+""".strip(),
+        encoding='utf-8',
+    )
+    (nested_dir / 'demo_behavior.py').write_text(
+        """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class DemoBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['done'])
+""".strip(),
+        encoding='utf-8',
+    )
+
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/io/behavior/{package_name}/{codefile_name:path}', 'GET')
+    result = _decode_response(asyncio.run(endpoint(package_name='test_pkg', codefile_name='nested/demo_behavior')))
+
+    assert result['success'] is True
+    assert result['data']['codefile_relpath'] == 'nested/demo_behavior'
+    assert 'class DemoBehaviorSM(Behavior):' in result['data']['codefile_content']
+
+
+def test_code_generator_aliases_colliding_behavior_imports_and_references():
+    """Behavior class collisions across packages should use package-qualified aliases."""
+    generator = CodeGenerator()
+
+    state_a = SimpleNamespace(
+        state_name='Behavior A',
+        state_path='/Behavior A',
+        state_class='SharedSM',
+        state_pkg='pkg_a',
+        state_import='pkg_a.foo_sm',
+        state_machine=False,
+        behavior_state=True,
+        position_x=0,
+        position_y=0,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[],
+        input_mapping=[],
+        outcomes=[],
+        autonomy=[],
+        output_keys=[],
+        output_mapping=[],
+    )
+    state_b = SimpleNamespace(
+        state_name='Behavior B',
+        state_path='/Behavior B',
+        state_class='SharedSM',
+        state_pkg='pkg_b',
+        state_import='pkg_b.bar_sm',
+        state_machine=False,
+        behavior_state=True,
+        position_x=100,
+        position_y=50,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[],
+        input_mapping=[],
+        outcomes=[],
+        autonomy=[],
+        output_keys=[],
+        output_mapping=[],
+    )
+    init_transition = SimpleNamespace(from_state_name='INIT', to_state_name='Behavior A')
+    root_sm = SimpleNamespace(
+        state_name='',
+        state_path='',
+        states=[state_a, state_b],
+        transitions=[init_transition],
+        sm_outcomes=[],
+        outcomes=[],
+        input_keys=[],
+        output_keys=[],
+        concurrent=False,
+        priority=False,
+        conditions={},
+    )
+    behavior = SimpleNamespace(
+        behavior_name='Demo Behavior',
+        behavior_description='desc',
+        author='tester',
+        creation_date='2026-03-30',
+        manual_code_import=[],
+        manual_code_init='',
+        manual_code_create='',
+        manual_code_func='',
+        comment_notes=[],
+        behavior_parameters=[],
+        private_variables=[],
+        interface_input_keys=[],
+        interface_output_keys=[],
+        default_userdata=[],
+        root_sm=root_sm,
+    )
+
+    code = generator.generate_behavior_code(behavior, 'dummy license\n')
+
+    assert 'from pkg_a.foo_sm import SharedSM as pkg_a__SharedSM' in code
+    assert 'from pkg_b.bar_sm import SharedSM as pkg_b__SharedSM' in code
+    assert "self.use_behavior(pkg_a__SharedSM, 'Behavior A')" in code
+    assert "self.use_behavior(pkg_b__SharedSM, 'Behavior B')" in code

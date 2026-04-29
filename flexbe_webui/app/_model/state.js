@@ -196,7 +196,11 @@ const State = function(_state_name, state_def) {
 			T.logWarn("Renaming state failed, name already in use!");
 			return;
 		}
+		var old_name = state_name;
 		state_name = _state_name;
+		if (container != undefined && container.notifyStateRenamed != undefined) {
+			container.notifyStateRenamed(old_name, _state_name, that);
+		}
 	}
 
 	this.getStatePath = function() {

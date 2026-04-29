@@ -82,6 +82,7 @@ def parse_state(import_path: str, file_path: str) -> List[StateDefinition]:
                 state_data['state_output'] = kwargs.get('output_keys', [])
                 raise NotImplementedError()  # expected - used to prevent further instantiation to avoid side-effects
 
+            original_event_init = EventState.__init__
             EventState.__init__ = __event_init
 
             try:
@@ -93,6 +94,8 @@ def parse_state(import_path: str, file_path: str) -> List[StateDefinition]:
                     f"Cannot instantiate state '{cls.__name__}' to determine interface, "
                     "consider removing any code before 'super' in '__init__'. "
                     f'Error: {str(exc)}') from exc
+            finally:
+                EventState.__init__ = original_event_init
             class_vars = [
                 n for n, t in cls.__dict__.items()
                 if not inspect.isfunction(t) and not n.startswith('__')

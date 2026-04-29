@@ -37,6 +37,8 @@ UI.Statemachine = new (function() {
 
 	var drawn_sms = [];
 	var grid = [];
+	var grid_offset = {x: 0, y: 0};
+	var state_drawings_map = new Map();
 
 	var tab_targets = [];
 
@@ -189,19 +191,27 @@ UI.Statemachine = new (function() {
 		if (connecting) that.refreshView();
 	}
 
-	var displayGrid = function() {
+	var createGrid = function() {
+		if (grid.length > 0) return;
 		let gridsize = that.getGridSize();
-		let offset = {x: UI.Statemachine.getPanShift().x % gridsize, y: UI.Statemachine.getPanShift().y % gridsize};
-		for (let i = offset.x; i < R.width; i += gridsize) {
-			grid.push(R.path("M" + i + ",0L" + i + "," + R.height).attr({stroke: '#ddd'}));
+		for (let i = 0; i <= R.width + gridsize; i += gridsize) {
+			grid.push(R.path("M" + i + ",0L" + i + "," + (R.height + gridsize)).attr({stroke: '#ddd'}).hide());
 		}
-		for (let i = offset.y; i < R.height; i += gridsize) {
-			grid.push(R.path("M0," + i + "L" + R.width + "," + i).attr({stroke: '#ddd'}));
+		for (let i = 0; i <= R.height + gridsize; i += gridsize) {
+			grid.push(R.path("M0," + i + "L" + (R.width + gridsize) + "," + i).attr({stroke: '#ddd'}).hide());
 		}
+		grid_offset = {x: 0, y: 0};
+	}
+	var displayGrid = function() {
+		createGrid();
+		let gridsize = that.getGridSize();
+		let ox = UI.Statemachine.getPanShift().x % gridsize;
+		let oy = UI.Statemachine.getPanShift().y % gridsize;
+		grid.forEach(function(el) { el.transform("t" + ox + "," + oy).show(); });
+		grid_offset = {x: ox, y: oy};
 	}
 	var hideGrid = function() {
-		grid.forEach(function(el) { el.remove(); });
-		grid = [];
+		grid.forEach(function(el) { el.hide(); });
 	}
 
 	var beginSelection = function(x, y, event) {
@@ -479,6 +489,8 @@ UI.Statemachine = new (function() {
 			drawings[i].drawing.remove();
 		}
 		drawings = [];
+		grid = [];
+		state_drawings_map = new Map();
 
 		if (R != undefined) {
 			R.remove();
@@ -749,9 +761,12 @@ UI.Statemachine = new (function() {
 			drawings[i].drawing.remove();
 		}
 		drawings = [];
+		state_drawings_map = new Map();
 
 		// draw
-		drawings.push(displayInitialDot());
+		let init_dot = displayInitialDot();
+		drawings.push(init_dot);
+		state_drawings_map.set(init_dot.obj.getStateName(), init_dot.drawing);
 
 		if (!displayed_sm){
 			// This gets triggered by resize call prior to statemachine setup
@@ -775,12 +790,15 @@ UI.Statemachine = new (function() {
 			let s = states[i];
 			let a = RC.Controller.isRunning() && RC.Controller.isCurrentState(s, true);
 			let l = RC.Controller.isLocked() && RC.Controller.isOnLockedPath(s.getStatePath());
+			let sd;
 			if (s instanceof Statemachine)
-				drawings.push(new Drawable.Statemachine(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
+				sd = new Drawable.Statemachine(s, R, false, Drawable.State.Mode.OUTCOME, a, l);
 			else if (s instanceof BehaviorState)
-				drawings.push(new Drawable.BehaviorState(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
+				sd = new Drawable.BehaviorState(s, R, false, Drawable.State.Mode.OUTCOME, a, l);
 			else
-				drawings.push(new Drawable.State(s, R, false, Drawable.State.Mode.OUTCOME, a, l));
+				sd = new Drawable.State(s, R, false, Drawable.State.Mode.OUTCOME, a, l);
+			drawings.push(sd);
+			state_drawings_map.set(s.getStateName(), sd.drawing);
 
 			if (s.getPosition().x > sm_extents.x) sm_extents.x = s.getPosition().x + that.getGridSize()*2;
 			if (s.getPosition().y > sm_extents.y) sm_extents.y = s.getPosition().y + that.getGridSize()*2;
@@ -790,13 +808,14 @@ UI.Statemachine = new (function() {
 			o = sm_outcomes[i];
 			let obj = new Drawable.Outcome(o, R, false, !outcomes_displayed);
 			drawings.push(obj);
+			state_drawings_map.set(o.getStateName(), obj.drawing);
 			if (o.getPosition().x > sm_extents.x) sm_extents.x = o.getPosition().x + that.getGridSize();
 			if (o.getPosition().y > sm_extents.y) sm_extents.y = o.getPosition().y + that.getGridSize();
 		}
 
 		// draw transitions at last
 		let transitions_readonly = RC.Controller.isReadonly() || dataflow_displayed || displayed_sm.isInsideDifferentBehavior() || Behavior.isReadonly();
-		let new_transitions = [];
+		let transition_merge_map = new Map();
 		for (let i=0; i<transitions.length; ++i) {
 			let t = transitions[i];
 			if (t.getTo() == undefined) continue;
@@ -809,7 +828,6 @@ UI.Statemachine = new (function() {
 					x: dt.drawing[2][0].attr("cx"),
 					y: dt.drawing[2][0].attr("cy")
 				});
-				// that.fireEvent(dt.drawing[2][0].node, 'click');
 			}
 			if (t.getEnd() != undefined){
 				Drawable.Helper.endPointClick(dt.drawing[2][1], dt.drawing[2][1].data("corners"));
@@ -817,22 +835,21 @@ UI.Statemachine = new (function() {
 					x: dt.drawing[2][1].attr("cx"),
 					y: dt.drawing[2][1].attr("cy")
 				});
-				// that.fireEvent(dt.drawing[2][1].node, 'click');
 			}
-			new_transitions.forEach(function(ot) {
-				if (dt.obj.getFrom().getStateName() == ot.obj.getFrom().getStateName() && dt.obj.getTo().getStateName() == ot.obj.getTo().getStateName()) {
-					dt.merge(ot);
-				}
-			});
-			new_transitions.push(dt);
+			let merge_key = dt.obj.getFrom().getStateName() + '\0' + dt.obj.getTo().getStateName();
+			let existing = transition_merge_map.get(merge_key);
+			if (existing != undefined) {
+				dt.merge(existing);
+			}
+			transition_merge_map.set(merge_key, dt);
 			drawings.push(dt);
 
 			if (t.getX() != undefined && t.getX() > sm_extents.x) sm_extents.x = t.getX() + that.getGridSize()*2;
 			if (t.getY() != undefined && t.getY() > sm_extents.y) sm_extents.y = t.getY() + that.getGridSize()*2;
 		}
 
-		new_transitions = [];
 		if (dataflow_displayed) {
+			let dataflow_merge_map = new Map();
 			for (let i=0; i<dataflow.length; ++i) {
 				let d = dataflow[i];
 				let color = '#000';
@@ -848,12 +865,12 @@ UI.Statemachine = new (function() {
 					}
 				}
 				let dt = new Drawable.Transition(d, R, true, drawings, false, false, Drawable.Transition.PATH_STRAIGHT, color);
-				new_transitions.forEach(function(ot) {
-					if (dt.obj.getFrom().getStateName() == ot.obj.getFrom().getStateName() && dt.obj.getTo().getStateName() == ot.obj.getTo().getStateName()) {
-						dt.merge(ot);
-					}
-				});
-				new_transitions.push(dt);
+				let merge_key = dt.obj.getFrom().getStateName() + '\0' + dt.obj.getTo().getStateName();
+				let existing = dataflow_merge_map.get(merge_key);
+				if (existing != undefined) {
+					dt.merge(existing);
+				}
+				dataflow_merge_map.set(merge_key, dt);
 				drawings.push(dt);
 			}
 		}
@@ -899,11 +916,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.getDrawnState = function(state) {
-		for (let i=0; i<drawings.length; ++i) {
-			if(drawings[i].obj.getStateName() == state.getStateName()) {
-				return drawings[i].drawing;
-			}
-		}
+		return state_drawings_map.get(state.getStateName());
 	}
 
 	this.beginTransition = function(state, label) {
@@ -957,7 +970,6 @@ UI.Statemachine = new (function() {
 		connecting = false;
 		just_connected = drag_transition;
 		drag_transition = undefined;
-		that.refreshView();
 		just_connected = undefined;
 		that.refreshView();
 	}
@@ -1074,7 +1086,6 @@ UI.Statemachine = new (function() {
 		connecting = false;
 		just_connected = drag_transition;
 		drag_transition = undefined;
-		that.refreshView();
 		just_connected = undefined;
 		that.refreshView();
 

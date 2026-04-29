@@ -239,6 +239,9 @@ function setupGlobals() {
       resetLib() {},
       addToLib() {},
       getByName() { return undefined; },
+      getByKey() { return undefined; },
+      getByClassAndPackage() { return undefined; },
+      getBehaviorList() { return []; },
     },
     BehaviorStateDefinition: function(behaviorData) {
       this.behaviorData = behaviorData;
@@ -340,8 +343,10 @@ function assertLog(logs, level, fragment) {
 async function runBehaviorSaverCase() {
   const { logs, feedMessages } = setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
+  let lastPostContent;
   global.API = {
-    postData(_action, _content, onSuccess, _onError) {
+    postData(_action, content, onSuccess, _onError) {
+      lastPostContent = content;
       onSuccess({
         install_success: true,
         python_file_name: 'generated_behavior',
@@ -359,6 +364,31 @@ async function runBehaviorSaverCase() {
   assert.strictEqual(global.Behavior.manifest_path, '/tmp/generated_manifest.xml');
   assertLog(logs, 'info', 'Behavior code generation completed.');
   assertLog(logs, 'info', 'Save behavior was successful!');
+
+  logs.length = 0;
+  global.Behavior.getStatemachine = function() {
+    const pkgABehavior = new global.BehaviorState();
+    pkgABehavior.getStateClass = () => 'SharedSM';
+    pkgABehavior.getBehaviorName = () => 'SharedBehavior';
+    pkgABehavior.getStatePackage = () => 'pkg_a';
+
+    const pkgBBehavior = new global.BehaviorState();
+    pkgBBehavior.getStateClass = () => 'SharedSM';
+    pkgBBehavior.getBehaviorName = () => 'SharedBehavior';
+    pkgBBehavior.getStatePackage = () => 'pkg_b';
+
+    return {
+      getStates() {
+        return [pkgABehavior, pkgBBehavior];
+      },
+    };
+  };
+
+  IO.BehaviorSaver.saveStateMachine({ save_as: true });
+  assert.deepStrictEqual(lastPostContent.behavior_names, [
+    { name: 'SharedBehavior', package: 'pkg_a' },
+    { name: 'SharedBehavior', package: 'pkg_b' },
+  ]);
 
   logs.length = 0;
   global.API.postData = function(_action, _content, _onSuccess, onError) {
@@ -1128,6 +1158,9 @@ async function runStatePanelFlowsCase() {
   WS.Behaviorlib.getByName = function(name) {
     return name === 'DemoBehavior' ? behaviorDefinition : undefined;
   };
+  WS.Behaviorlib.getByKey = function(pkg, name) {
+    return name === 'DemoBehavior' ? behaviorDefinition : undefined;
+  };
 
   const behaviorState = new BehaviorState();
   behaviorState.getStateName = function() { return 'Behavior State'; };
@@ -1669,15 +1702,23 @@ async function runCommandUpdateBehaviorCase() {
     }
   };
 
-  global.BehaviorState = function(stateClass, manifestDescription) {
+  global.BehaviorState = function(stateClass, manifestDescription, statePackage = 'demo_pkg', behaviorName = 'Demo Behavior') {
     this.stateClass = stateClass;
     this.manifestDescription = manifestDescription;
+    this.statePackage = statePackage;
+    this.behaviorName = behaviorName;
     this.outcomes = ['old_done'];
     this.inputKeys = ['old_input'];
     this.outputKeys = ['old_output'];
   };
   global.BehaviorState.prototype.getStateClass = function() {
     return this.stateClass;
+  };
+  global.BehaviorState.prototype.getStatePackage = function() {
+    return this.statePackage;
+  };
+  global.BehaviorState.prototype.getBehaviorName = function() {
+    return this.behaviorName;
   };
   global.BehaviorState.prototype.getBehaviorManifest = function() {
     return { description: this.manifestDescription };
@@ -1699,21 +1740,30 @@ async function runCommandUpdateBehaviorCase() {
     this.outputKeys = newDef.getOutputKeys().slice();
   };
 
-  const nestedBehavior = new global.BehaviorState('demo_pkg/DemoBehavior', 'old manifest');
+  const nestedBehavior = new global.BehaviorState('demo_pkg/DemoBehavior', 'old manifest', 'demo_pkg', 'Demo Behavior');
+  const siblingBehavior = new global.BehaviorState('other_pkg/DemoBehavior', 'other manifest', 'other_pkg', 'Demo Behavior');
   global.Behavior.getStatemachine = function() {
     return {
       getStates() {
-        return [nestedBehavior];
+        return [nestedBehavior, siblingBehavior];
       },
     };
   };
 
   const existingEntry = {
+    getBehaviorName() {
+      return 'Demo Behavior';
+    },
+    getStatePackage() {
+      return 'demo_pkg';
+    },
     getBehaviorManifest() {
       return { name: 'Demo Behavior' };
     },
   };
   const updatedEntry = {
+    getBehaviorName() { return 'Demo Behavior'; },
+    getStatePackage() { return 'demo_pkg'; },
     getStateClass() { return 'demo_pkg/DemoBehavior'; },
     getBehaviorManifest() { return { description: 'new manifest' }; },
     getOutcomes() { return ['new_done', 'new_failed']; },
@@ -1725,6 +1775,12 @@ async function runCommandUpdateBehaviorCase() {
     getByName(name) {
       assert.strictEqual(name, 'Demo Behavior');
       return existingEntry;
+    },
+    getByKey(pkg, name) {
+      return existingEntry;
+    },
+    getBehaviorList() {
+      return [existingEntry];
     },
     updateEntry(entry, callback) {
       updateEntryArg = entry;
@@ -1743,8 +1799,391 @@ async function runCommandUpdateBehaviorCase() {
   assert.deepStrictEqual(nestedBehavior.getInputKeys(), ['new_input']);
   assert.deepStrictEqual(nestedBehavior.getOutputKeys(), ['new_output']);
   assert.strictEqual(nestedBehavior.getBehaviorManifest().description, 'new manifest');
+  assert.deepStrictEqual(siblingBehavior.getOutcomes(), ['old_done']);
+  assert.deepStrictEqual(siblingBehavior.getInputKeys(), ['old_input']);
+  assert.deepStrictEqual(siblingBehavior.getOutputKeys(), ['old_output']);
+  assert.strictEqual(siblingBehavior.getBehaviorManifest().description, 'other manifest');
   assert.strictEqual(refreshCount, 1);
   assert.strictEqual(notifyCount, 1);
+}
+
+async function runCommandQualifiedBehaviorCase() {
+  const { logs } = setupGlobals();
+  let loadedManifest = undefined;
+  let dashboardCount = 0;
+
+  global.RC.Controller = {
+    isRunning() { return false; },
+    isReadonly() { return false; },
+  };
+  global.UI.Menu = {
+    toDashboardClicked() {
+      dashboardCount += 1;
+    },
+  };
+  global.IO.BehaviorLoader = {
+    loadBehavior(manifest) {
+      loadedManifest = manifest;
+    },
+  };
+
+  const entryA = {
+    getBehaviorName() { return 'Demo Behavior'; },
+    getStatePackage() { return 'pkg_a'; },
+    getBehaviorManifest() { return { name: 'Demo Behavior', rosnode_name: 'pkg_a' }; },
+  };
+  const entryB = {
+    getBehaviorName() { return 'Demo Behavior'; },
+    getStatePackage() { return 'pkg_b'; },
+    getBehaviorManifest() { return { name: 'Demo Behavior', rosnode_name: 'pkg_b' }; },
+  };
+
+  global.WS.Behaviorlib = {
+    getByKey(pkg, name) {
+      if (pkg === 'pkg_a' && name === 'Demo Behavior') {
+        return entryA;
+      }
+      if (pkg === 'pkg_b' && name === 'Demo Behavior') {
+        return entryB;
+      }
+      return undefined;
+    },
+    getBehaviorList() {
+      return [entryA, entryB];
+    },
+  };
+
+  loadScript('flexbe_webui/app/_helper/command_lib.js');
+  const loadCommand = CommandLib.load().find(entry => entry.desc === 'load [behavior]');
+  assert(loadCommand, 'Expected load command to be registered');
+
+  loadCommand.impl(['load Demo Behavior', 'Demo Behavior']);
+  assert.strictEqual(loadedManifest, undefined);
+  assertLog(logs, 'error', "Behavior name 'Demo Behavior' is ambiguous.");
+
+  loadCommand.impl(['load pkg_b::Demo Behavior', 'pkg_b::Demo Behavior']);
+  assert.deepStrictEqual(loadedManifest, { name: 'Demo Behavior', rosnode_name: 'pkg_b' });
+  assert.strictEqual(dashboardCount, 1);
+}
+
+async function runBehaviorCollisionResolutionCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ws/ws_behaviorlib.js');
+  loadScript('flexbe_webui/app/io/io_modelgenerator.js');
+
+  let pkgACount = 0;
+  let pkgBCount = 0;
+
+  WS.Behaviorlib.addToLib({
+    getStatePackage() { return 'pkg_a'; },
+    getBehaviorName() { return 'Shared Behavior'; },
+    getStateClass() {
+      pkgACount += 1;
+      return 'SharedSM';
+    },
+  });
+  WS.Behaviorlib.addToLib({
+    getStatePackage() { return 'pkg_b'; },
+    getBehaviorName() { return 'Shared Behavior'; },
+    getStateClass() {
+      pkgBCount += 1;
+      return 'SharedSM';
+    },
+  });
+
+  const parsingResult = IO.ModelGenerator.parseInstantiationMsg([{
+    state_path: '/Behavior State',
+    state_class: ':BEHAVIOR',
+    initial_state_name: '',
+    input_keys: [],
+    output_keys: [],
+    cond_outcome: [],
+    cond_transition: [],
+    behavior_class: 'pkg_b__SharedSM',
+    parameter_names: [],
+    parameter_values: [],
+    position: [0, 0],
+    outcomes: [],
+    transitions: [],
+    autonomy: [],
+    userdata_keys: [],
+    userdata_remapping: [],
+  }]);
+
+  assert.strictEqual(pkgACount, 0);
+  assert(pkgBCount >= 1);
+  assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_class, 'SharedSM');
+}
+
+async function runLegacyBehaviorImportResolutionCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/io/io_codeparser.js');
+
+  const code = `from pkg_b.demo_behavior_sm import SharedSM
+from flexbe_core import Behavior
+from flexbe_core import OperatableStateMachine
+
+
+class DemoBehaviorSM(Behavior):
+    """
+    Define Demo Behavior.
+
+    Created on 2026-03-30
+    @author: tester
+    """
+
+    def __init__(self, node):
+        super().__init__()
+        self.name = 'Demo Behavior'
+
+    def create(self):
+        _state_machine = OperatableStateMachine(outcomes=['done'])
+
+        with _state_machine:
+            OperatableStateMachine.add('Nested Behavior',
+                self.use_behavior(SharedSM, 'Nested Behavior'),
+                transitions={'done': 'done'},
+                autonomy={'done': Autonomy.Off})
+
+        return _state_machine
+`;
+
+  const parsingResult = IO.CodeParser.parseCode(code);
+  assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_type, 'behavior');
+  assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_class, 'pkg_b__SharedSM');
+}
+
+async function runBehaviorLoaderFailureCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  Behavior.resetBehavior = function() {};
+  UI.Dashboard.resetAllFields = function() {};
+  UI.Statemachine.resetStatemachine = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Menu.toDashboardClicked = function() {};
+  UI.Panels.NO_PANEL = 'none';
+  UI.Panels.setActivePanel = function() {};
+
+  global.IO.CodeParser = {
+    parseCode() {
+      throw new Error('parse failed');
+    },
+  };
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  const parseResult = await new Promise(resolve => {
+    IO.BehaviorLoader.parseBehaviorSM({ name: 'Broken', codefile_content: 'broken' }, resolve);
+  });
+  assert.strictEqual(parseResult, undefined);
+
+  IO.CodeParser.parseCode = function() {
+    return {
+      behavior_name: 'ParentBehavior',
+      sm_defs: [],
+      sm_states: [],
+      root_sm_name: 'root',
+      default_userdata: [],
+      state_types: {},
+    };
+  };
+  global.IO.ModelGenerator = {
+    generateBehaviorAttributes() {},
+    buildStateMachine() {
+      return {};
+    },
+  };
+  Behavior.setStatemachine = function() {};
+  Behavior.setReadonly = function() {};
+  ActivityTracer.resetActivities = function() {};
+  global.Checking = {
+    checkBehavior() { return undefined; },
+  };
+  RC.Controller.signalChanged = function() {};
+
+  global.WS.Behaviorlib = {
+    getByKey(pkg, name) {
+      assert.strictEqual(pkg, 'child_pkg');
+      assert.strictEqual(name, 'ChildBehavior');
+      return {
+        ensureBSMReady(callback) {
+          callback(false);
+        },
+        getStatePackage() { return 'child_pkg'; },
+        getBehaviorName() { return 'ChildBehavior'; },
+        getBehaviorManifest() { return { contains: [] }; },
+      };
+    },
+    getByName() { return undefined; },
+  };
+
+  const loadError = await new Promise(resolve => {
+    IO.BehaviorLoader.loadBehavior({
+      name: 'ParentBehavior',
+      manifest_path: '/tmp/parent.xml',
+      codefile_path: '/tmp/parent.py',
+      codefile_name: 'parent_behavior_sm.py',
+      codefile_content: 'root code',
+      contains: [{ name: 'ChildBehavior', package: 'child_pkg' }],
+    }, resolve);
+  });
+
+  assert.strictEqual(loadError, 'Failed to prepare sub-behavior state machines (child_pkg::ChildBehavior)');
+}
+
+async function runBehaviorLoaderLegacyPackageDefaultCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  let getByNameCalls = 0;
+  let updateEntryArg = undefined;
+  const samePkgEntry = {
+    ensureBSMReady(callback) {
+      callback(true);
+    },
+    getStatePackage() { return 'parent_pkg'; },
+    getBehaviorName() { return 'ChildBehavior'; },
+    getBehaviorManifest() { return { rosnode_name: 'parent_pkg', contains: [] }; },
+  };
+
+  global.WS.Behaviorlib = {
+    getByKey(pkg, name) {
+      if (pkg === 'parent_pkg' && name === 'ChildBehavior') {
+        return samePkgEntry;
+      }
+      return undefined;
+    },
+    getByName() {
+      getByNameCalls += 1;
+      return undefined;
+    },
+    updateEntry(entry) {
+      updateEntryArg = entry;
+    },
+  };
+
+  const readyResult = await new Promise(resolve => {
+    IO.BehaviorLoader.ensureSubbehaviorsReady({
+      rosnode_name: 'parent_pkg',
+      contains: [{ name: 'ChildBehavior' }],
+    }, function(success, failedKey) {
+      resolve({ success, failedKey });
+    });
+  });
+
+  assert.deepStrictEqual(readyResult, { success: true, failedKey: undefined });
+  assert.strictEqual(getByNameCalls, 0);
+  assertLog(logs, 'warn', "ensureSubbehaviorsReady: sub-behavior 'ChildBehavior' has no package in manifest; defaulting lookup to same package 'parent_pkg'.");
+
+  const ignoreList = IO.BehaviorLoader.loadBehaviorDependencies({
+    rosnode_name: 'parent_pkg',
+    contains: [{ name: 'ChildBehavior' }],
+  }, []);
+
+  assert.deepStrictEqual(ignoreList, ['parent_pkg::ChildBehavior']);
+  assert.strictEqual(updateEntryArg, samePkgEntry);
+  assert.strictEqual(getByNameCalls, 0);
+  assertLog(logs, 'warn', "loadBehaviorDependencies: sub-behavior 'ChildBehavior' has no package in manifest; defaulting lookup to same package 'parent_pkg'.");
+}
+
+async function runBehaviorLoaderLegacyPythonHintCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  Behavior.resetBehavior = function() {};
+  Behavior.setStatemachine = function() {};
+  Behavior.setReadonly = function() {};
+  UI.Dashboard.resetAllFields = function() {};
+  UI.Statemachine.resetStatemachine = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Menu.toDashboardClicked = function() {};
+  UI.Panels.NO_PANEL = 'none';
+  UI.Panels.setActivePanel = function() {};
+  ActivityTracer.resetActivities = function() {};
+  RC.Controller.signalChanged = function() {};
+  global.Checking = {
+    checkBehavior() { return undefined; },
+  };
+  global.IO.CodeParser = {
+    parseCode() {
+      return {
+        behavior_name: 'ParentBehavior',
+        state_types: { ChildBehaviorSM: 'hint_pkg' },
+        sm_defs: [],
+        sm_states: [{
+          sm_name: 'root',
+          sm_states: [{
+            state_type: 'behavior',
+            state_class: 'ChildBehaviorSM',
+          }],
+        }],
+        root_sm_name: 'root',
+        default_userdata: [],
+      };
+    },
+  };
+  global.IO.ModelGenerator = {
+    generateBehaviorAttributes() {},
+    buildStateMachine() {
+      return {};
+    },
+  };
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  let ensureReadyCalls = 0;
+  const hintedEntry = {
+    ensureBSMReady(callback) {
+      ensureReadyCalls += 1;
+      callback(true);
+    },
+    getStatePackage() { return 'hint_pkg'; },
+    getBehaviorName() { return 'ChildBehavior'; },
+    getBehaviorManifest() { return { rosnode_name: 'hint_pkg', contains: [] }; },
+  };
+
+  global.WS.Behaviorlib = {
+    getByKey(pkg, name) {
+      if (pkg === 'hint_pkg' && name === 'ChildBehavior') {
+        return hintedEntry;
+      }
+      return undefined;
+    },
+    getByClassAndPackage(pkg, className) {
+      if (pkg === 'hint_pkg' && className === 'ChildBehaviorSM') {
+        return hintedEntry;
+      }
+      return undefined;
+    },
+    getBehaviorList() {
+      return [
+        hintedEntry,
+        {
+          getBehaviorName() { return 'ChildBehavior'; },
+          getStatePackage() { return 'other_pkg'; },
+        },
+      ];
+    },
+  };
+
+  const loadError = await new Promise(resolve => {
+    IO.BehaviorLoader.loadBehavior({
+      name: 'ParentBehavior',
+      rosnode_name: 'parent_pkg',
+      manifest_path: '/tmp/parent.xml',
+      codefile_path: '/tmp/parent.py',
+      codefile_name: 'parent_behavior_sm.py',
+      codefile_content: 'root code',
+      contains: [{ name: 'ChildBehavior' }],
+    }, resolve);
+  });
+
+  assert.strictEqual(loadError, undefined);
+  assert.strictEqual(ensureReadyCalls, 1);
+  assertLog(logs, 'warn', "ensureSubbehaviorsReady: sub-behavior 'ChildBehavior' has no package in manifest; defaulting lookup to same package 'parent_pkg'.");
+  assertLog(logs, 'warn', "ensureSubbehaviorsReady: resolved legacy sub-behavior 'ChildBehavior' via Python source hint to package 'hint_pkg'.");
 }
 
 async function main() {
@@ -1810,6 +2249,30 @@ async function main() {
   }
   if (caseName === 'command_update_behavior') {
     await runCommandUpdateBehaviorCase();
+    return;
+  }
+  if (caseName === 'command_qualified_behavior') {
+    await runCommandQualifiedBehaviorCase();
+    return;
+  }
+  if (caseName === 'behavior_collision_resolution') {
+    await runBehaviorCollisionResolutionCase();
+    return;
+  }
+  if (caseName === 'legacy_behavior_import_resolution') {
+    await runLegacyBehaviorImportResolutionCase();
+    return;
+  }
+  if (caseName === 'behavior_loader_failure') {
+    await runBehaviorLoaderFailureCase();
+    return;
+  }
+  if (caseName === 'behavior_loader_legacy_package_default') {
+    await runBehaviorLoaderLegacyPackageDefaultCase();
+    return;
+  }
+  if (caseName === 'behavior_loader_legacy_python_hint') {
+    await runBehaviorLoaderLegacyPythonHintCase();
     return;
   }
   throw new Error(`Unknown case '${caseName}'`);

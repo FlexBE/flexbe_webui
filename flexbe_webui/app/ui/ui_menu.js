@@ -367,37 +367,56 @@ UI.Menu = new (function() {
 		if (UI.Statemachine.isReadonly()) return;
 
 		UI.Panels.SelectBehavior.setSelectionCallback(function(manifest) {
-			IO.BehaviorLoader.loadBehaviorInterface(manifest, function(smi) {
-				if (smi.class_name != manifest.class_name) T.logWarn("Class names of behavior " + manifest.name + " do not match!");
-				let be_def = WS.Behaviorlib.getByName(manifest.name);
-				let be = new BehaviorState(manifest.name, be_def, []);
-				be.setStateName(Tools.getUniqueName(UI.Statemachine.getDisplayedSM(), be.getStateName()));
-				UI.Statemachine.getDisplayedSM().addState(be);
-				UI.Statemachine.refreshView();
-				UI.Panels.StateProperties.displayStateProperties(be);
-
-				let be_name = manifest.name;
-				let state_path = be.getStatePath();
-				let container_path = be.getContainer().getStatePath();
-
-				ActivityTracer.addActivity(ActivityTracer.ACT_STATE_ADD,
-					"Added new state taken from behavior " + manifest.name,
-					function() {
-						let state = Behavior.getStatemachine().getStateByPath(state_path);
-						state.getContainer().removeState(state);
-						if (UI.Panels.StateProperties.isCurrentState(state)) {
-							UI.Panels.StateProperties.hide();
+			let be_def = WS.Behaviorlib.getByKey(manifest.rosnode_name, manifest.name);
+			if (be_def == undefined) {
+				T.logError("Unable to find behavior definition for '" + manifest.rosnode_name + "::" + manifest.name + "'");
+				return;
+			}
+			be_def.ensureBSMReady(function(success) {
+				if (!success) {
+					T.logError("Failed to prepare behavior state machine for '" + manifest.name + "'");
+					return;
+				}
+				// Also ensure sub-behaviors of this behavior have their SMs ready
+				IO.BehaviorLoader.ensureSubbehaviorsReady(manifest, function(ready, failed_key) {
+					if (!ready) {
+						let error_string = "Failed to prepare sub-behavior state machines for '" + manifest.name + "'";
+						if (failed_key != undefined) {
+							error_string += " (" + failed_key + ")";
 						}
-						UI.Statemachine.refreshView();
-					},
-					function() {
-						let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
-						let redo_state = new BehaviorState(be_name, WS.Behaviorlib.getByName(be_name), []);
-						container.addState(redo_state);
-						UI.Statemachine.refreshView();
+						T.logError(error_string);
+						return;
 					}
-				);
-			});
+					let be = new BehaviorState(manifest.name, be_def, []);
+					be.setStateName(Tools.getUniqueName(UI.Statemachine.getDisplayedSM(), be.getStateName()));
+					UI.Statemachine.getDisplayedSM().addState(be);
+					UI.Statemachine.refreshView();
+					UI.Panels.StateProperties.displayStateProperties(be);
+
+					let be_name = manifest.name;
+					let be_pkg = manifest.rosnode_name;
+					let state_path = be.getStatePath();
+					let container_path = be.getContainer().getStatePath();
+
+					ActivityTracer.addActivity(ActivityTracer.ACT_STATE_ADD,
+						"Added new state taken from behavior " + manifest.name,
+						function() {
+							let state = Behavior.getStatemachine().getStateByPath(state_path);
+							state.getContainer().removeState(state);
+							if (UI.Panels.StateProperties.isCurrentState(state)) {
+								UI.Panels.StateProperties.hide();
+							}
+							UI.Statemachine.refreshView();
+						},
+						function() {
+							let container = (container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(container_path);
+							let redo_state = new BehaviorState(be_name, WS.Behaviorlib.getByKey(be_pkg, be_name), []);
+							container.addState(redo_state);
+							UI.Statemachine.refreshView();
+						}
+					);
+				}); // ensureSubbehaviorsReady
+			}); // ensureBSMReady
 		});
 		UI.Panels.SelectBehavior.enableHover();
 		UI.Panels.SelectBehavior.show();

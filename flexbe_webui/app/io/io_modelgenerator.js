@@ -1,6 +1,29 @@
 IO.ModelGenerator = new (function() {
 	var that = this;
 
+	var resolveBehaviorDefinition = function(behavior_ref) {
+		if (behavior_ref == undefined) {
+			return undefined;
+		}
+
+		if (behavior_ref.includes("__")) {
+			let type_split = behavior_ref.split("__");
+			if (type_split.length == 2) {
+				let behavior_def = WS.Behaviorlib.getByClassAndPackage(type_split[0], type_split[1]);
+				if (behavior_def != undefined) {
+					return behavior_def;
+				}
+			}
+		}
+
+		let behavior_def = WS.Behaviorlib.getByClass(behavior_ref);
+		if (behavior_def != undefined) {
+			return behavior_def;
+		}
+
+		return WS.Behaviorlib.getByName(behavior_ref);
+	}
+
 	this.generateBehaviorAttributes = function(data, manifest) {
 		UI.Dashboard.setBehaviorName(manifest.name);
 		UI.Dashboard.setBehaviorPackage(manifest.rosnode_name);
@@ -12,7 +35,7 @@ IO.ModelGenerator = new (function() {
 		Behavior.setManualCodeInit(data.manual_code.manual_init);
 		Behavior.setManualCodeCreate(data.manual_code.manual_create);
 		Behavior.setManualCodeFunc(data.manual_code.manual_func);
-		Behavior.setFiles(manifest.codefile_name, manifest.manifest_path);
+		Behavior.setFiles(manifest.codefile_relpath || manifest.codefile_name, manifest.manifest_path);
 
 		data.behavior_comments.forEach(function(element, i) {
 			var note = new Note(element.content);
@@ -92,7 +115,7 @@ IO.ModelGenerator = new (function() {
 			if (s_def.state_type == "container") {
 				s = that.buildStateMachine(s_def.state_name, s_def.state_class, sm_defs, sm_states, silent);
 			} else if (s_def.state_type == "behavior") {
-				var state_def = WS.Behaviorlib.getByClass(s_def.state_class);
+				var state_def = resolveBehaviorDefinition(s_def.state_class);
 				if (state_def == undefined) {
 					T.logError("Unable to find behavior definition for: " + s_def.state_class);
 					T.logInfo("Please check your workspace settings.");
@@ -286,7 +309,7 @@ IO.ModelGenerator = new (function() {
 				}
 				if (state_class == ":BEHAVIOR") {
 					state_type = "behavior";
-					behavior_def = WS.Behaviorlib.getByName(s.behavior_class);
+					behavior_def = resolveBehaviorDefinition(s.behavior_class);
 					if (behavior_def == undefined) {
 						T.logWarn('Unknown behavior reference: ' + s.behavior_class);
 						return;

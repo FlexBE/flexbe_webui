@@ -46,6 +46,24 @@ class CodeGenerator:
         """Specify whether to use explicit package names."""
         self.explicit_package = exp
 
+    def _should_use_explicit_package(self, state, states):
+        """Determine whether a state reference needs package qualification."""
+        if self.explicit_package:
+            return True
+
+        for other_state in states:
+            if other_state is state:
+                continue
+            if other_state.state_class == state.state_class and other_state.state_pkg != state.state_pkg:
+                return True
+        return False
+
+    def _get_state_reference(self, state, states):
+        """Return the class token to use for a state reference/import."""
+        if self._should_use_explicit_package(state, states):
+            return f'{state.state_pkg}__{state.state_class}'
+        return state.state_class
+
     def generate_behavior_code(self, behavior, license_text):
         """Generate the behavior python code."""
         class_name = re.sub(r'[^\w]', '', behavior.behavior_name)
@@ -210,29 +228,20 @@ class CodeGenerator:
 
         for imp_state in imported_states:
             try:
-                use_explicit_package = self.explicit_package
-                if not use_explicit_package:
-                    # check for same state from different packages
-                    for state in imported_states:
-                        if state.state_class == imp_state.state_class and state.state_pkg != imp_state.state_pkg:
-                            use_explicit_package = True
-                            break
-
-                if imp_state.behavior_state or not use_explicit_package:
+                class_ref = self._get_state_reference(imp_state, imported_states)
+                if class_ref == imp_state.state_class:
                     import_list.append('from ' + imp_state.state_import
                                        + ' import ' + imp_state.state_class)
                     if not self.initialize_flexbe_core:
-                        init_statement = self.ws + self.ws + imp_state.state_class + '.initialize_ros(node)'
+                        init_statement = self.ws + self.ws + class_ref + '.initialize_ros(node)'
                 else:
                     print('Using explicit package name for '
-                          f'{imp_state.state_class} ({self.explicit_package}, '
-                          f'{use_explicit_package})')
+                          f'{imp_state.state_class} ({self.explicit_package}, True)')
                     import_list.append('from ' + imp_state.state_import
                                        + ' import ' + imp_state.state_class + ' as '
-                                       + imp_state.state_pkg + '__' + imp_state.state_class)
+                                       + class_ref)
                     if not self.initialize_flexbe_core:
-                        init_statement = (self.ws + self.ws + imp_state.state_pkg + '__'
-                                          + imp_state.state_class + '.initialize_ros(node)')
+                        init_statement = self.ws + self.ws + class_ref + '.initialize_ros(node)'
             except (TypeError, ValueError, AttributeError) as exc:
                 print(f'CodeGenerator: {exc}', flush=True)
                 print(imp_state, flush=True)
@@ -548,7 +557,7 @@ class CodeGenerator:
             if self.ws == '\t':
                 prepend_beh = '\t' * ((len(code) - 1) // 4 + 1)
 
-            code += f"{state.state_class}, '{state.state_path[1:]}'"
+            code += f"{self._get_state_reference(state, states)}, '{state.state_path[1:]}'"
             if defkeys_str != '':
                 code += ',\n' + prepend_beh
                 code += f'\n{prepend_beh}'.join(format_state_code_string(defkeys_str,
@@ -561,19 +570,7 @@ class CodeGenerator:
                                                                          - len(prepend_beh), self.ws).split('\n'))
             code += '),\n'
         else:
-            class_key = ''
-            use_explicit_package = self.explicit_package
-            if not use_explicit_package:
-                # check for same state from different packages
-                for st_ in states:
-                    if st_.state_class == state.state_class and st_.state_pkg != state.state_pkg:
-                        use_explicit_package = True
-                        break
-
-            if not use_explicit_package:
-                class_key = state.state_class
-            else:
-                class_key = state.state_pkg + '__' + state.state_class
+            class_key = self._get_state_reference(state, states)
             code += class_key + '('
             prepend_state = ' ' * len(code)
             if self.ws == '\t':

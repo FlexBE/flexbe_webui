@@ -198,6 +198,7 @@ UI.Panels.AddState = new (function() {
 		if (state_name == "" || state_type == "") return;
 		if (UI.Statemachine.getDisplayedSM().getStateByName(state_name) != undefined) {
 			T.logWarn("State name already in use!");
+			UI.Tools.customAcknowledge("A state named '" + state_name + "' already exists in this container.<br><br>Select OK to continue.");
 			return;
 		}
 

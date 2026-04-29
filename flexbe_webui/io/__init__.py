@@ -35,6 +35,13 @@ class StateDefinition(BaseModel):
     class_vars: List[str]
 
 
+class ContainsEntry(BaseModel):
+    """A sub-behavior reference in a behavior manifest contains list."""
+
+    name: str
+    package: Optional[str] = None  # None means same-package or resolve by name
+
+
 class BehaviorDefinition(BaseModel):
     """Behavior definition information."""
 
@@ -45,14 +52,19 @@ class BehaviorDefinition(BaseModel):
     rosnode_name: str
     codefile_name: str
     codefile_path: str
-    codefile_content: str
+    codefile_relpath: Optional[str] = None
+    codefile_content: str = ''   # empty in lightweight manifest response; fetched on demand
     class_name: str
     manifest_path: str
     editable: bool = False
     params: List[Any] = []
-    contains: List[str] = []
+    contains: List[ContainsEntry] = []
     date: Optional[str] = None
     state_definition: Optional[StateDefinition] = None
+    # Extracted from codefile server-side so the frontend can build the library without full code
+    smi_outcomes: List[str] = []
+    smi_input: List[str] = []
+    smi_output: List[str] = []
 
 
 class ParameterDefinition(BaseModel):

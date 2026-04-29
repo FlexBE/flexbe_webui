@@ -304,7 +304,7 @@ UI.RuntimeControl = new (function() {
 			doc += "<br />Double-click the displayed container symbol to look inside."
 		} else if (state instanceof BehaviorState) {
 			doc += "<b>" + escapeHtml(state.getBehaviorName()) + "</b> (Behavior)<br />";
-			doc += escapeHtml(WS.Behaviorlib.getByName(state.getBehaviorName()).getBehaviorDesc()) + "<br />";
+			doc += escapeHtml(WS.Behaviorlib.getByKey(state.getStatePackage(), state.getBehaviorName()).getBehaviorDesc()) + "<br />";
 		} else if (WS.Statelib.getFromLib(state_type) != undefined) {
 			doc += "<b>" + escapeHtml(state_type) + "</b><br />";
 			doc += escapeHtml(WS.Statelib.getFromLib(state_type).getStateDesc()) + "<br />";

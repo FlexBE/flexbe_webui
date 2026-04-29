@@ -327,10 +327,14 @@ UI.Settings = new (function() {
 					return;
 				}
 				behavior_defs.forEach(behavior_data => {
-					IO.BehaviorLoader.loadBehaviorInterface(behavior_data, function(ifc) {
-						let behavior_def = new WS.BehaviorStateDefinition(behavior_data, ifc.smi_outcomes, ifc.smi_input, ifc.smi_output);
-						WS.Behaviorlib.addToLib(behavior_def);
-					});
+					// Use server-extracted interface fields; full code loaded on demand
+					let behavior_def = new WS.BehaviorStateDefinition(
+						behavior_data,
+						behavior_data.smi_outcomes || [],
+						behavior_data.smi_input || [],
+						behavior_data.smi_output || []
+					);
+					WS.Behaviorlib.addToLib(behavior_def);
 				});
 				behavior_errors.forEach(error => {
 					T.logWarn(`Behavior library warning for '${behavior_pkg.name}': ${error}`);
