@@ -75,4 +75,4 @@ class ParameterDefinition(BaseModel):
     default: str
     label: Optional[str] = None
     hint: Optional[str] = None
-    additional: Optional[dict] = None
+    additional: Optional[Union[dict, List[str]]] = None

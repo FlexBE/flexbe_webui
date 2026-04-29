@@ -40,7 +40,8 @@ from fastapi.templating import Jinja2Templates
 
 import uvicorn
 
-from .io.base_models import Behavior, BehaviorCodeGeneratorRequest, FileRequest, OpenFileEditorRequest
+from .io.auto_layout import compute_auto_layout
+from .io.base_models import AutoLayoutRequest, Behavior, BehaviorCodeGeneratorRequest, FileRequest, OpenFileEditorRequest
 from .io.behavior_parser import parse_behavior_folder
 from .io.code_generator import CodeGenerator
 from .io.manifest_generator import ManifestGenerator
@@ -584,11 +585,15 @@ class WebuiServer:
                 return self.api_failure(f'Error in {package_name}: {exc}')
 
         @app.get('/api/v1/io/behavior/{package_name}/{codefile_name:path}')
-        async def io_behavior_full(package_name: str, codefile_name: str):
+        async def io_behavior_full(package_name: str, codefile_name: str, request: Request = None):
             """Return full BehaviorDefinition including codefile_content for a single behavior."""
             start_clock = datetime.now().timestamp()
             endpoint = '/api/v1/io/behavior/{package_name}/{codefile_name}'
             try:
+                if request is not None:
+                    self.authorize_request(request)
+                elif self._api_token:
+                    raise HTTPException(status_code=401, detail='Unauthorized')
                 package = self.packages.get(package_name)
                 if package is None:
                     raise HTTPException(status_code=404, detail=f'Package {package_name} not found!')
@@ -624,7 +629,7 @@ class WebuiServer:
                 self._record_timing('behavior_full', endpoint, elapsed, False,
                                     package=package_name, behavior=codefile_name, error=str(exc))
                 raise exc
-            except (OSError, TypeError, ValueError) as exc:
+            except (ImportError, OSError, TypeError, ValueError) as exc:
                 elapsed = datetime.now().timestamp() - start_clock
                 self._record_timing('behavior_full', endpoint, elapsed, False,
                                     package=package_name, behavior=codefile_name, error=str(exc))
@@ -818,6 +823,13 @@ class WebuiServer:
                 )
                 self._record_timing('viewer', endpoint, elapsed, False, package=package_name, file=file_name, error=str(exc))
                 return self.api_failure(exc, data={'text': str(exc)})
+
+        @app.post('/api/v1/statemachine/auto_layout')
+        async def statemachine_auto_layout(json_layout_dict: AutoLayoutRequest = Body(...)):
+            try:
+                return self.api_success(compute_auto_layout(json_layout_dict))
+            except (TypeError, ValueError, KeyError, RuntimeError) as exc:
+                return self.api_failure(exc)
 
         @app.post('/api/v1/behavior/code_generator')
         async def behavior_code_generator(request: Request, json_dict: BehaviorCodeGeneratorRequest = Body(...)):

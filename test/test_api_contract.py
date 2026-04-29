@@ -20,7 +20,7 @@ import json
 
 from fastapi.routing import APIRoute
 
-from flexbe_webui.io.base_models import BehaviorCodeGeneratorRequest, FileRequest, OpenFileEditorRequest
+from flexbe_webui.io.base_models import AutoLayoutRequest, BehaviorCodeGeneratorRequest, FileRequest, LayoutNode, LayoutTransition, OpenFileEditorRequest
 from flexbe_webui.ros import PackageData
 from flexbe_webui.webui_server import WebuiServer
 
@@ -143,6 +143,24 @@ def test_api_http_routes_return_normalized_envelopes(server_with_package, monkey
         ('POST', '/api/v1/view_file_source',
          lambda endpoint: asyncio.run(endpoint(
              json_file_dict=FileRequest(package='test_pkg', file='inside.py'),
+         ))),
+        ('POST', '/api/v1/statemachine/auto_layout',
+         lambda endpoint: asyncio.run(endpoint(
+             json_layout_dict=AutoLayoutRequest(
+                 container_name='root',
+                 initial_state_name='Alpha',
+                 states=[
+                     LayoutNode(state_name='Alpha', state_class='AlphaState', position_x=0, position_y=0),
+                     LayoutNode(state_name='Beta', state_class='BetaState', position_x=0, position_y=120),
+                 ],
+                 outcomes=[
+                     LayoutNode(state_name='finished', state_class=':OUTCOME', position_x=200, position_y=0),
+                 ],
+                 transitions=[
+                     LayoutTransition(from_state_name='Alpha', to_state_name='Beta', outcome='done'),
+                     LayoutTransition(from_state_name='Beta', to_state_name='finished', outcome='done'),
+                 ],
+             ),
          ))),
         ('POST', '/api/v1/behavior/code_generator',
          lambda endpoint: asyncio.run(endpoint(

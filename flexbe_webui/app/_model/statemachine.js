@@ -538,6 +538,7 @@ const Statemachine = function(sm_name, sm_definition) {
 		if (trans != undefined) {
 			var target_outcome = getSequentialOutcomeBaseName(trans.getTo());
 			transitions.remove(trans);
+			trans.getFrom().unconnect(trans.getOutcome());
 			if (target_outcome != undefined) {
 				normalizeOutcomeCopies(target_outcome);
 			}

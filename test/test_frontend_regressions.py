@@ -61,6 +61,7 @@ pytestmark = pytest.mark.skipif(
     'validation_report',
     'events_flows',
     'command_update_behavior',
+    'behaviorlib_update_sync_callback',
     'behavior_collision_resolution',
     'legacy_behavior_import_resolution',
     'outcome_copy_comment_encoding',
@@ -79,7 +80,10 @@ pytestmark = pytest.mark.skipif(
     'behavior_loader_legacy_python_hint',
     'behavior_loader_nested_python_hint',
     'behavior_loader_duplicate_name_hints',
+    'qualified_package_refs',
     'state_generated_keys',
+    'outcome_copy_rename_with_copies',
+    'concurrent_outcome_copy',
 ])
 def test_frontend_regressions(case_name):
     """Run frontend regression scenarios without a browser."""

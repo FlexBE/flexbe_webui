@@ -52,20 +52,32 @@ IO.ModelGenerator = new (function() {
 		}).join(", ");
 	}
 
+	var splitQualifiedPackageClassRef = function(ref) {
+		if (ref == undefined) {
+			return undefined;
+		}
+		var separator_index = ref.lastIndexOf("__");
+		if (separator_index <= 0 || separator_index >= ref.length - 2) {
+			return undefined;
+		}
+		return {
+			pkg: ref.slice(0, separator_index),
+			class_name: ref.slice(separator_index + 2)
+		};
+	}
+
 	var resolveBehaviorDefinition = function(behavior_ref) {
 		var resolution = { definition: undefined, ambiguous: false };
 		if (behavior_ref == undefined) {
 			return resolution;
 		}
 
-		if (behavior_ref.includes("__")) {
-			let type_split = behavior_ref.split("__");
-			if (type_split.length == 2) {
-				let behavior_def = WS.Behaviorlib.getByClassAndPackage(type_split[0], type_split[1]);
-				if (behavior_def != undefined) {
-					resolution.definition = behavior_def;
-					return resolution;
-				}
+		let qualified_ref = splitQualifiedPackageClassRef(behavior_ref);
+		if (qualified_ref != undefined) {
+			let behavior_def = WS.Behaviorlib.getByClassAndPackage(qualified_ref.pkg, qualified_ref.class_name);
+			if (behavior_def != undefined) {
+				resolution.definition = behavior_def;
+				return resolution;
 			}
 		}
 
@@ -210,17 +222,17 @@ IO.ModelGenerator = new (function() {
 				s.setParameterValues(helper_getSortedValueList(s.getParameters(), s.getParameterValues(), s_def.parameter_values));
 			} else {
 				var state_def = undefined;
-				if (s_def.state_class.includes("__")) {
-					var type_split = s_def.state_class.split("__");
-					var state_key = type_split[0] + "." + type_split[1];
-					var state_def = WS.Statelib.getFromLib(state_key);
-					if (state_def == undefined) {
-						s_def.state_class = type_split[1];
-					}
+				var state_key = s_def.state_class;
+				var fallback_state_class = s_def.state_class;
+				var qualified_state_ref = splitQualifiedPackageClassRef(s_def.state_class);
+				if (qualified_state_ref != undefined) {
+					state_key = qualified_state_ref.pkg + "." + qualified_state_ref.class_name;
+					state_def = WS.Statelib.getFromLib(state_key);
+					fallback_state_class = qualified_state_ref.class_name;
 				}
 				if (state_def == undefined) {
-					var state_key = s_def.state_class;
-					var state_def = WS.Statelib.getClassFromLib(state_key, WS.Statelib.isClassUnique(state_key)? undefined : lib_def => {
+					state_key = fallback_state_class;
+					state_def = WS.Statelib.getClassFromLib(state_key, WS.Statelib.isClassUnique(state_key)? undefined : lib_def => {
 						for (var j=0; j<s_def.transitions_from.length; j++) {
 							if (!lib_def.getOutcomes().contains(s_def.transitions_from[j].outcome)) {
 								return false;

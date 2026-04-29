@@ -194,7 +194,7 @@ def parse_behavior_folder(folder: str, base_path: str,
                     behavior = parse_behavior_manifest_xml(file_path, base_path, editable, encoding)
                 except (OSError, ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
                     print(f"Exception parsing behavior '{file_name}':\n{exc}", flush=True)
-                    raise Exception(f"Error in '{file_path}") from exc
+                    raise ValueError(f"Error in '{file_path}': {exc}") from exc
 
                 if behavior is None:
                     continue
@@ -342,7 +342,7 @@ def parse_behavior_manifest_xml(manifest_path: str,
     except (OSError, ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
         print(f"\x1b[91mError parsing '{manifest_path}' - skip!\x1b[0m")
         print(exc, flush=True)
-        return None
+        raise ValueError(f"Error parsing '{manifest_path}': {exc}") from exc
 
 
 def parse_manifest_xml_parameters(params_xml):
@@ -351,16 +351,53 @@ def parse_manifest_xml_parameters(params_xml):
     for params_element in params_xml:
         for element in params_element.findall('param'):
             try:
-                additional = {}
-                for elem in element:
-                    additional[elem.tag] = elem.attrib['value']
+                param_type = element.attrib['type']
+                param_name = element.attrib['name']
+                additional = None
 
-                if len(additional) == 0:
-                    additional = None
+                if param_type == 'enum':
+                    additional = []
+                    for elem in element:
+                        if elem.tag != 'option':
+                            raise ValueError(
+                                f"enum parameter '{param_name}' has unexpected metadata element '{elem.tag}'"
+                            )
+                        option_value = elem.attrib.get('value')
+                        if option_value is None:
+                            raise ValueError(
+                                f"enum parameter '{param_name}' has option without required 'value' metadata"
+                            )
+                        additional.append(option_value)
+                elif param_type == 'numeric':
+                    additional = {}
+                    for elem in element:
+                        if elem.tag not in {'min', 'max'}:
+                            raise ValueError(
+                                f"numeric parameter '{param_name}' has unexpected metadata element '{elem.tag}'"
+                            )
+                        bound_value = elem.attrib.get('value')
+                        if bound_value is None:
+                            raise ValueError(
+                                f"numeric parameter '{param_name}' is missing required '{elem.tag}' value"
+                            )
+                        additional[elem.tag] = bound_value
+
+                    if additional.get('min') is None or additional.get('max') is None:
+                        raise ValueError(
+                            f"numeric parameter '{param_name}' is missing required 'min'/'max' metadata"
+                        )
+                elif param_type == 'yaml':
+                    additional = {'key': None}
+                    for elem in element:
+                        if elem.tag != 'key':
+                            raise ValueError(
+                                f"yaml parameter '{param_name}' has unexpected metadata element '{elem.tag}'"
+                            )
+                        additional['key'] = elem.attrib.get('name')
 
                 params_list.append(ParameterDefinition(
-                    type=element.attrib['type'],
-                    name=element.attrib['name'],
+                    type=param_type,
+                    name=param_name,
                     default=element.attrib['default'],
                     label=element.attrib['label'],
                     hint=element.attrib['hint'],
@@ -368,7 +405,9 @@ def parse_manifest_xml_parameters(params_xml):
             except (TypeError, ValueError, KeyError, AttributeError) as exc:
                 print(f'Failed to parse XML manifest parameter entry: {exc}', flush=True)
                 print(ET.tostring(element, encoding='utf8').decode('utf8'), flush=True)
-                break
+                raise ValueError(
+                    f"invalid manifest parameter '{element.attrib.get('name', '<unknown>')}': {exc}"
+                ) from exc
     return params_list
 
 
@@ -384,5 +423,5 @@ def parse_manifest_xml_contains(xml_elements):
         except (TypeError, ValueError, KeyError, AttributeError) as exc:
             print(f'Failed to parse XML manifest contains entry: {exc}', flush=True)
             print(ET.tostring(element, encoding='utf8').decode('utf8'), flush=True)
-            break
+            continue
     return contains_list

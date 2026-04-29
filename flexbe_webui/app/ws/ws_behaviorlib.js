@@ -92,16 +92,31 @@ WS.Behaviorlib = new (function() {
 					return;
 				}
 				behaviorlib.remove(be_entry);
-				let updated_entry = new WS.BehaviorStateDefinition(
+				let updated_entry = undefined;
+				let ready_before_assignment = false;
+				let notified = false;
+				let notifyUpdated = function() {
+					if (notified) return;
+					notified = true;
+					if (callback != undefined) callback(updated_entry);
+				}
+				updated_entry = new WS.BehaviorStateDefinition(
 					full_manifest,
 					ifc.smi_outcomes,
 					ifc.smi_input,
 					ifc.smi_output,
 					function() {
-						if (callback != undefined) callback(updated_entry);
+						if (updated_entry == undefined) {
+							ready_before_assignment = true;
+							return;
+						}
+						notifyUpdated();
 					}
 				);
 				behaviorlib.push(updated_entry);
+				if (ready_before_assignment) {
+					notifyUpdated();
+				}
 			});
 		});
 	}

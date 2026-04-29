@@ -62,16 +62,28 @@ IO.BehaviorLoader = new (function() {
 		return hint_entry.shift();
 	}
 
+	var splitQualifiedPackageClassRef = function(ref) {
+		if (ref == undefined) {
+			return undefined;
+		}
+		var separator_index = ref.lastIndexOf("__");
+		if (separator_index <= 0 || separator_index >= ref.length - 2) {
+			return undefined;
+		}
+		return {
+			pkg: ref.slice(0, separator_index),
+			class_name: ref.slice(separator_index + 2)
+		};
+	}
+
 	var resolveBehaviorEntryByClassRef = function(class_ref, state_type_imports) {
 		if (class_ref == undefined) {
 			return undefined;
 		}
 
-		if (class_ref.includes("__")) {
-			var split = class_ref.split("__");
-			if (split.length == 2 && WS.Behaviorlib.getByClassAndPackage != undefined) {
-				return WS.Behaviorlib.getByClassAndPackage(split[0], split[1]);
-			}
+		var qualified_ref = splitQualifiedPackageClassRef(class_ref);
+		if (qualified_ref != undefined && WS.Behaviorlib.getByClassAndPackage != undefined) {
+			return WS.Behaviorlib.getByClassAndPackage(qualified_ref.pkg, qualified_ref.class_name);
 		}
 
 		if (state_type_imports != undefined && state_type_imports[class_ref] != undefined && WS.Behaviorlib.getByClassAndPackage != undefined) {

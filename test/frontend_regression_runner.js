@@ -698,6 +698,33 @@ async function runMenuCase() {
   assertLog(logs, 'error', 'source view failed');
 }
 
+async function runMenuAutoLayoutButtonCase() {
+  setupGlobals();
+
+  let autoLayoutCount = 0;
+  UI.Panels.hideAllPanels = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Statemachine.requestAutoLayout = function() {
+    autoLayoutCount += 1;
+  };
+  T.hide = function() {};
+
+  ['dashboard', 'statemachine', 'runtimecontrol', 'settings'].forEach(id => {
+    document.getElementById(id).parentElement = { offsetWidth: 1000 };
+  });
+
+  loadScript('flexbe_webui/app/ui/ui_menu.js');
+  UI.Menu.setFocus = function() {};
+
+  UI.Menu.toStatemachineClicked();
+
+  const button = document.getElementById('tool_button Auto Layout');
+  assert(button, 'Expected Auto Layout button on statemachine toolbar');
+  button.dispatchEvent({ type: 'click', preventDefault() {}, stopPropagation() {} });
+
+  assert.strictEqual(autoLayoutCount, 1);
+}
+
 async function runActionClientCase() {
   const { logs } = setupGlobals();
   global.ROS = {};
@@ -2470,6 +2497,117 @@ async function runLibraryHoverPanelsSafeTextCase() {
   document.setStrictElementLookup(true);
   assert.strictEqual(document.getElementById('add_state_tooltip'), undefined);
   document.setStrictElementLookup(false);
+
+  global.WS.Behaviorlib = {
+    getBehaviorList() {
+      return [{
+        getBehaviorManifest() {
+          return {
+            name: 'Navigate <b>Behavior</b>',
+            description: 'Move to <i>goal</i><script>alert(1)</script>',
+          };
+        },
+        getBehaviorName() { return 'Navigate Behavior'; },
+        getStatePackage() { return 'demo_pkg'; },
+        getBehaviorTagList() { return []; },
+        getParameters() { return []; },
+        getParamDesc() { return []; },
+        getInputKeys() { return []; },
+        getInputDesc() { return []; },
+        getOutputKeys() { return []; },
+        getOutputDesc() { return []; },
+        getOutcomes() { return []; },
+      }];
+    },
+  };
+  global.WS.Statelib = {
+    getFromLib() {
+      return {
+        getStatePackage() { return 'demo_pkg'; },
+        getStateClass() { return 'Move<b>State</b>'; },
+        getShortDesc() { return 'Use <i>safe</i> text<script>alert(1)</script>'; },
+        getParameters() { return []; },
+        getParamDesc() { return []; },
+        getInputKeys() { return []; },
+        getInputDesc() { return []; },
+        getOutputKeys() { return []; },
+        getOutputDesc() { return []; },
+        getOutcomes() { return []; },
+      };
+    },
+  };
+
+  UI.Panels.SelectBehavior.displayBehaviors(WS.Behaviorlib.getBehaviorList(), true);
+  const behaviorRow = document.getElementById('panel_select_behavior_selection_behavior_0');
+  assert(behaviorRow);
+  assert.strictEqual(behaviorRow.innerHTML, '');
+  const behaviorRowText = flattenElementText(behaviorRow);
+  assert(behaviorRowText.includes('Navigate Behavior'));
+  assert(behaviorRowText.includes('Move to goal'));
+  assert(!behaviorRowText.includes('<b>'));
+  assert(!behaviorRowText.includes('<i>'));
+  assert(!behaviorRowText.includes('<script>'));
+
+  UI.Panels.AddState.displayStateTypes(['demo_pkg/MoveState']);
+  const stateRow = document.getElementById('class_select_demo_pkg_Move<b>State</b>');
+  assert(stateRow);
+  assert.strictEqual(stateRow.innerHTML, '');
+  const stateRowText = flattenElementText(stateRow);
+  assert(stateRowText.includes('MoveState'));
+  assert(stateRowText.includes('Use safe text'));
+  assert(!stateRowText.includes('<b>'));
+  assert(!stateRowText.includes('<i>'));
+  assert(!stateRowText.includes('<script>'));
+}
+
+async function runBehaviorTagOverflowDropdownCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_selectbehavior.js');
+
+  let filterChangedCount = 0;
+  UI.Panels.updatePanelTabTargets = function() {};
+  UI.Panels.SelectBehavior.behaviorFilterChanged = function() {
+    filterChangedCount += 1;
+  };
+
+  document.getElementById('behavior_tag_filter').clientWidth = 120;
+  document.getElementById('input_behavior_filter').value = '';
+
+  const behaviors = [
+    {
+      getBehaviorManifest() { return { name: 'Behavior Alpha', description: 'First behavior' }; },
+      getBehaviorName() { return 'Behavior Alpha'; },
+      getBehaviorTagList() { return ['zeta']; },
+    },
+    {
+      getBehaviorManifest() { return { name: 'Behavior Beta', description: 'Second behavior' }; },
+      getBehaviorName() { return 'Behavior Beta'; },
+      getBehaviorTagList() { return ['alpha']; },
+    },
+    {
+      getBehaviorManifest() { return { name: 'Behavior Gamma', description: 'Third behavior' }; },
+      getBehaviorName() { return 'Behavior Gamma'; },
+      getBehaviorTagList() { return ['mu']; },
+    },
+  ];
+
+  UI.Panels.SelectBehavior.displayBehaviors(behaviors, true);
+  UI.Panels.SelectBehavior.updateTags();
+
+  const overflow = document.getElementById('input_behavior_filter_overflow');
+  assert(overflow, 'expected overflow dropdown when tag row runs out of space');
+  assert.deepStrictEqual(
+    overflow.options.slice(1).map(option => option.value),
+    ['alpha', 'mu', 'zeta'],
+    'overflow dropdown should expose the full tag list in sorted order'
+  );
+
+  overflow.value = 'mu';
+  overflow.dispatchEvent({ type: 'change', preventDefault() {}, stopPropagation() {} });
+
+  assert.strictEqual(document.getElementById('input_behavior_filter').value, '+mu');
+  assert.strictEqual(filterChangedCount, 1, 'selecting an overflow tag should trigger filtering');
 }
 
 async function runApiClientCase() {
@@ -3492,6 +3630,88 @@ async function runCommandUpdateBehaviorCase() {
   assert.strictEqual(notifyCount, 1);
 }
 
+async function runBehaviorlibUpdateSyncCallbackCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const existingManifest = {
+    name: 'Demo Behavior',
+    class_name: 'DemoBehaviorSM',
+    codefile_content: 'old content',
+  };
+  const fullManifest = {
+    name: 'Demo Behavior',
+    class_name: 'DemoBehaviorSM',
+    codefile_content: 'new content',
+  };
+  const existingEntry = {
+    getBehaviorName() { return 'Demo Behavior'; },
+    getStatePackage() { return 'demo_pkg'; },
+    getBehaviorManifest() { return existingManifest; },
+  };
+
+  global.IO.BehaviorLoader.ensureFullContent = function(manifest, callback) {
+    assert.strictEqual(manifest, existingManifest);
+    assert.strictEqual(manifest.codefile_content, '');
+    callback(fullManifest);
+  };
+  global.IO.BehaviorLoader.loadBehaviorInterface = function(manifest, callback) {
+    assert.strictEqual(manifest, fullManifest);
+    callback({
+      class_name: 'DemoBehaviorSM',
+      smi_outcomes: ['finished'],
+      smi_input: ['request'],
+      smi_output: ['result'],
+    });
+  };
+
+  global.WS.BehaviorStateDefinition = function(manifest, outcomes, inputKeys, outputKeys, readyCallback) {
+    this.manifest = manifest;
+    this.outcomes = outcomes;
+    this.inputKeys = inputKeys;
+    this.outputKeys = outputKeys;
+    if (readyCallback != undefined) {
+      readyCallback();
+    }
+  };
+  global.WS.BehaviorStateDefinition.prototype.getBehaviorName = function() {
+    return this.manifest.name;
+  };
+  global.WS.BehaviorStateDefinition.prototype.getStatePackage = function() {
+    return 'demo_pkg';
+  };
+  global.WS.BehaviorStateDefinition.prototype.getBehaviorManifest = function() {
+    return this.manifest;
+  };
+  global.WS.BehaviorStateDefinition.prototype.getOutcomes = function() {
+    return this.outcomes;
+  };
+  global.WS.BehaviorStateDefinition.prototype.getInputKeys = function() {
+    return this.inputKeys;
+  };
+  global.WS.BehaviorStateDefinition.prototype.getOutputKeys = function() {
+    return this.outputKeys;
+  };
+
+  loadScript('flexbe_webui/app/ws/ws_behaviorlib.js');
+  WS.Behaviorlib.addToLib(existingEntry);
+
+  let callbackEntry = undefined;
+  let callbackSawPushedEntry = false;
+  WS.Behaviorlib.updateEntry(existingEntry, function(updatedEntry) {
+    callbackEntry = updatedEntry;
+    callbackSawPushedEntry = WS.Behaviorlib.getBehaviorList()[0] === updatedEntry;
+  });
+
+  assert(callbackEntry, 'Expected update callback to receive the updated behavior entry');
+  assert.strictEqual(callbackEntry.getBehaviorManifest(), fullManifest);
+  assert.deepStrictEqual(callbackEntry.getOutcomes(), ['finished']);
+  assert.deepStrictEqual(callbackEntry.getInputKeys(), ['request']);
+  assert.deepStrictEqual(callbackEntry.getOutputKeys(), ['result']);
+  assert.strictEqual(callbackSawPushedEntry, true);
+  assert.strictEqual(WS.Behaviorlib.getBehaviorList().length, 1);
+}
+
 async function runCommandQualifiedBehaviorCase() {
   const { logs } = setupGlobals();
   let loadedManifest = undefined;
@@ -3549,6 +3769,37 @@ async function runCommandQualifiedBehaviorCase() {
   loadCommand.impl(['load pkg_b::Demo Behavior', 'pkg_b::Demo Behavior']);
   assert.deepStrictEqual(loadedManifest, { name: 'Demo Behavior', rosnode_name: 'pkg_b' });
   assert.strictEqual(dashboardCount, 1);
+}
+
+async function runCommandAutoLayoutCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  let autoLayoutCount = 0;
+  let notifyCount = 0;
+
+  global.UI.Menu = {
+    autoLayoutClicked() {
+      autoLayoutCount += 1;
+    },
+  };
+  global.UI.Statemachine = {
+    isReadonly() { return false; },
+  };
+  global.UI.Tools.notifyRosCommand = function(command) {
+    if (command === 'autolayout') {
+      notifyCount += 1;
+    }
+  };
+
+  loadScript('flexbe_webui/app/_helper/command_lib.js');
+  const autoLayoutCommand = CommandLib.load().find(entry => entry.desc === 'autolayout');
+  assert(autoLayoutCommand, 'Expected autolayout command to be registered');
+
+  autoLayoutCommand.impl(['autolayout']);
+
+  assert.strictEqual(autoLayoutCount, 1);
+  assert.strictEqual(notifyCount, 1);
 }
 
 async function runBehaviorCollisionResolutionCase() {
@@ -4282,6 +4533,14 @@ function buildOutcomeCopyContainerOutcomeFixture() {
 
 async function runOutcomeCopyContainerOutcomeUndoCase() {
   const fixture = buildOutcomeCopyContainerOutcomeFixture();
+  const countNonInitTransitions = function(container) {
+    return container.getTransitions().filter(function(transition) {
+      return transition.getFrom().getStateName() !== 'INIT';
+    }).length;
+  };
+
+  assert.strictEqual(fixture.root.getTransitions().length, 2);
+  assert.strictEqual(countNonInitTransitions(fixture.root), 1);
 
   UI.Panels.StateProperties.displayStateProperties(fixture.nested);
   const removeButton = document.getElementById('panel_prop_sm_outcomes_content_0_remove');
@@ -4291,6 +4550,7 @@ async function runOutcomeCopyContainerOutcomeUndoCase() {
   assert.deepStrictEqual(fixture.nested.getOutcomes(), []);
   assert.strictEqual(fixture.nested.getTransitions().length, 1);
   assert.strictEqual(fixture.root.getTransitions().length, 1);
+  assert.strictEqual(countNonInitTransitions(fixture.root), 0);
   assert.strictEqual(fixture.nested.getSMOutcomeByName('done'), undefined);
   assert.strictEqual(fixture.nested.getSMOutcomeByName('done#1'), undefined);
   assert.strictEqual(fixture.nested.getSMOutcomeByName('done#2'), undefined);
@@ -4317,12 +4577,14 @@ async function runOutcomeCopyContainerOutcomeUndoCase() {
   assert.deepStrictEqual(fixture.nested.getOutcomes(), ['done']);
   assert.strictEqual(fixture.nested.getTransitions().length, 3);
   assert.strictEqual(fixture.root.getTransitions().length, 2);
+  assert.strictEqual(countNonInitTransitions(fixture.root), 1);
 
   fixture.activities[0].redo();
 
   assert.deepStrictEqual(fixture.nested.getOutcomes(), []);
   assert.strictEqual(fixture.nested.getTransitions().length, 1);
   assert.strictEqual(fixture.root.getTransitions().length, 1);
+  assert.strictEqual(countNonInitTransitions(fixture.root), 0);
   assert.strictEqual(fixture.nested.getSMOutcomeByName('done#1'), undefined);
   assert.strictEqual(fixture.nested.getSMOutcomeByName('done#2'), undefined);
 }
@@ -5197,6 +5459,403 @@ async function runBehaviorLoaderDuplicateNameHintsCase() {
   assert.deepStrictEqual(dependencyHintPackages, ['pkg_a', 'pkg_a', 'pkg_b']);
 }
 
+async function runQualifiedPackageRefsCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const loaderManifest = {
+    name: 'RootBehavior',
+    rosnode_name: 'parent_pkg',
+    codefile_content: 'root code',
+    contains: ['ChildBehavior'],
+  };
+  const loaderLookupCalls = [];
+  const modelBehaviorLookupCalls = [];
+  const stateLookupCalls = [];
+
+  const childEntry = {
+    ensureBSMReady(callback) {
+      callback(true);
+    },
+    getStatePackage() { return 'pkg__b'; },
+    getBehaviorName() { return 'ChildBehavior'; },
+    getStateClass() { return 'ChildBehaviorSM'; },
+    getBehaviorManifest() {
+      return { name: 'ChildBehavior', rosnode_name: 'pkg__b', contains: [] };
+    },
+  };
+  const samePackageChildEntry = {
+    ensureBSMReady() {
+      throw new Error('same-package fallback should not be used when qualified class ref encodes pkg__b');
+    },
+    getStatePackage() { return 'parent_pkg'; },
+    getBehaviorName() { return 'ChildBehavior'; },
+    getStateClass() { return 'ChildBehaviorSM'; },
+    getBehaviorManifest() {
+      return { name: 'ChildBehavior', rosnode_name: 'parent_pkg', contains: [] };
+    },
+  };
+  const behaviorDef = {
+    getStatePackage() { return 'pkg__b'; },
+    getBehaviorName() { return 'Shared Behavior'; },
+    getStateClass() { return 'SharedSM'; },
+    getParameters() { return []; },
+    getDefaultParameterValues() { return []; },
+    getOutcomes() { return ['done']; },
+    getDefaultAutonomy() { return [0]; },
+    getInputKeys() { return []; },
+    getOutputKeys() { return []; },
+  };
+  const plainStateDef = {
+    state_class: 'SomeState',
+    outcomes: ['done'],
+    autonomy: [0],
+  };
+
+  global.IO.CodeParser = {
+    parseCode(code) {
+      if (code !== 'root code') {
+        throw new Error(`unexpected parse request for ${code}`);
+      }
+      return {
+        state_types: {},
+        sm_states: [{
+          sm_states: [{
+            state_type: 'behavior',
+            state_class: 'pkg__b__ChildBehaviorSM',
+          }],
+        }],
+      };
+    },
+  };
+
+  global.WS.Behaviorlib = {
+    getByKey(pkg, name) {
+      if (pkg === 'pkg__b' && name === 'ChildBehavior') {
+        return childEntry;
+      }
+      if (pkg === 'parent_pkg' && name === 'ChildBehavior') {
+        return samePackageChildEntry;
+      }
+      return undefined;
+    },
+    getByClassAndPackage(pkg, className) {
+      if (className === 'ChildBehaviorSM') {
+        loaderLookupCalls.push({ pkg, className });
+        if (pkg === 'pkg__b') {
+          return childEntry;
+        }
+        return undefined;
+      }
+      if (className === 'SharedSM') {
+        modelBehaviorLookupCalls.push({ pkg, className });
+        if (pkg === 'pkg__b') {
+          return behaviorDef;
+        }
+        return undefined;
+      }
+      return undefined;
+    },
+    getBehaviorList() {
+      return [childEntry, behaviorDef];
+    },
+  };
+
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  const readyResult = await new Promise(resolve => {
+    IO.BehaviorLoader.ensureSubbehaviorsReady(loaderManifest, function(success, failedKey) {
+      resolve({ success, failedKey });
+    });
+  });
+
+  assert.deepStrictEqual(readyResult, { success: true, failedKey: undefined });
+  assert.deepStrictEqual(loaderLookupCalls, [{ pkg: 'pkg__b', className: 'ChildBehaviorSM' }]);
+  assertLog(logs, 'warn', "ensureSubbehaviorsReady: sub-behavior 'ChildBehavior' has no package in manifest; using Python source hint package 'pkg__b'. Please resave to make this explicit.");
+
+  function defineBaseStateApi(target, stateName, stateClass, outcomes = [], autonomy = []) {
+    let name = stateName;
+    let position = { x: 0, y: 0 };
+    let parameterValues = [];
+    let autonomyValues = autonomy.slice();
+    let inputMapping = [];
+    let outputMapping = [];
+    let container;
+
+    target.getStateName = function() { return name; };
+    target.setStateName = function(newName) { name = newName; };
+    target.getStateClass = function() { return stateClass; };
+    target.getStateType = function() { return stateClass; };
+    target.getStatePath = function() {
+      return container ? `${container.getStatePath()}/${name}` : `/${name}`;
+    };
+    target.getParameters = function() { return []; };
+    target.getParameterValues = function() { return parameterValues; };
+    target.setParameterValues = function(values) { parameterValues = values; };
+    target.getAutonomy = function() { return autonomyValues; };
+    target.setAutonomy = function(values) { autonomyValues = values; };
+    target.getInputMapping = function() { return inputMapping; };
+    target.setInputMapping = function(values) { inputMapping = values; };
+    target.getOutputMapping = function() { return outputMapping; };
+    target.setOutputMapping = function(values) { outputMapping = values; };
+    target.getPosition = function() { return position; };
+    target.setPosition = function(value) { position = value; };
+    target.getContainer = function() { return container; };
+    target.setContainer = function(value) { container = value; };
+    target.getOutcomes = function() { return outcomes.slice(); };
+    target.getInputKeys = function() { return []; };
+    target.getOutputKeys = function() { return []; };
+  }
+
+  global.State = function(stateName, definition) {
+    defineBaseStateApi(
+      this,
+      stateName,
+      definition && definition.state_class ? definition.state_class : 'State',
+      definition && definition.outcomes ? definition.outcomes : [],
+      definition && definition.autonomy ? definition.autonomy : []
+    );
+  };
+  global.BehaviorState = function(stateName, definition) {
+    defineBaseStateApi(
+      this,
+      stateName,
+      definition.getStateClass(),
+      definition.getOutcomes(),
+      definition.getDefaultAutonomy()
+    );
+  };
+  global.Transition = function(from, to, outcome, autonomy) {
+    this.getFrom = function() { return from; };
+    this.getTo = function() { return to; };
+    this.getOutcome = function() { return outcome; };
+    this.getAutonomy = function() { return autonomy; };
+  };
+  global.Statemachine = function(stateName, definition) {
+    defineBaseStateApi(this, stateName, ':STATEMACHINE', definition.getOutcomes(), []);
+    const that = this;
+    const states = [];
+    const transitions = [];
+    let initialState;
+    let concurrent = false;
+    let priority = false;
+    let conditions = [];
+    const smOutcomes = definition.getOutcomes().map(function(outcomeName) {
+      const outcomeState = new State(outcomeName, { state_class: ':OUTCOME' });
+      outcomeState.setContainer(that);
+      return outcomeState;
+    });
+
+    this.addState = function(state) {
+      states.push(state);
+      state.setContainer(that);
+    };
+    this.getStates = function() { return states; };
+    this.getStateByName = function(name) {
+      return states.find(function(state) { return state.getStateName() === name; });
+    };
+    this.addTransition = function(transition) {
+      transitions.push(transition);
+    };
+    this.getTransitions = function() { return transitions; };
+    this.setInitialState = function(state) { initialState = state; };
+    this.getInitialState = function() { return initialState; };
+    this.setConcurrent = function(value) { concurrent = value; };
+    this.isConcurrent = function() { return concurrent; };
+    this.setPriority = function(value) { priority = value; };
+    this.isPriority = function() { return priority; };
+    this.setConditions = function(value) { conditions = value; };
+    this.getConditions = function() { return conditions; };
+    this.getSMOutcomes = function() { return smOutcomes; };
+    this.getSMOutcomeByName = function(name) {
+      return smOutcomes.find(function(state) { return state.getStateName() === name; });
+    };
+    this.tryDuplicateOutcome = function() {};
+  };
+
+  WS.StateMachineDefinition = function(outcomes, inputKeys, outputKeys) {
+    this.getOutcomes = function() { return outcomes; };
+    this.getInputKeys = function() { return inputKeys; };
+    this.getOutputKeys = function() { return outputKeys; };
+  };
+  WS.Statelib = {
+    getFromLib(stateKey) {
+      stateLookupCalls.push(stateKey);
+      if (stateKey === 'pkg__b.SomeState') {
+        return plainStateDef;
+      }
+      return undefined;
+    },
+    getClassFromLib() {
+      throw new Error('fallback class lookup should not be used for qualified pkg__b__SomeState');
+    },
+    isClassUnique() {
+      return true;
+    },
+  };
+
+  loadScript('flexbe_webui/app/io/io_modelgenerator.js');
+
+  const built = IO.ModelGenerator.buildStateMachine(
+    'Root',
+    'root',
+    [{
+      sm_name: 'root',
+      sm_type: 'statemachine',
+      sm_params: {
+        outcomes: [],
+        input_keys: [],
+        output_keys: [],
+        conditions: [],
+      },
+      initial: 'Behavior State',
+      oc_positions: [],
+      routes: [],
+    }],
+    [{
+      sm_name: 'root',
+      sm_states: [{
+        state_name: 'Behavior State',
+        state_class: 'pkg__b__SharedSM',
+        state_type: 'behavior',
+        parameter_values: [],
+        autonomy: [0],
+        remapping: [],
+        state_pos_x: 10,
+        state_pos_y: 20,
+        transitions_from: [],
+      }, {
+        state_name: 'Plain State',
+        state_class: 'pkg__b__SomeState',
+        state_type: 'state',
+        parameter_values: [],
+        autonomy: [0],
+        remapping: [],
+        state_pos_x: 30,
+        state_pos_y: 40,
+        transitions_from: [],
+      }],
+    }],
+    true
+  );
+
+  assert.strictEqual(built.getStates().length, 2);
+  assert.deepStrictEqual(modelBehaviorLookupCalls, [{ pkg: 'pkg__b', className: 'SharedSM' }]);
+  assert(stateLookupCalls.includes('pkg__b.SomeState'));
+  assert(
+    !logs.some(entry => entry.level === 'error' && entry.message.includes('Unable to find')),
+    `unexpected qualified ref resolution error: ${JSON.stringify(logs, null, 2)}`
+  );
+}
+
+async function runOutcomeCopyRenameWithCopiesCase() {
+  // Regression: updateOutcome must rename all #N copies in sm_outcomes and keep
+  // transitions pointing at the renamed copies.
+  const fixture = buildOutcomeCopyTransitionFixture();
+  const { sm } = fixture;
+
+  // Fixture state: alpha→done, beta→done#1, spare done#2
+  assert.ok(sm.getSMOutcomeByName('done') != undefined, 'pre: done exists');
+  assert.ok(sm.getSMOutcomeByName('done#1') != undefined, 'pre: done#1 exists');
+  assert.ok(sm.getSMOutcomeByName('done#2') != undefined, 'pre: done#2 exists');
+
+  sm.updateOutcome('done', 'complete');
+
+  // All three sm_outcomes copies renamed
+  assert.ok(sm.getSMOutcomeByName('done') == undefined, 'done removed');
+  assert.ok(sm.getSMOutcomeByName('done#1') == undefined, 'done#1 removed');
+  assert.ok(sm.getSMOutcomeByName('done#2') == undefined, 'done#2 removed');
+  assert.ok(sm.getSMOutcomeByName('complete') != undefined, 'complete exists');
+  assert.ok(sm.getSMOutcomeByName('complete#1') != undefined, 'complete#1 exists');
+  assert.ok(sm.getSMOutcomeByName('complete#2') != undefined, 'complete#2 exists');
+
+  // Outcome name in definition updated
+  assert.ok(sm.getOutcomes().includes('complete'), 'getOutcomes has complete');
+  assert.ok(!sm.getOutcomes().includes('done'), 'getOutcomes no longer has done');
+
+  // Transitions point at the renamed State objects
+  const transitions = sm.getTransitions().filter(function(t) {
+    return t.getFrom().getStateName() !== 'INIT';
+  });
+  assert.strictEqual(transitions.length, 2, 'two non-init transitions');
+  const alphaT = transitions.find(function(t) { return t.getFrom().getStateName() === 'Alpha'; });
+  const betaT  = transitions.find(function(t) { return t.getFrom().getStateName() === 'Beta'; });
+  assert.strictEqual(alphaT.getTo().getStateName(), 'complete',  'alpha→complete');
+  assert.strictEqual(betaT.getTo().getStateName(),  'complete#1', 'beta→complete#1');
+
+  // Spare copy retains correct name
+  const spare = sm.getSMOutcomeByName('complete#2');
+  assert.ok(spare != undefined, 'spare complete#2 exists');
+  const spareHasTransition = sm.getTransitions().some(function(t) {
+    return t.getTo() === spare;
+  });
+  assert.ok(!spareHasTransition, 'spare complete#2 has no transition');
+}
+
+async function runConcurrentOutcomeCopyCase() {
+  // Concurrent containers use #N-indexed :CONDITION copies (done#0, done#1, …).
+  // Unlike sequential SMs, removing a transition does NOT prune spare copies —
+  // tryDuplicateOutcome only adds when ALL copies are consumed, never removes.
+  const { sm: root } = setupOutcomeCopyEditorHarness();
+
+  // Build a concurrent sub-statemachine with one outcome 'done'
+  const ccDef = new WS.StateMachineDefinition(['done'], [], []);
+  const cc = new Statemachine('CC', ccDef);
+  cc.setConcurrent(true);
+  root.addState(cc);
+
+  // After setConcurrent, outcome is named done#0 (:CONDITION), not plain 'done'.
+  // Note: getSMOutcomeByName('done') on a concurrent SM returns the first copy
+  // whose name starts with 'done' — so we check the actual stateName directly.
+  const copy0 = cc.getSMOutcomeByName('done#0');
+  assert.ok(copy0 != undefined, 'done#0 exists after setConcurrent');
+  assert.strictEqual(copy0.getStateName(), 'done#0', 'copy name is done#0, not plain done');
+  assert.strictEqual(copy0.getStateClass(), ':CONDITION', 'concurrent copy is :CONDITION');
+  assert.strictEqual(cc.getSMOutcomes().length, 1, 'initially one copy');
+
+  // Add alpha→done#0; tryDuplicateOutcome creates done#1 (spare)
+  const alpha = new State('Alpha', WS.Statelib.getFromLib('WorkerState'));
+  cc.addState(alpha);
+  cc.addTransition(new Transition(alpha, copy0, 'done', 0));
+  cc.tryDuplicateOutcome('done');
+  assert.strictEqual(cc.getSMOutcomes().length, 2, 'done#1 created as spare');
+  const copy1 = cc.getSMOutcomeByName('done#1');
+  assert.ok(copy1 != undefined, 'done#1 exists');
+
+  // Add beta→done#1; tryDuplicateOutcome creates done#2 (spare)
+  const beta = new State('Beta', WS.Statelib.getFromLib('WorkerState'));
+  cc.addState(beta);
+  cc.addTransition(new Transition(beta, copy1, 'done', 0));
+  cc.tryDuplicateOutcome('done');
+  assert.strictEqual(cc.getSMOutcomes().length, 3, 'done#2 created as spare');
+  assert.ok(cc.getSMOutcomeByName('done#2') != undefined, 'done#2 exists');
+
+  // Remove alpha's transition — done#0 freed.
+  // Concurrent path does NOT prune: copy count stays at 3.
+  const alphaTransition = cc.getTransitions().find(function(t) {
+    return t.getFrom() === alpha;
+  });
+  cc.removeTransitionObject(alphaTransition);
+  assert.strictEqual(cc.getSMOutcomes().length, 3, 'no pruning on removal in concurrent SM');
+  assert.ok(cc.getSMOutcomeByName('done#0') != undefined, 'done#0 still present after removal');
+
+  // tryDuplicateOutcome with a free copy available: no new copy added
+  cc.tryDuplicateOutcome('done');
+  assert.strictEqual(cc.getSMOutcomes().length, 3, 'no new copy when spare exists');
+
+  // Add gamma→done#0 and delta→done#2 (consuming last two free copies);
+  // tryDuplicateOutcome now creates done#3
+  const gamma = new State('Gamma', WS.Statelib.getFromLib('WorkerState'));
+  const delta = new State('Delta', WS.Statelib.getFromLib('WorkerState'));
+  cc.addState(gamma);
+  cc.addState(delta);
+  cc.addTransition(new Transition(gamma, copy0, 'done', 0));
+  cc.addTransition(new Transition(delta, cc.getSMOutcomeByName('done#2'), 'done', 0));
+  cc.tryDuplicateOutcome('done');
+  assert.strictEqual(cc.getSMOutcomes().length, 4, 'done#3 created when all consumed');
+  assert.ok(cc.getSMOutcomeByName('done#3') != undefined, 'done#3 exists');
+}
+
 async function runStateGeneratedKeysCase() {
   setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -5283,6 +5942,10 @@ async function main() {
     await runMenuCase();
     return;
   }
+  if (caseName === 'menu_auto_layout_button') {
+    await runMenuAutoLayoutButtonCase();
+    return;
+  }
   if (caseName === 'action_client') {
     await runActionClientCase();
     return;
@@ -5367,6 +6030,10 @@ async function main() {
     await runLibraryHoverPanelsSafeTextCase();
     return;
   }
+  if (caseName === 'behavior_tag_overflow_dropdown') {
+    await runBehaviorTagOverflowDropdownCase();
+    return;
+  }
   if (caseName === 'api_client') {
     await runApiClientCase();
     return;
@@ -5403,8 +6070,16 @@ async function main() {
     await runCommandUpdateBehaviorCase();
     return;
   }
+  if (caseName === 'behaviorlib_update_sync_callback') {
+    await runBehaviorlibUpdateSyncCallbackCase();
+    return;
+  }
   if (caseName === 'command_qualified_behavior') {
     await runCommandQualifiedBehaviorCase();
+    return;
+  }
+  if (caseName === 'command_auto_layout') {
+    await runCommandAutoLayoutCase();
     return;
   }
   if (caseName === 'behavior_collision_resolution') {
@@ -5483,8 +6158,20 @@ async function main() {
     await runBehaviorLoaderDuplicateNameHintsCase();
     return;
   }
+  if (caseName === 'qualified_package_refs') {
+    await runQualifiedPackageRefsCase();
+    return;
+  }
   if (caseName === 'state_generated_keys') {
     await runStateGeneratedKeysCase();
+    return;
+  }
+  if (caseName === 'outcome_copy_rename_with_copies') {
+    await runOutcomeCopyRenameWithCopiesCase();
+    return;
+  }
+  if (caseName === 'concurrent_outcome_copy') {
+    await runConcurrentOutcomeCopyCase();
     return;
   }
   throw new Error(`Unknown case '${caseName}'`);

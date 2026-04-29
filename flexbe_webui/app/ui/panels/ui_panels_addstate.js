@@ -43,6 +43,16 @@ UI.Panels.AddState = new (function() {
 		parent.appendChild(section);
 	}
 
+	var appendSummaryLine = function(parent, title, subtitle) {
+		let heading = document.createElement("b");
+		heading.textContent = sanitizeTooltipText(title);
+		parent.appendChild(heading);
+		parent.appendChild(document.createElement("br"));
+		let description = document.createElement("i");
+		description.textContent = sanitizeTooltipText(subtitle);
+		parent.appendChild(description);
+	}
+
 	this.addHoverDetails = function(el, state_def) {
 		let params = state_def.getParameters();
 		let input_keys = state_def.getInputKeys().filter(key => !key.startsWith("$"));
@@ -165,9 +175,7 @@ UI.Panels.AddState = new (function() {
 			state_div.setAttribute("class", "panel_class_select_class");
 			state_div.setAttribute("value", type_list[i]);
 			state_div.setAttribute("tabindex", "0");
-			state_div.innerHTML =
-				  '<b>' + state_def.getStateClass() + '</b><br>'
-				+ '<i>' + state_def.getShortDesc() + '</i>';
+			appendSummaryLine(state_div, state_def.getStateClass(), state_def.getShortDesc());
 
 			const clickHandler = function(event) {
 				event.preventDefault(); // Prevent default action

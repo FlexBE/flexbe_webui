@@ -8,6 +8,95 @@ UI.Panels.SelectBehavior = new (function() {
 	var caret_position = 0;
 	var enable_hover = false;
 
+	var estimateTagWidth = function(tag_text) {
+		return tag_text.length * 8 + 12;
+	}
+
+	var applyTagSelection = function(selected_tag, tag, modifier) {
+		let filter_input = document.getElementById("input_behavior_filter");
+		if (tag != undefined) {
+			let txt = filter_input.value;
+			txt = txt.replace(modifier + tag, modifier + selected_tag);
+			filter_input.value = txt;
+			filter_input.focus({ preventScroll: true });
+			let idx = txt.indexOf(modifier + selected_tag);
+			filter_input.setSelectionRange(idx, idx + (modifier + selected_tag).length + 1);
+		} else {
+			let txt = filter_input.value;
+			let added = ((txt == "")? "" : " ") + "+" + selected_tag;
+			filter_input.value += added;
+			filter_input.focus({ preventScroll: true });
+			let idx = (txt + added).indexOf(added);
+			filter_input.setSelectionRange(idx, idx + added.length + 1); // highlight new text
+		}
+		that.behaviorFilterChanged();
+	}
+
+	var createSelectableTag = function(tag_entry, tag, modifier) {
+		let element = document.createElement("div");
+		element.setAttribute("class", "tag");
+		element.setAttribute("title", tag_entry.count + " behavior" + ((tag_entry.count != 1)? "s" : ""));
+		element.setAttribute("id", "input_behavior_filter"+"_"+tag_entry.tag);
+		element.setAttribute("tabindex", "0");
+		element.innerText = tag_entry.tag;
+
+		const clickTagHandler = function(event) {
+			event.stopPropagation();
+			event.preventDefault();
+			applyTagSelection(tag_entry.tag, tag, modifier);
+		}
+
+		element.addEventListener("click", clickTagHandler);
+		listeners_to_cleanup.push({'element': element, 'listener_type': 'click', 'handler': clickTagHandler});
+
+		const enterTagHandler = function(event) {
+			if (event.key === 'Enter' || event.key === ' ') {
+				// allow selection from Enter or spacebar
+				clickTagHandler(event);
+			}
+		}
+		element.addEventListener('keydown', enterTagHandler);
+		listeners_to_cleanup.push({'element': element, 'listener_type': 'keydown', 'handler': enterTagHandler});
+
+		return element;
+	}
+
+	var createOverflowSelect = function(sorted_tags, hidden_count, tag, modifier) {
+		let dropdown_tags = sorted_tags.slice().sort(function(a, b) {
+			return a.tag.localeCompare(b.tag);
+		});
+		let overflow_select = document.createElement("select");
+		overflow_select.setAttribute("class", "tag tag-overflow-select");
+		overflow_select.setAttribute("id", "input_behavior_filter_overflow");
+		overflow_select.setAttribute("tabindex", "0");
+		overflow_select.setAttribute("title", hidden_count + " more tag" + ((hidden_count == 1)? "" : "s"));
+
+		let placeholder = document.createElement("option");
+		placeholder.value = "";
+		placeholder.textContent = "...";
+		placeholder.disabled = true;
+		placeholder.selected = true;
+		overflow_select.appendChild(placeholder);
+
+		dropdown_tags.forEach(function(tag_entry) {
+			let option = document.createElement("option");
+			option.value = tag_entry.tag;
+			option.textContent = tag_entry.tag + " (" + tag_entry.count + ")";
+			overflow_select.appendChild(option);
+		});
+
+		const overflowChangeHandler = function(event) {
+			event.stopPropagation();
+			event.preventDefault();
+			if (this.value == "") return;
+			applyTagSelection(this.value, tag, modifier);
+		}
+		overflow_select.addEventListener("change", overflowChangeHandler);
+		listeners_to_cleanup.push({'element': overflow_select, 'listener_type': 'change', 'handler': overflowChangeHandler});
+
+		return overflow_select;
+	}
+
 	var sanitizeTooltipText = function(value) {
 		return String(value == undefined ? "" : value)
 			.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -45,6 +134,16 @@ UI.Panels.SelectBehavior = new (function() {
 			section.appendChild(row);
 		});
 		parent.appendChild(section);
+	}
+
+	var appendSummaryLine = function(parent, title, subtitle) {
+		let heading = document.createElement("b");
+		heading.textContent = sanitizeTooltipText(title);
+		parent.appendChild(heading);
+		parent.appendChild(document.createElement("br"));
+		let description = document.createElement("i");
+		description.textContent = sanitizeTooltipText(subtitle);
+		parent.appendChild(description);
 	}
 
 	this.addHoverDetails = function(el, be_def) {
@@ -183,57 +282,18 @@ UI.Panels.SelectBehavior = new (function() {
 		that.clearChildElements("input_behavior_filter");
 		tag_panel.innerHTML = "";
 		let tag_width = 0;
+		let available_width = (tag_panel.clientWidth != undefined && tag_panel.clientWidth > 0)? tag_panel.clientWidth : 240;
 		for (let i = 0; i < sorted_tags.length; i++) {
-			let t = sorted_tags[i].tag;
-			let element = document.createElement("div");
-			element.setAttribute("class", "tag");
-			element.setAttribute("title", sorted_tags[i].count + " behavior" + ((sorted_tags[i].count != 1)? "s" : ""));
-			element.setAttribute("id", "input_behavior_filter"+"_"+t);
-			element.setAttribute("tabindex", "0");
-			element.innerText = t;
-			const clickTagHandler = function(event) {
-				event.stopPropagation();
-				event.preventDefault();
-				if (tag != undefined) {
-					let txt = document.getElementById("input_behavior_filter").value;
-					txt = txt.replace(modifier + tag, modifier + element.innerText);
-					document.getElementById("input_behavior_filter").value = txt;
-					document.getElementById("input_behavior_filter").focus({ preventScroll: true });
-					let idx = txt.indexOf(modifier + element.innerText);
-					document.getElementById("input_behavior_filter").setSelectionRange(idx, idx + (modifier + element.innerText).length + 1);
-				} else {
-					let txt = document.getElementById("input_behavior_filter").value;
-					let added = ((txt == "")? "" : " ") + "+" + element.innerText;
-					document.getElementById("input_behavior_filter").value += added;
-					document.getElementById("input_behavior_filter").focus({ preventScroll: true });
-					let idx = (txt + added).indexOf(added);
-					document.getElementById("input_behavior_filter").setSelectionRange(idx, idx + added.length + 1); // highlight new text
-				}
-				that.behaviorFilterChanged();
-			}
-
-			element.addEventListener("click", clickTagHandler);
-			listeners_to_cleanup.push({'element': element, 'listener_type': 'click', 'handler': clickTagHandler});
-
-			const enterTagHandler = function(event) {
-				if (event.key === 'Enter' || event.key === ' ') {
-					// allow selection from Enter or spacebar
-					clickTagHandler(event);
-				}
-			}
-			element.addEventListener('keydown', enterTagHandler);
-			listeners_to_cleanup.push({'element': element, 'listener_type': 'keydown', 'handler': enterTagHandler});
-
+			let element = createSelectableTag(sorted_tags[i], tag, modifier);
 			tag_panel.appendChild(element);
-			if (tag_width + element.clientWidth + 4 + 30 < tag_panel.clientWidth) {
-				tag_width += element.clientWidth + 4;
+			let element_width = (element.clientWidth != undefined && element.clientWidth > 0)?
+				element.clientWidth : estimateTagWidth(sorted_tags[i].tag);
+			if (tag_width + element_width + 4 + 30 < available_width) {
+				tag_width += element_width + 4;
 			} else {
 				tag_panel.removeChild(tag_panel.lastChild);
-				let dots = document.createElement("i");
-				dots.innerText = " ...";
 				let hidden = sorted_tags.length - i;
-				dots.setAttribute("title", hidden + " more tag" + ((hidden == 1)? "" : "s"));
-				tag_panel.appendChild(dots);
+				tag_panel.appendChild(createOverflowSelect(sorted_tags, hidden, tag, modifier));
 				break;
 			}
 		}
@@ -277,9 +337,7 @@ UI.Panels.SelectBehavior = new (function() {
 			behavior_div.setAttribute("class", "panel_select_behavior_selection_behavior");
 			behavior_div.setAttribute("id", `panel_select_behavior_selection_behavior_${prior_length + index}`);
 			behavior_div.setAttribute("tabindex", "0");
-			behavior_div.innerHTML =
-				  '<b>' + m.name + '</b><br />'
-				+ '<i>' + m.description + '</i>';
+			appendSummaryLine(behavior_div, m.name, m.description);
 
 			const clickBehaviorHandler = function(event) {
 				event.preventDefault(); // Prevent default action for Enter key

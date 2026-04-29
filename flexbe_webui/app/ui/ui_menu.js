@@ -92,6 +92,7 @@ UI.Menu = new (function() {
 		],
 		[
 			["Fade Outcomes", "outcome", function() { UI.Statemachine.toggleOutcomes(); }, "ctrl+f", false],
+			["Auto Layout", "group_selection", function() { UI.Menu.autoLayoutClicked(); }, undefined, false],
 			["Auto-Connect", "autoconnect", function(event) { Tools.autoconnect(); }, "ctrl+a", false],
 			["Group Selection", "group_selection", function(event) { Tools.groupSelection(); }, "ctrl+g", false]
 		]
@@ -539,8 +540,8 @@ UI.Menu = new (function() {
 		UI.Menu.toDashboardClicked();
 		UI.Panels.setActivePanel(UI.Panels.NO_PANEL);
 
-		UI.Dashboard.addBehaviorOutcome('finished');
-		UI.Dashboard.addBehaviorOutcome('failed');
+		await UI.Dashboard.addBehaviorOutcome('finished');
+		await UI.Dashboard.addBehaviorOutcome('failed');
 
 		ActivityTracer.resetActivities();
 		UI.Dashboard.setupTabHandling();
@@ -596,6 +597,11 @@ UI.Menu = new (function() {
 		note.setContainerPath(UI.Statemachine.getDisplayedSM().getStatePath());
 		Behavior.addCommentNote(note);
 		UI.Statemachine.refreshView();
+	}
+
+	this.autoLayoutClicked = function() {
+		if (UI.Statemachine.isReadonly()) return;
+		UI.Statemachine.requestAutoLayout();
 	}
 
 	this.setupTabHandling = function() {

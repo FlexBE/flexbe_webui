@@ -200,3 +200,32 @@ class SendActionGoalRequest(BaseModel):
 
     goal: Dict[str, Any]
     topic: str
+
+
+class LayoutNode(BaseModel):
+    """A lightweight node description for statemachine auto-layout."""
+
+    state_name: str
+    state_class: str
+    position_x: float = 0
+    position_y: float = 0
+
+
+class LayoutTransition(BaseModel):
+    """A lightweight transition description for statemachine auto-layout."""
+
+    from_state_name: str
+    to_state_name: Optional[str] = None
+    outcome: str = ''
+
+
+class AutoLayoutRequest(BaseModel):
+    """Request model for active-container auto-layout."""
+
+    container_name: str
+    states: List[LayoutNode] = []
+    outcomes: List[LayoutNode] = []
+    transitions: List[LayoutTransition] = []
+    initial_state_name: Optional[str] = None
+    concurrent: bool = False
+    priority: bool = False

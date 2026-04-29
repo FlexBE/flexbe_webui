@@ -141,11 +141,10 @@ const CommandLib = new (function() {
 			match: /^autolayout$/,
 			impl: function(args) {
 				if (UI.Statemachine.isReadonly()) return;
-				UI.Statemachine.applyLayeredGraphLayout();
-				UI.Statemachine.refreshView();
+				UI.Menu.autoLayoutClicked();
 				UI.Tools.notifyRosCommand('autolayout');
 			},
-			text: "Applies a force-based graph layout to arrange states."
+			text: "Applies a server-side layered layout to the active container."
 		},
 		{
 			desc: "save",

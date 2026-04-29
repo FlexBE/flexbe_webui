@@ -1509,6 +1509,8 @@ UI.Dashboard = new (function() {
 		document.getElementById("input_db_input_key_add").focus({ preventScroll: true });
 
 		if (!skip_history) {
+			// Undo re-appends the key at the end rather than restoring the original position.
+			// This is intentional: key order is not semantically significant.
 			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
 				"Removed behavior input key " + key,
 				function() { that._addInterfaceInputKey(key, true); },
@@ -1724,6 +1726,8 @@ UI.Dashboard = new (function() {
 		document.getElementById("input_db_output_key_add").focus({ preventScroll: true });
 
 		if (!skip_history) {
+			// Undo re-appends the key at the end rather than restoring the original position.
+			// This is intentional: key order is not semantically significant.
 			ActivityTracer.addActivity(ActivityTracer.ACT_BEHAVIOR_INTERFACE_CHANGE,
 				"Removed behavior output key " + key,
 				function() { that._addInterfaceOutputKey(key, true); },

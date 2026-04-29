@@ -485,6 +485,8 @@ UI.Statemachine = new (function() {
 
 
 	this.initialize = function() {
+		grid = [];
+		state_drawings_map = new Map();
 		initializeDrawingArea();
 		updateRenderConfig();
 
@@ -596,7 +598,181 @@ UI.Statemachine = new (function() {
 	}
 
 	this.isReadonly = function() {
-		return RC.Controller.isReadonly() || displayed_sm.isInsideDifferentBehavior() || Behavior.isReadonly();
+		return displayed_sm == undefined
+			|| RC.Controller.isReadonly()
+			|| displayed_sm.isInsideDifferentBehavior()
+			|| Behavior.isReadonly();
+	}
+
+	var getTransitionKey = function(transition) {
+		return transition.getFrom().getStateName() + "::" + transition.getOutcome();
+	}
+
+	var createLayoutNodePayload = function(state) {
+		return {
+			state_name: state.getStateName(),
+			state_class: state.getStateClass(),
+			position_x: state.getPosition().x,
+			position_y: state.getPosition().y
+		};
+	}
+
+	var buildAutoLayoutRequest = function(container) {
+		return {
+			container_name: container.getStateName(),
+			initial_state_name: container.getInitialState() ? container.getInitialState().getStateName() : null,
+			concurrent: container.isConcurrent(),
+			priority: container.isPriority(),
+			states: container.getStates().map(createLayoutNodePayload),
+			outcomes: container.getSMOutcomes().map(createLayoutNodePayload),
+			transitions: container.getTransitions().filter(function(transition) {
+				return transition.getTo() != undefined && transition.getFrom().getStateName() != "INIT";
+			}).map(function(transition) {
+				return {
+					from_state_name: transition.getFrom().getStateName(),
+					to_state_name: transition.getTo().getStateName(),
+					outcome: transition.getOutcome()
+				};
+			})
+		};
+	}
+
+	var captureLayoutSnapshot = function(container) {
+		return {
+			states: container.getStates().map(function(state) {
+				return {
+					state_name: state.getStateName(),
+					position_x: state.getPosition().x,
+					position_y: state.getPosition().y
+				};
+			}),
+			outcomes: container.getSMOutcomes().map(function(state) {
+				return {
+					state_name: state.getStateName(),
+					position_x: state.getPosition().x,
+					position_y: state.getPosition().y
+				};
+			}),
+			transitions: container.getTransitions().map(function(transition) {
+				return {
+					key: getTransitionKey(transition),
+					x: transition.getX(),
+					y: transition.getY(),
+					beginning: transition.getBeginning() == undefined ? undefined : {
+						x: transition.getBeginning().x,
+						y: transition.getBeginning().y
+					},
+					end: transition.getEnd() == undefined ? undefined : {
+						x: transition.getEnd().x,
+						y: transition.getEnd().y
+					}
+				};
+			})
+		};
+	}
+
+	var applyLayoutSnapshot = function(container, snapshot) {
+		(snapshot.states || []).forEach(function(entry) {
+			let state = container.getStateByName(entry.state_name);
+			if (state != undefined) {
+				state.setPosition({x: entry.position_x, y: entry.position_y});
+			}
+		});
+		(snapshot.outcomes || []).forEach(function(entry) {
+			let outcome = container.getSMOutcomeByName(entry.state_name);
+			if (outcome != undefined && outcome.getStateName() == entry.state_name) {
+				outcome.setPosition({x: entry.position_x, y: entry.position_y});
+			}
+		});
+
+		let transitions_by_key = new Map();
+		(snapshot.transitions || []).forEach(function(entry) {
+			transitions_by_key.set(entry.key, entry);
+		});
+		container.getTransitions().forEach(function(transition) {
+			let geometry = transitions_by_key.get(getTransitionKey(transition));
+			if (geometry == undefined) {
+				transition.setX(undefined);
+				transition.setY(undefined);
+				transition.setBeginning(undefined);
+				transition.setEnd(undefined);
+				return;
+			}
+			transition.setX(geometry.x);
+			transition.setY(geometry.y);
+			transition.setBeginning(geometry.beginning == undefined ? undefined : {
+				x: geometry.beginning.x,
+				y: geometry.beginning.y
+			});
+			transition.setEnd(geometry.end == undefined ? undefined : {
+				x: geometry.end.x,
+				y: geometry.end.y
+			});
+		});
+	}
+
+	var clearTransitionGeometry = function(container) {
+		container.getTransitions().forEach(function(transition) {
+			transition.setX(undefined);
+			transition.setY(undefined);
+			transition.setBeginning(undefined);
+			transition.setEnd(undefined);
+		});
+	}
+
+	var snapshotsEqual = function(left, right) {
+		return JSON.stringify(left) == JSON.stringify(right);
+	}
+
+	var finishAutoLayout = function(container, previous_snapshot, success_message) {
+		let next_snapshot = captureLayoutSnapshot(container);
+		that.refreshView();
+
+		if (snapshotsEqual(previous_snapshot, next_snapshot)) {
+			T.logInfo("Auto layout left the active container unchanged.");
+			return;
+		}
+
+		let container_name = container.getStateName();
+		ActivityTracer.addActivity(ActivityTracer.ACT_COMPLEX_OPERATION,
+			"Applied auto layout to " + container_name,
+			function() {
+				applyLayoutSnapshot(container, previous_snapshot);
+				UI.Statemachine.refreshView();
+			},
+			function() {
+				applyLayoutSnapshot(container, next_snapshot);
+				UI.Statemachine.refreshView();
+			}
+		);
+		T.logInfo(success_message);
+	}
+
+	this.requestAutoLayout = async function() {
+		if (displayed_sm == undefined || that.isReadonly()) return;
+
+		let container = displayed_sm;
+		let previous_snapshot = captureLayoutSnapshot(container);
+		try {
+			const {data} = await API.postDataAsync('statemachine/auto_layout', buildAutoLayoutRequest(container));
+			applyLayoutSnapshot(container, {
+				states: data.states || [],
+				outcomes: data.outcomes || [],
+				transitions: []
+			});
+			clearTransitionGeometry(container);
+			finishAutoLayout(container, previous_snapshot, "Applied auto layout to '" + container.getStateName() + "'.");
+		} catch ({error, result}) {
+			let endpoint_missing = result != undefined && result.status == 404;
+			endpoint_missing = endpoint_missing || (typeof error === 'string' && error.indexOf('Not Found') !== -1);
+			if (endpoint_missing) {
+				T.logWarn("Auto layout endpoint is unavailable on the running server; using built-in layout fallback. Restart FlexBE WebUI server to enable the Python layout service.");
+				that.applyLayeredGraphLayout();
+				finishAutoLayout(container, previous_snapshot, "Applied fallback auto layout to '" + container.getStateName() + "'.");
+				return;
+			}
+			T.logError("Auto layout failed: " + error);
+		}
 	}
 
 	this.applyLayeredGraphLayout = function() {

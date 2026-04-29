@@ -59,6 +59,16 @@ WS.BehaviorStateDefinition = function(manifest, outcomes, input_keys, output_key
 	var documentation = new WS.Documentation(manifest.description);
 	var parameters = [];
 	var parameterDefaults = [];
+	var validateParameterMetadata = function(param) {
+		if (param.type == "numeric") {
+			if (param.additional == undefined || param.additional == null
+			 || param.additional.min == undefined || param.additional.max == undefined) {
+				throw new Error("Invalid behavior manifest '" + behavior_name
+					+ "': numeric parameter '" + param.name
+					+ "' is missing required min/max metadata.");
+			}
+		}
+	};
 	var buildParameterDescription = function(param, defaultValue) {
 		var descriptionLines = [
 			"Default: " + defaultValue,
@@ -70,16 +80,17 @@ WS.BehaviorStateDefinition = function(manifest, outcomes, input_keys, output_key
 		} else if (param.type == "enum") {
 			descriptionLines.push("");
 			descriptionLines.push("Possible values:");
-			param.additional.forEach(opt => {
+			(param.additional || []).forEach(opt => {
 				descriptionLines.push("    - " + opt);
 			});
 		}
 		return descriptionLines.join("\n");
-	}
+	};
 	manifest.params.forEach(param => {
+		validateParameterMetadata(param);
 		parameters.push(param.name);
 		var defaultValue = (param.type == "text" || param.type == "enum")? '"' + param.default + '"' : param.default;
-		parameterDefaults.push(defaultValue); 
+		parameterDefaults.push(defaultValue);
 		var desc = buildParameterDescription(param, defaultValue);
 		documentation.addDescription('--', param.name, param.type, desc);
 	});

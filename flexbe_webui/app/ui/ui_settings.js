@@ -327,14 +327,20 @@ UI.Settings = new (function() {
 					return;
 				}
 				behavior_defs.forEach(behavior_data => {
-					// Use server-extracted interface fields; full code loaded on demand
-					let behavior_def = new WS.BehaviorStateDefinition(
-						behavior_data,
-						behavior_data.smi_outcomes || [],
-						behavior_data.smi_input || [],
-						behavior_data.smi_output || []
-					);
-					WS.Behaviorlib.addToLib(behavior_def);
+					try {
+						// Use server-extracted interface fields; full code loaded on demand
+						let behavior_def = new WS.BehaviorStateDefinition(
+							behavior_data,
+							behavior_data.smi_outcomes || [],
+							behavior_data.smi_input || [],
+							behavior_data.smi_output || []
+						);
+						WS.Behaviorlib.addToLib(behavior_def);
+					} catch (error) {
+						const behaviorName = behavior_data && behavior_data.name ? behavior_data.name : "unknown";
+						T.logWarn(`Behavior library warning for '${behavior_pkg.name}': skipped behavior '${behaviorName}' because ${error.message || error}`);
+						console.warn(error);
+					}
 				});
 				behavior_errors.forEach(error => {
 					T.logWarn(`Behavior library warning for '${behavior_pkg.name}': ${error}`);

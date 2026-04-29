@@ -16,7 +16,13 @@
 
 import os
 
-from flexbe_webui.io.behavior_parser import parse_behavior_interface, parse_behavior_manifest_xml
+from flexbe_webui.io.behavior_parser import (
+    parse_behavior_folder,
+    parse_behavior_interface,
+    parse_behavior_manifest_xml,
+)
+
+import pytest
 
 
 def test_parse_behavior_interface_supports_concurrency_container():
@@ -142,3 +148,163 @@ class NestedDemoBehaviorSM(Behavior):
     assert behavior.codefile_path == str(nested_dir)
     assert behavior.codefile_relpath == os.path.join('nested', 'demo_nested_behavior_sm')
     assert behavior.smi_outcomes == ['done']
+
+
+def test_parse_behavior_manifest_xml_preserves_enum_and_yaml_parameter_metadata(tmp_path):
+    """Manifest parsing should preserve enum options and YAML key metadata."""
+    manifest_path = tmp_path / 'param_behavior.xml'
+    code_path = tmp_path / 'param_behavior_sm.py'
+
+    manifest_path.write_text(
+        """
+<behavior name="Parameterized Behavior">
+    <description>demo</description>
+    <tagstring>tag</tagstring>
+    <author>tester</author>
+    <date>2026-04-04</date>
+    <executable package_path="test_pkg.param_behavior_sm" class="ParameterizedBehaviorSM" />
+    <params>
+        <param type="enum" name="mode" default="fast" label="Mode" hint="Execution mode">
+            <option value="fast" />
+            <option value="safe" />
+        </param>
+        <param type="yaml" name="config" default="" label="Config" hint="YAML config">
+            <key name="root" />
+        </param>
+    </params>
+</behavior>
+""".strip(),
+        encoding='utf-8',
+    )
+    code_path.write_text(
+        """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class ParameterizedBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['done'])
+""".strip(),
+        encoding='utf-8',
+    )
+
+    behavior = parse_behavior_manifest_xml(str(manifest_path), str(tmp_path), True, 'utf-8')
+
+    assert behavior is not None
+    assert behavior.params[0].name == 'mode'
+    assert behavior.params[0].additional == ['fast', 'safe']
+    assert behavior.params[1].name == 'config'
+    assert behavior.params[1].additional == {'key': 'root'}
+
+
+def test_parse_behavior_manifest_xml_raises_for_invalid_numeric_metadata(tmp_path):
+    """Manifest parsing should fail fast when numeric parameter bounds are incomplete."""
+    manifest_path = tmp_path / 'invalid_numeric_behavior.xml'
+    code_path = tmp_path / 'invalid_numeric_behavior_sm.py'
+
+    manifest_path.write_text(
+        """
+<behavior name="Invalid Numeric Behavior">
+    <description>demo</description>
+    <tagstring>tag</tagstring>
+    <author>tester</author>
+    <date>2026-04-04</date>
+    <executable package_path="test_pkg.invalid_numeric_behavior_sm" class="InvalidNumericBehaviorSM" />
+    <params>
+        <param type="numeric" name="threshold" default="1" label="Threshold" hint="Threshold value">
+            <min value="0" />
+        </param>
+    </params>
+</behavior>
+""".strip(),
+        encoding='utf-8',
+    )
+    code_path.write_text(
+        """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class InvalidNumericBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['done'])
+""".strip(),
+        encoding='utf-8',
+    )
+
+    with pytest.raises(ValueError, match="missing required 'min'/'max' metadata"):
+        parse_behavior_manifest_xml(str(manifest_path), str(tmp_path), True, 'utf-8')
+
+
+def test_parse_behavior_folder_drops_invalid_manifest_and_reports_error(tmp_path):
+    """Folder parsing should keep valid behaviors and report invalid manifests via the errors list."""
+    valid_manifest = tmp_path / 'valid_behavior.xml'
+    valid_code = tmp_path / 'valid_behavior_sm.py'
+    invalid_manifest = tmp_path / 'invalid_behavior.xml'
+    invalid_code = tmp_path / 'invalid_behavior_sm.py'
+
+    valid_manifest.write_text(
+        """
+<behavior name="Valid Behavior">
+    <description>demo</description>
+    <tagstring>tag</tagstring>
+    <author>tester</author>
+    <date>2026-04-04</date>
+    <executable package_path="test_pkg.valid_behavior_sm" class="ValidBehaviorSM" />
+    <params>
+        <param type="numeric" name="threshold" default="1" label="Threshold" hint="Threshold value">
+            <min value="0" />
+            <max value="10" />
+        </param>
+    </params>
+</behavior>
+""".strip(),
+        encoding='utf-8',
+    )
+    valid_code.write_text(
+        """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class ValidBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['done'])
+""".strip(),
+        encoding='utf-8',
+    )
+
+    invalid_manifest.write_text(
+        """
+<behavior name="Invalid Behavior">
+    <description>demo</description>
+    <tagstring>tag</tagstring>
+    <author>tester</author>
+    <date>2026-04-04</date>
+    <executable package_path="test_pkg.invalid_behavior_sm" class="InvalidBehaviorSM" />
+    <params>
+        <param type="numeric" name="threshold" default="1" label="Threshold" hint="Threshold value">
+            <max value="10" />
+        </param>
+    </params>
+</behavior>
+""".strip(),
+        encoding='utf-8',
+    )
+    invalid_code.write_text(
+        """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class InvalidBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['failed'])
+""".strip(),
+        encoding='utf-8',
+    )
+
+    errors = []
+    behaviors = parse_behavior_folder(str(tmp_path), str(tmp_path), True, 'utf-8', errors=errors)
+
+    assert [behavior.name for behavior in behaviors] == ['Valid Behavior']
+    assert len(errors) == 1
+    assert "Skipped behavior 'invalid_behavior'" in errors[0]
+    assert "missing required 'min'/'max' metadata" in errors[0]

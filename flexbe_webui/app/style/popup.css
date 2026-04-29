@@ -156,6 +156,10 @@
 	border: 1px solid black;
 	background-color: #ddd;
 }
+.tag-overflow-select {
+	padding-right: 16px;
+	max-width: 70px;
+}
 
 .display-tag {
 	display: inline-block;
