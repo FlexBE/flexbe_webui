@@ -3712,6 +3712,41 @@ async function runBehaviorlibUpdateSyncCallbackCase() {
   assert.strictEqual(WS.Behaviorlib.getBehaviorList().length, 1);
 }
 
+async function runBehaviorStateDefinitionNestedPathCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/ws/ws_documentation.js');
+  loadScript('flexbe_webui/app/ws/ws_statedefinition.js');
+  loadScript('flexbe_webui/app/ws/ws_behaviorstatedefinition.js');
+
+  const definition = new WS.BehaviorStateDefinition({
+    name: 'Nested Child',
+    description: 'Nested child behavior.',
+    tags: '',
+    rosnode_name: 'child_pkg',
+    class_name: 'NestedChildSM',
+    codefile_name: 'child_sm',
+    codefile_relpath: 'nested/child_sm',
+    params: [],
+  }, ['done'], ['request'], ['result']);
+
+  assert.strictEqual(definition.getStatePath(), 'child_pkg.nested.child_sm');
+  assert.strictEqual(definition.getStatePackage(), 'child_pkg');
+  assert.strictEqual(definition.getStateType(), 'child_pkg.NestedChildSM');
+
+  const definitionWithExtension = new WS.BehaviorStateDefinition({
+    name: 'Nested Child',
+    description: 'Nested child behavior.',
+    tags: '',
+    rosnode_name: 'child_pkg',
+    class_name: 'NestedChildSM',
+    codefile_name: 'child_sm.py',
+    codefile_relpath: 'nested/child_sm.py',
+    params: [],
+  }, ['done'], [], []);
+
+  assert.strictEqual(definitionWithExtension.getStatePath(), 'child_pkg.nested.child_sm');
+}
+
 async function runCommandQualifiedBehaviorCase() {
   const { logs } = setupGlobals();
   let loadedManifest = undefined;
@@ -6072,6 +6107,10 @@ async function main() {
   }
   if (caseName === 'behaviorlib_update_sync_callback') {
     await runBehaviorlibUpdateSyncCallbackCase();
+    return;
+  }
+  if (caseName === 'behavior_state_definition_nested_path') {
+    await runBehaviorStateDefinitionNestedPathCase();
     return;
   }
   if (caseName === 'command_qualified_behavior') {
