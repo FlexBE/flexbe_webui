@@ -9,7 +9,7 @@ IO.ManifestParser = new (function() {
 		if (xml.getElementsByTagName("behavior").length != 1
 		 || xml.getElementsByTagName("executable").length != 1
 		 || xml.getElementsByTagName("executable")[0].getAttribute("package_path") == undefined
-		 || xml.getElementsByTagName("executable")[0].getAttribute("package_path").split(".").length != 2
+		 || xml.getElementsByTagName("executable")[0].getAttribute("package_path").split(".").length < 2
 		) return;
 
 		var name = xml.getElementsByTagName("behavior")[0].getAttribute("name");
@@ -30,8 +30,12 @@ IO.ManifestParser = new (function() {
 
 		var path = xml.getElementsByTagName("executable")[0].getAttribute("package_path").split(".");
 		var rosnode_name = path[0];
-		var codefile_name = path[1] + ".py";
+		var codefile_name = path[path.length - 1];
+		var codefile_relpath = path.slice(1).join("/");
 		var codefile_path = python_path;
+		if (path.length > 2) {
+			codefile_path += "/" + path.slice(1, -1).join("/");
+		}
 		var class_name = xml.getElementsByTagName("executable")[0].getAttribute("class");
 
 		var params_element = xml.getElementsByTagName("params");
@@ -74,7 +78,16 @@ IO.ManifestParser = new (function() {
 		var contains_elements = xml.getElementsByTagName("contains");
 		var contains_list = [];
 		for (var i = 0; i < contains_elements.length; i++) {
-			contains_list.push(contains_elements[i].getAttribute("name"));
+			var contains_name = contains_elements[i].getAttribute("name");
+			var contains_pkg = contains_elements[i].getAttribute("package");
+			if (contains_pkg != undefined && contains_pkg != null && contains_pkg != "") {
+				contains_list.push({
+					name: contains_name,
+					package: contains_pkg
+				});
+			} else {
+				contains_list.push(contains_name);
+			}
 		}
 
 		return {
@@ -86,6 +99,7 @@ IO.ManifestParser = new (function() {
 			rosnode_name: 	rosnode_name,
 			codefile_name: 	codefile_name,
 			codefile_path: 	codefile_path,
+			codefile_relpath: codefile_relpath,
 			class_name: 	class_name,
 			params: 		param_list,
 			contains: 		contains_list,

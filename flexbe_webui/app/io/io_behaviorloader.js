@@ -1,6 +1,25 @@
 IO.BehaviorLoader = new (function() {
 	var that = this;
 
+	var deferCallback = function(callback) {
+		if (callback == undefined) {
+			return;
+		}
+		var args = Array.prototype.slice.call(arguments, 1);
+		var invoke = function() {
+			callback.apply(undefined, args);
+		};
+		if (typeof queueMicrotask == 'function') {
+			queueMicrotask(invoke);
+			return;
+		}
+		if (typeof setTimeout == 'function') {
+			setTimeout(invoke, 0);
+			return;
+		}
+		invoke();
+	}
+
 	var findUniqueBehaviorByName = function(behavior_name) {
 		var matches = WS.Behaviorlib.getBehaviorList().filter(function(element) {
 			return element.getBehaviorName() == behavior_name;
@@ -9,6 +28,38 @@ IO.BehaviorLoader = new (function() {
 			return matches[0];
 		}
 		return undefined;
+	}
+
+	var addLegacyContainsPackageHint = function(hints, behavior_name, behavior_pkg) {
+		if (behavior_name == undefined || behavior_pkg == undefined) {
+			return;
+		}
+		if (hints[behavior_name] == undefined) {
+			hints[behavior_name] = [];
+		}
+		if (!Array.isArray(hints[behavior_name])) {
+			hints[behavior_name] = [hints[behavior_name]];
+		}
+		// Preserve occurrence order, including duplicates, so repeated legacy
+		// contains entries can be matched back to the Python import sequence.
+		hints[behavior_name].push(behavior_pkg);
+	}
+
+	var consumeLegacyContainsPackageHint = function(legacy_package_hints, behavior_name) {
+		if (legacy_package_hints == undefined) {
+			return undefined;
+		}
+		var hint_entry = legacy_package_hints[behavior_name];
+		if (hint_entry == undefined || hint_entry == null) {
+			return undefined;
+		}
+		if (!Array.isArray(hint_entry)) {
+			return hint_entry;
+		}
+		if (hint_entry.length == 0) {
+			return undefined;
+		}
+		return hint_entry.shift();
 	}
 
 	var resolveBehaviorEntryByClassRef = function(class_ref, state_type_imports) {
@@ -45,16 +96,22 @@ IO.BehaviorLoader = new (function() {
 				if (state_def.state_type != "behavior") return;
 				var behavior_entry = resolveBehaviorEntryByClassRef(state_def.state_class, parsing_result.state_types || {});
 				if (behavior_entry == undefined) return;
-				var behavior_name = behavior_entry.getBehaviorName();
-				var behavior_pkg = behavior_entry.getStatePackage();
-				if (hints[behavior_name] == undefined) {
-					hints[behavior_name] = behavior_pkg;
-				} else if (hints[behavior_name] != behavior_pkg) {
-					hints[behavior_name] = null;
-				}
+				addLegacyContainsPackageHint(hints, behavior_entry.getBehaviorName(), behavior_entry.getStatePackage());
 			});
 		});
 		return hints;
+	}
+
+	var inferLegacyContainsPackageHints = function(manifest, context_label) {
+		if (manifest == undefined || !manifest.codefile_content || IO.CodeParser == undefined || IO.CodeParser.parseCode == undefined) {
+			return {};
+		}
+		try {
+			return buildLegacyContainsPackageHints(IO.CodeParser.parseCode(manifest.codefile_content));
+		} catch (err) {
+			T.logWarn(context_label + ": unable to infer Python source package hints for '" + manifest.name + "': " + err);
+			return {};
+		}
 	}
 
 	var resolveContainedBehaviorReference = function(container_manifest, entry, context_label, legacy_package_hints) {
@@ -66,6 +123,22 @@ IO.BehaviorLoader = new (function() {
 				be_key: be_pkg + '::' + be_name,
 				lib_entry: WS.Behaviorlib.getByKey(be_pkg, be_name)
 			};
+		}
+
+		var hinted_pkg = consumeLegacyContainsPackageHint(legacy_package_hints, be_name);
+		if (hinted_pkg != undefined) {
+			T.logWarn(context_label + ": sub-behavior '" + be_name + "' has no package in manifest; "
+				+ "using Python source hint package '" + hinted_pkg + "'. Please resave to make this explicit.");
+			var hinted_entry = WS.Behaviorlib.getByKey(hinted_pkg, be_name);
+			if (hinted_entry != undefined) {
+				return {
+					be_name: be_name,
+					be_key: hinted_pkg + '::' + be_name,
+					lib_entry: hinted_entry
+				};
+			}
+			T.logWarn(context_label + ": Python source hint resolved sub-behavior '" + be_name + "' to package '"
+				+ hinted_pkg + "', but no matching behavior entry was found. Falling back to legacy lookup.");
 		}
 
 		var container_pkg = container_manifest ? container_manifest.rosnode_name : undefined;
@@ -82,20 +155,6 @@ IO.BehaviorLoader = new (function() {
 			}
 			T.logWarn(context_label + ": sub-behavior '" + be_name + "' was not found in same package '"
 				+ container_pkg + "'; checking Python source hints and unique-name fallback.");
-		}
-
-		if (legacy_package_hints != undefined && legacy_package_hints[be_name] != undefined && legacy_package_hints[be_name] != null) {
-			var hinted_pkg = legacy_package_hints[be_name];
-			T.logWarn(context_label + ": resolved legacy sub-behavior '" + be_name + "' via Python source hint to package '"
-				+ hinted_pkg + "'. Please resave to make this explicit.");
-			var hinted_entry = WS.Behaviorlib.getByKey(hinted_pkg, be_name);
-			if (hinted_entry != undefined) {
-				return {
-					be_name: be_name,
-					be_key: hinted_pkg + '::' + be_name,
-					lib_entry: hinted_entry
-				};
-			}
 		}
 
 		var lib_entry = findUniqueBehaviorByName(be_name);
@@ -197,60 +256,65 @@ IO.BehaviorLoader = new (function() {
 	// Ensures all behaviors in manifest.contains (recursively) have their SM parsed.
 	// Must be called before buildStateMachine to avoid empty sub-SMs.
 	this.ensureSubbehaviorsReady = function(manifest, callback, legacy_package_hints) {
-		var to_ready = [];
 		var visited = new Set();
-		var collect_failed_key = undefined;
+		var ensureManifest = function(current_manifest, current_hints, done) {
+			if (!current_manifest || !current_manifest.contains || current_manifest.contains.length === 0) {
+				done(true);
+				return;
+			}
 
-		var collect = function(m) {
-			if (!m.contains) return;
-			m.contains.forEach(function(entry) {
-				if (collect_failed_key != undefined) return;
-				var resolved = resolveContainedBehaviorReference(m, entry, "ensureSubbehaviorsReady", legacy_package_hints);
-				var be_key = resolved.be_key;
-				if (!visited.has(be_key)) {
-					visited.add(be_key);
-					var lib_entry = resolved.lib_entry;
-					if (lib_entry) {
-						to_ready.push(lib_entry);
-						collect(lib_entry.getBehaviorManifest());
-					} else {
-						T.logWarn("ensureSubbehaviorsReady: cannot find sub-behavior '" + be_key + "'");
-						collect_failed_key = be_key;
-					}
-				}
-			});
-		};
-		collect(manifest);
-
-		if (collect_failed_key != undefined) {
-			callback(false, collect_failed_key);
-			return;
-		}
-
-		if (to_ready.length === 0) {
-			callback(true);
-			return;
-		}
-		var remaining = to_ready.length;
-		var done = false;
-		to_ready.forEach(function(lib_entry) {
-			lib_entry.ensureBSMReady(function(success) {
-				if (done) return;
-				if (!success) {
-					done = true;
-					callback(false, lib_entry.getStatePackage() + "::" + lib_entry.getBehaviorName());
+			var entries = current_manifest.contains.slice();
+			var index = 0;
+			var advance = function() {
+				if (index >= entries.length) {
+					done(true);
 					return;
 				}
-				remaining--;
-				if (remaining === 0) {
-					done = true;
-					callback(true);
+
+				var entry = entries[index++];
+				var resolved = resolveContainedBehaviorReference(
+					current_manifest, entry, "ensureSubbehaviorsReady", current_hints
+				);
+				var be_key = resolved.be_key;
+				if (visited.has(be_key)) {
+					advance();
+					return;
 				}
-			});
-		});
+				visited.add(be_key);
+
+				var lib_entry = resolved.lib_entry;
+				if (!lib_entry) {
+					T.logWarn("ensureSubbehaviorsReady: cannot find sub-behavior '" + be_key + "'");
+					done(false, be_key);
+					return;
+				}
+
+				lib_entry.ensureBSMReady(function(success) {
+					if (!success) {
+						done(false, lib_entry.getStatePackage() + "::" + lib_entry.getBehaviorName());
+						return;
+					}
+					var child_manifest = lib_entry.getBehaviorManifest();
+					var child_hints = inferLegacyContainsPackageHints(child_manifest, "ensureSubbehaviorsReady");
+					ensureManifest(child_manifest, child_hints, function(child_ready, child_failed_key) {
+						if (!child_ready) {
+							done(false, child_failed_key);
+							return;
+						}
+						advance();
+					});
+				});
+			};
+
+			advance();
+		};
+
+		var root_hints = legacy_package_hints || inferLegacyContainsPackageHints(manifest, "ensureSubbehaviorsReady");
+		ensureManifest(manifest, root_hints, callback);
 	}
 
 	this.loadBehavior = function(manifest, callback) {
+		callback = callback || function() {};
 		T.clearLog();
 		UI.Panels.Terminal.show();
 
@@ -319,9 +383,7 @@ IO.BehaviorLoader = new (function() {
 			callback(parsingResult);
 		} catch (err) {
 			T.logError("Failed to parse behavior interface of " + behavior_data.name + ": " + err);
-			process.nextTick(() => {
-				callback(undefined);
-			});
+			deferCallback(callback, undefined);
 			return;
 		}
 	}
@@ -331,9 +393,7 @@ IO.BehaviorLoader = new (function() {
 		var package_name = names.rosnode_name;
 		ROS.getPackagePythonPath(package_name, (folder_path) => {
 			if (folder_path == undefined) {
-				process.nextTick(() => {
-					callback();
-				});
+				deferCallback(callback);
 				return;
 			}
 			var file_path = `${folder_path}/${names.file_name}`;
@@ -353,9 +413,7 @@ IO.BehaviorLoader = new (function() {
 						callback();
 					});
 				} else {
-					process.nextTick(() => {
-						callback();
-					});
+					deferCallback(callback);
 				}
 			});
 		});
@@ -368,9 +426,7 @@ IO.BehaviorLoader = new (function() {
 			parsingResult = IO.CodeParser.parseCode(manifest.codefile_content);
 		} catch (err) {
 			console.log(`\x1b[91mCode parsing failed: ${err}\x1b[0m`);
-			process.nextTick(() => {
-				callback(undefined);
-			});
+			deferCallback(callback, undefined);
 			return;
 		}
 		callback({
@@ -382,9 +438,10 @@ IO.BehaviorLoader = new (function() {
 		});
 	}
 
-	this.loadBehaviorDependencies = function(manifest, ignore_list) {
+	this.loadBehaviorDependencies = function(manifest, ignore_list, legacy_package_hints) {
+		var current_hints = legacy_package_hints || inferLegacyContainsPackageHints(manifest, "loadBehaviorDependencies");
 		manifest.contains.forEach(function(entry) {
-			var resolved = resolveContainedBehaviorReference(manifest, entry, "loadBehaviorDependencies");
+			var resolved = resolveContainedBehaviorReference(manifest, entry, "loadBehaviorDependencies", current_hints);
 			var be_key = resolved.be_key;
 
 			if (!ignore_list.contains(be_key)) {
@@ -395,7 +452,9 @@ IO.BehaviorLoader = new (function() {
 					return;
 				}
 				WS.Behaviorlib.updateEntry(lib_entry);
-				ignore_list = that.loadBehaviorDependencies(lib_entry.getBehaviorManifest(), ignore_list);
+				var child_manifest = lib_entry.getBehaviorManifest();
+				var child_hints = inferLegacyContainsPackageHints(child_manifest, "loadBehaviorDependencies");
+				ignore_list = that.loadBehaviorDependencies(child_manifest, ignore_list, child_hints);
 			}
 		});
 		return ignore_list;

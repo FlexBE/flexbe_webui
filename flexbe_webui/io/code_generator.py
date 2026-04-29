@@ -388,7 +388,7 @@ class CodeGenerator:
 
         contained_behaviors.sort(key=lambda x: x.state_path)
         for beh in contained_behaviors:
-            code += self.ws + self.ws + 'self.add_behavior(' + beh.state_class + \
+            code += self.ws + self.ws + 'self.add_behavior(' + self._get_state_reference(beh, states) + \
                 ", '" + beh.state_path[1:] + "', node)\n"
         code += '\n'
         # manual

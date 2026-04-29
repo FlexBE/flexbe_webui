@@ -417,6 +417,8 @@ def test_code_generator_aliases_colliding_behavior_imports_and_references():
 
     assert 'from pkg_a.foo_sm import SharedSM as pkg_a__SharedSM' in code
     assert 'from pkg_b.bar_sm import SharedSM as pkg_b__SharedSM' in code
+    assert "self.add_behavior(pkg_a__SharedSM, 'Behavior A', node)" in code
+    assert "self.add_behavior(pkg_b__SharedSM, 'Behavior B', node)" in code
     assert "self.use_behavior(pkg_a__SharedSM, 'Behavior A')" in code
     assert "self.use_behavior(pkg_b__SharedSM, 'Behavior B')" in code
 

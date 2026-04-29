@@ -16,7 +16,7 @@ UI.Dashboard = new (function() {
 	}
 
 	var dashboardValueToId = function(value) {
-		return value.replace(' ', '_');
+		return value.replace(/ /g, '_');
 	}
 
 	var outcomeToDashboardId = function(outcome) {
@@ -1263,7 +1263,7 @@ UI.Dashboard = new (function() {
 		outcome = outcome.trim();
 		let index = Behavior.getInterfaceOutcomes().findIndex(function (element) {
 			return element.trim() == outcome.trim(); });
-		let childRow = document.getElementById("db_field_outcome_table_row_"+outcome.replace(' ', '_'));
+		let childRow = document.getElementById("db_field_outcome_table_row_" + outcomeToDashboardId(outcome));
 		if (index == -1 || childRow == undefined) {
 			console.log(`\x1b[93m removeBehaviorOutcome - unknown entry (${index}) or `
 						+`child row (${childRow}) for '${outcome}'\x1b[0m`);
@@ -1271,8 +1271,8 @@ UI.Dashboard = new (function() {
 		}
 
 		let removed_snapshot = Behavior.removeInterfaceOutcome(outcome);
-		that.clearChildElements("db_field_outcome_table_remove_button_"+outcome.replace(' ', '_'));
-		that.clearChildElements("db_field_outcome_table_input_field_" + outcome.replace(' ', '_'));
+		that.clearChildElements("db_field_outcome_table_remove_button_" + outcomeToDashboardId(outcome));
+		that.clearChildElements("db_field_outcome_table_input_field_" + outcomeToDashboardId(outcome));
 		document.getElementById("db_outcome_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_outcome_add").focus({ preventScroll: true });
@@ -1355,7 +1355,7 @@ UI.Dashboard = new (function() {
 		}
 
 		let index = Behavior.getInterfaceOutcomes().findIndex((el) => { return el == old_value});
-		let keyElement = document.getElementById('db_field_outcome_table_input_field_' + old_value.replace(' ', '_'));
+		let keyElement = document.getElementById('db_field_outcome_table_input_field_' + outcomeToDashboardId(old_value));
 		if (index == -1 || keyElement == undefined) {
 			console.log(`\x1b[93m changeBehaviorOutcome - unknown entry (${index}) or key element (${keyElement}) for '${old_value}'\x1b[0m`);
 			console.log(`    ${JSON.stringify(Behavior.getInterfaceOutcomes())}`);
@@ -1472,7 +1472,7 @@ UI.Dashboard = new (function() {
 		}
 
 		let tr = document.createElement("tr");
-		tr.setAttribute("id", "db_field_outcome_table_row_"+new_outcome.replace(' ', '_'));
+		tr.setAttribute("id", "db_field_outcome_table_row_" + outcomeToDashboardId(new_outcome));
 		tr.appendChild(td_input_field);
 		tr.appendChild(td_remove_button);
 		insertElementAt(document.getElementById("db_outcome_table"), tr, insert_idx);
@@ -1578,7 +1578,7 @@ UI.Dashboard = new (function() {
 		}
 
 		const index = Behavior.getInterfaceInputKeys().findIndex((el) => { return el == old_key});
-		let keyElement = document.getElementById('db_field_input_key_table_input_field_' + old_key.replace(' ', '_'));
+		let keyElement = document.getElementById('db_field_input_key_table_input_field_' + dashboardValueToId(old_key));
 		if (index == -1 || keyElement == undefined) {
 			console.log(`\x1b[93m changeInterfaceInputKey - unknown entry (${index}) or key element (${keyElement}) for '${old_key}'\x1b[0m`);
 			if (keyElement != undefined) {
@@ -1790,7 +1790,7 @@ UI.Dashboard = new (function() {
 		}
 
 		const index = Behavior.getInterfaceOutputKeys().findIndex((el) => { return el == old_key});
-		let keyElement = document.getElementById('db_field_output_key_table_input_field_' + old_key.replace(' ', '_'));
+		let keyElement = document.getElementById('db_field_output_key_table_input_field_' + dashboardValueToId(old_key));
 		if (index == -1 || keyElement == undefined) {
 			console.log(`\x1b[93m changeInterfaceOutputKey - unknown entry (${index}) or key element (${keyElement}) for '${old_key}'\x1b[0m`);
 			if (keyElement != undefined) {

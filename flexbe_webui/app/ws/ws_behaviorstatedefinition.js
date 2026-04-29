@@ -1,11 +1,23 @@
 WS.BehaviorStateDefinition = function(manifest, outcomes, input_keys, output_keys, bsm_loaded_callback) {
 	var that = this;
 
+	var getBehaviorModulePath = function(target_manifest) {
+		var module_path = target_manifest.codefile_relpath || target_manifest.codefile_name || "";
+		module_path = module_path.replace(/\.py$/i, "").replace(/[\\/]+/g, ".");
+		if (module_path == "") {
+			return target_manifest.rosnode_name;
+		}
+		if (module_path.indexOf(target_manifest.rosnode_name + ".") == 0) {
+			return module_path;
+		}
+		return target_manifest.rosnode_name + "." + module_path;
+	}
+
 	var autonomy = [];
 	for (var i = 0; i < outcomes.length; ++i) {
 		autonomy.push(-1);
 	};
-	var path = manifest.rosnode_name + "." + manifest.codefile_name.replace(".py", "");
+	var path = getBehaviorModulePath(manifest);
 	var behavior_name = manifest.name;
 	var behavior_manifest = manifest;
 	var behavior_tag_list = manifest.tags.replace(/[,;]/g, " ").replace(/\s+/g, " ").split(" ");
@@ -47,23 +59,28 @@ WS.BehaviorStateDefinition = function(manifest, outcomes, input_keys, output_key
 	var documentation = new WS.Documentation(manifest.description);
 	var parameters = [];
 	var parameterDefaults = [];
+	var buildParameterDescription = function(param, defaultValue) {
+		var descriptionLines = [
+			"Default: " + defaultValue,
+			param.label + ": " + param.hint
+		];
+		if (param.type == "numeric") {
+			descriptionLines.push("");
+			descriptionLines.push("Value range: " + param.additional.min + " - " + param.additional.max);
+		} else if (param.type == "enum") {
+			descriptionLines.push("");
+			descriptionLines.push("Possible values:");
+			param.additional.forEach(opt => {
+				descriptionLines.push("    - " + opt);
+			});
+		}
+		return descriptionLines.join("\n");
+	}
 	manifest.params.forEach(param => {
 		parameters.push(param.name);
 		var defaultValue = (param.type == "text" || param.type == "enum")? '"' + param.default + '"' : param.default;
 		parameterDefaults.push(defaultValue); 
-		var desc = "<div style='margin-bottom: 0.5em;'>Default: <i>" + defaultValue + "</i></div>" + param.label + ": " + param.hint;
-		var info = "";
-		if (param.type == "numeric") {
-			info = "Value range: " + param.additional.min + " - " + param.additional.max;
-		} else if (param.type == "enum") {
-			info = "Possible values:";
-			param.additional.forEach(opt => {
-				info += "<br />&nbsp;&nbsp;&nbsp;&nbsp;- " + opt;
-			});
-		}
-		if (info != "") {
-			desc += "<div style='margin-top: 0.5em;'>" + info + "</div>";
-		}
+		var desc = buildParameterDescription(param, defaultValue);
 		documentation.addDescription('--', param.name, param.type, desc);
 	});
 	

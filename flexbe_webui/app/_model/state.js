@@ -4,11 +4,10 @@ const State = function(_state_name, state_def) {
 	var updateGeneratedOutcomes = function(new_vals) {
 		let resolved_parameter_outcome_values = [];
 		if (meta_outcomes.length == 0) return;
+		let param_index_map = new Map();
+		parameters.forEach(function(p, i) { param_index_map.set(p, i); });
 		meta_outcomes.forEach(function(moc, i) {
-			let param_key = parameters.findElement(function(element) {
-				return element == moc;
-			});
-			let pidx = parameters.indexOf(param_key);
+			let pidx = param_index_map.has(moc) ? param_index_map.get(moc) : -1;
 			let param_val_old = (resolved_parameter_outcome_values_old.length > i)? resolved_parameter_outcome_values_old[i] : [];
 			let param_val_new = (new_vals.length > pidx)? VarSolver.getStringValues(new_vals[pidx], true) : [];
 
@@ -53,11 +52,10 @@ const State = function(_state_name, state_def) {
 	var updateGeneratedInput = function(new_vals) {
 		let resolved_parameter_input_values = [];
 		if (meta_input.length == 0) return;
+		let param_index_map = new Map();
+		parameters.forEach(function(p, i) { param_index_map.set(p, i); });
 		meta_input.forEach(function(mik, i) {
-			let param_key = parameters.findElement(function(element) {
-				return element == mik;
-			});
-			let pidx = parameters.indexOf(param_key);
+			let pidx = param_index_map.has(mik) ? param_index_map.get(mik) : -1;
 			let param_val_old = (resolved_parameter_input_values_old.length > i)? resolved_parameter_input_values_old[i] : [];
 			let param_val_new = (new_vals.length > pidx)? VarSolver.getStringValues(new_vals[pidx], true) : [];
 
@@ -93,11 +91,10 @@ const State = function(_state_name, state_def) {
 	var updateGeneratedOutput = function(new_vals) {
 		var resolved_parameter_output_values = [];
 		if (meta_output.length == 0) return;
+		let param_index_map = new Map();
+		parameters.forEach(function(p, i) { param_index_map.set(p, i); });
 		meta_output.forEach(function(mok, i) {
-			let param_key = parameters.findElement(function(element) {
-				return element == mok;
-			});
-			let pidx = parameters.indexOf(param_key);
+			let pidx = param_index_map.has(mok) ? param_index_map.get(mok) : -1;
 			let param_val_old = (resolved_parameter_output_values_old.length > i)? resolved_parameter_output_values_old[i] : [];
 			let param_val_new = (new_vals.length > pidx)? VarSolver.getStringValues(new_vals[pidx], true) : [];
 
@@ -295,7 +292,7 @@ const State = function(_state_name, state_def) {
 	}
 	this.setInputKeys = function(_input_keys) {
 		input_keys = _input_keys;
-		var input_mapping = [];
+		input_mapping = [];
 		for (let i=0; i<input_keys.length; ++i) input_mapping.push(input_keys[i]);
 	}
 
@@ -304,7 +301,7 @@ const State = function(_state_name, state_def) {
 	}
 	this.setOutputKeys = function(_output_keys) {
 		output_keys = _output_keys;
-		var output_mapping = [];
+		output_mapping = [];
 		for (let i=0; i<output_keys.length; ++i) output_mapping.push(output_keys[i]);
 	}
 

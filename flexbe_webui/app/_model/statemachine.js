@@ -17,8 +17,10 @@ const Statemachine = function(sm_name, sm_definition) {
 
 	var addSMOutcome = function(outcome) {
 		var outcome_state = new State(outcome + (concurrent? ('#' + sm_outcomes.length) : ''), WS.Statelib.getFromLib(concurrent? ":CONDITION" : ":OUTCOME"));
-		//outcome_state.setPosition({x: 30 + sm_outcomes.length * 100, y: UI.Statemachine.getR().height / 2});
-		outcome_state.setPosition({x: UI.Statemachine.getR().width - 50, y: (1 + sm_outcomes.length) * UI.Statemachine.getR().height / 10});
+		outcome_state.setPosition(getOutcomePlacement(
+			outcome_state,
+			getDefaultOutcomePreferredPoint(sm_outcomes.length, outcome_state)
+		));
 		sm_outcomes.push(outcome_state);
 		outcome_state.setContainer(that);
 	}
@@ -28,7 +30,6 @@ const Statemachine = function(sm_name, sm_definition) {
 			addSMOutcome(sm_definition.getOutcomes()[i]);
 		}
 	}
-	generateSMOutcomes();
 
 	var copyPoint = function(point) {
 		if (point == undefined) {
@@ -36,6 +37,229 @@ const Statemachine = function(sm_name, sm_definition) {
 		}
 		return {x: point.x, y: point.y};
 	}
+
+	var clamp = function(value, min_value, max_value) {
+		return Math.min(Math.max(value, min_value), max_value);
+	}
+
+	var getGridSize = function() {
+		try {
+			if (UI.Statemachine && UI.Statemachine.getGridSize) {
+				var gridsize = UI.Statemachine.getGridSize();
+				if (isFinite(gridsize) && gridsize > 0) {
+					return gridsize;
+				}
+			}
+		} catch (err) {
+			// Fall through to default grid size.
+		}
+		return 50;
+	}
+
+	var getVisibleViewport = function() {
+		var width = 400;
+		var height = 300;
+		var pan_shift = {x: 0, y: 0};
+		try {
+			if (UI.Statemachine && UI.Statemachine.getR) {
+				var rect = UI.Statemachine.getR();
+				if (rect != undefined) {
+					if (isFinite(rect.width) && rect.width > 0) {
+						width = rect.width;
+					}
+					if (isFinite(rect.height) && rect.height > 0) {
+						height = rect.height;
+					}
+				}
+			}
+			if (UI.Statemachine && UI.Statemachine.getPanShift) {
+				var shift = UI.Statemachine.getPanShift();
+				if (shift != undefined) {
+					pan_shift = {
+						x: isFinite(shift.x)? shift.x : 0,
+						y: isFinite(shift.y)? shift.y : 0
+					};
+				}
+			}
+		} catch (err) {
+			// Fall through to default viewport.
+		}
+		return {
+			left: -pan_shift.x,
+			top: -pan_shift.y,
+			right: width - pan_shift.x,
+			bottom: height - pan_shift.y
+		};
+	}
+
+	var getPlacementSizeForState = function(state) {
+		var gridsize = getGridSize();
+		var state_class = (state != undefined && state.getStateClass != undefined)? state.getStateClass() : '';
+		if (state_class == ':OUTCOME' || state_class == ':CONDITION') {
+			return {
+				width: Math.max(70, Math.round(gridsize * 1.6)),
+				height: Math.max(40, Math.round(gridsize * 1.1))
+			};
+		}
+		if (state instanceof Statemachine || state_class == ':STATEMACHINE') {
+			return {
+				width: Math.max(170, Math.round(gridsize * 3.6)),
+				height: Math.max(95, Math.round(gridsize * 2.0))
+			};
+		}
+		return {
+			width: Math.max(150, Math.round(gridsize * 3.2)),
+			height: Math.max(85, Math.round(gridsize * 1.8))
+		};
+	}
+
+	var getEstimatedBounds = function(state, position) {
+		var bounds = getPlacementSizeForState(state);
+		var pos = position || state.getPosition();
+		return {
+			x: pos.x,
+			y: pos.y,
+			width: bounds.width,
+			height: bounds.height
+		};
+	}
+
+	var rectsIntersect = function(a, b) {
+		return a.x < b.x + b.width
+			&& a.x + a.width > b.x
+			&& a.y < b.y + b.height
+			&& a.y + a.height > b.y;
+	}
+
+	var getOverlapArea = function(a, b) {
+		if (!rectsIntersect(a, b)) {
+			return 0;
+		}
+		var width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+		var height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+		return Math.max(0, width) * Math.max(0, height);
+	}
+
+	var getOccupiedBounds = function(excluded_states) {
+		var excluded = excluded_states || [];
+		return states.concat(sm_outcomes).filter(function(state) {
+			return state != undefined && !excluded.contains(state);
+		}).map(function(state) {
+			return getEstimatedBounds(state);
+		});
+	}
+
+	var getDefaultOutcomePreferredPoint = function(index, outcome_state) {
+		var viewport = getVisibleViewport();
+		var size = getPlacementSizeForState(outcome_state);
+		var gridsize = getGridSize();
+		var margin = Math.max(10, Math.round(gridsize / 2));
+		var min_y = viewport.top + margin;
+		var max_y = Math.max(min_y, viewport.bottom - size.height - margin);
+		return {
+			x: viewport.right - size.width - margin,
+			y: clamp(
+				viewport.top + Math.round((1 + index) * Math.max(1, viewport.bottom - viewport.top) / 10),
+				min_y,
+				max_y
+			)
+		};
+	}
+
+	var getUniqueCandidateValues = function(values, tolerance) {
+		var delta = tolerance || 1;
+		return values.reduce(function(result, value) {
+			if (!isFinite(value)) {
+				return result;
+			}
+			if (!result.findElement(function(existing) {
+				return Math.abs(existing - value) <= delta;
+			})) {
+				result.push(value);
+			}
+			return result;
+		}, []);
+	}
+
+	var getOutcomePlacement = function(outcome_state, preferred_point, anchor_state) {
+		var viewport = getVisibleViewport();
+		var size = getPlacementSizeForState(outcome_state);
+		var gridsize = getGridSize();
+		var margin = Math.max(10, Math.round(gridsize / 2));
+		var min_x = viewport.left + margin;
+		var max_x = Math.max(min_x, viewport.right - size.width - margin);
+		var min_y = viewport.top + margin;
+		var max_y = Math.max(min_y, viewport.bottom - size.height - margin);
+		var viewport_mid_x = viewport.left + (viewport.right - viewport.left) / 2;
+		var anchor_point = (anchor_state != undefined && anchor_state.getPosition != undefined)? anchor_state.getPosition() : undefined;
+		var preferred_x = clamp(
+			preferred_point != undefined && preferred_point.x != undefined? preferred_point.x : max_x,
+			min_x,
+			max_x
+		);
+		var preferred_y = clamp(
+			anchor_point != undefined? anchor_point.y
+			: preferred_point != undefined && preferred_point.y != undefined? preferred_point.y
+			: min_y,
+			min_y,
+			max_y
+		);
+		var fallback_y = clamp(
+			preferred_point != undefined && preferred_point.y != undefined? preferred_point.y : preferred_y,
+			min_y,
+			max_y
+		);
+		var preferred_edge_x = preferred_x <= viewport_mid_x? min_x : max_x;
+		var opposite_edge_x = preferred_edge_x == min_x? max_x : min_x;
+		var x_candidates = getUniqueCandidateValues([
+			preferred_x,
+			preferred_edge_x,
+			opposite_edge_x
+		]);
+		var y_step = Math.max(gridsize, Math.round(size.height + margin / 2));
+		var y_candidates = getUniqueCandidateValues([preferred_y, fallback_y]);
+		var max_steps = Math.max(4, Math.ceil(Math.max(1, max_y - min_y) / y_step) + 1);
+		for (var i = 1; i <= max_steps; ++i) {
+			y_candidates.push(clamp(preferred_y + i * y_step, min_y, max_y));
+			y_candidates.push(clamp(preferred_y - i * y_step, min_y, max_y));
+		}
+		y_candidates = getUniqueCandidateValues(y_candidates);
+
+		var occupied_bounds = getOccupiedBounds();
+		var best_position = {x: preferred_x, y: preferred_y};
+		var best_score = undefined;
+
+		x_candidates.forEach(function(candidate_x) {
+			y_candidates.forEach(function(candidate_y) {
+				var candidate_bounds = {
+					x: candidate_x,
+					y: candidate_y,
+					width: size.width,
+					height: size.height
+				};
+				var overlap_count = 0;
+				var overlap_area = 0;
+				occupied_bounds.forEach(function(other_bounds) {
+					if (rectsIntersect(candidate_bounds, other_bounds)) {
+						overlap_count += 1;
+						overlap_area += getOverlapArea(candidate_bounds, other_bounds);
+					}
+				});
+				var score = overlap_count * 1000000
+					+ overlap_area * 1000
+					+ Math.abs(candidate_x - preferred_x)
+					+ Math.abs(candidate_y - preferred_y);
+				if (best_score == undefined || score < best_score) {
+					best_score = score;
+					best_position = {x: candidate_x, y: candidate_y};
+				}
+			});
+		});
+
+		return best_position;
+	}
+
+	generateSMOutcomes();
 
 	var serializeTransition = function(transition, index) {
 		var beginning = transition.getBeginning();
@@ -85,7 +309,8 @@ const Statemachine = function(sm_name, sm_definition) {
 	var insertOutcomeReference = function(list, outcome, outcome_index) {
 		var insert_index = list.length;
 		for (var i = 0; i < list.length; ++i) {
-			if (that.getOutcomes().indexOf(list[i]) > outcome_index) {
+			var pos = that.getOutcomes().indexOf(list[i]);
+			if (pos !== -1 && pos > outcome_index) {
 				insert_index = i;
 				break;
 			}
@@ -206,11 +431,11 @@ const Statemachine = function(sm_name, sm_definition) {
 		transition.getFrom().connect(transition.getOutcome());
 		var target_outcome = getSequentialOutcomeBaseName(transition.getTo());
 		if (target_outcome != undefined) {
-			normalizeOutcomeCopies(target_outcome);
+			normalizeOutcomeCopies(target_outcome, transition.getFrom());
 		}
 	}
 
-	var addSMOutcomeCopy = function(name) {
+	var addSMOutcomeCopy = function(name, anchor_state) {
 		var existing = sm_outcomes.filter(function(s) {
 			return s.getStateName() === name || s.getStateName().startsWith(name + '#');
 		});
@@ -224,8 +449,11 @@ const Statemachine = function(sm_name, sm_definition) {
 		var copy_name = name + '#' + next_copy_index;
 		var outcome_state = new State(copy_name, WS.Statelib.getFromLib(":OUTCOME"));
 		var last = existing[existing.length - 1];
-		var gridsize = (UI.Statemachine && UI.Statemachine.getGridSize) ? UI.Statemachine.getGridSize() : 50;
-		outcome_state.setPosition({x: last.getPosition().x, y: last.getPosition().y + gridsize * 3});
+		var gridsize = getGridSize();
+		var preferred_point = last != undefined
+			? {x: last.getPosition().x, y: last.getPosition().y + gridsize * 3}
+			: getDefaultOutcomePreferredPoint(sm_outcomes.length, outcome_state);
+		outcome_state.setPosition(getOutcomePlacement(outcome_state, preferred_point, anchor_state));
 		sm_outcomes.push(outcome_state);
 		outcome_state.setContainer(that);
 	}
@@ -247,7 +475,7 @@ const Statemachine = function(sm_name, sm_definition) {
 		return target.getStateName().split('#')[0];
 	}
 
-	var normalizeOutcomeCopies = function(outcome) {
+	var normalizeOutcomeCopies = function(outcome, anchor_state) {
 		if (concurrent || outcome_copy_normalization_suspended) {
 			return;
 		}
@@ -264,7 +492,7 @@ const Statemachine = function(sm_name, sm_definition) {
 			}
 		});
 		if (free_outcomes.length == 0) {
-			addSMOutcomeCopy(outcome);
+			addSMOutcomeCopy(outcome, anchor_state);
 			return;
 		}
 		while (free_outcomes.length > 1) {
@@ -272,9 +500,9 @@ const Statemachine = function(sm_name, sm_definition) {
 		}
 	}
 
-	this.tryDuplicateOutcome = function(outcome) {
+	this.tryDuplicateOutcome = function(outcome, anchor_state) {
 		if (!concurrent) {
-			normalizeOutcomeCopies(outcome);
+			normalizeOutcomeCopies(outcome, anchor_state);
 			return;
 		}
 		let outcome_states = sm_outcomes.filter(function(state) {
@@ -289,7 +517,7 @@ const Statemachine = function(sm_name, sm_definition) {
 			if (concurrent) {
 				addSMOutcome(outcome);
 			} else {
-				addSMOutcomeCopy(outcome);
+				addSMOutcomeCopy(outcome, anchor_state);
 			}
 		}
 	}
@@ -327,7 +555,7 @@ const Statemachine = function(sm_name, sm_definition) {
 			normalizeOutcomeCopies(previous_outcome);
 		}
 		if (next_outcome != undefined && next_outcome != previous_outcome) {
-			normalizeOutcomeCopies(next_outcome);
+			normalizeOutcomeCopies(next_outcome, transition.getFrom());
 		}
 	}
 	this.removeConnectedTransitions = function(state) {
@@ -413,8 +641,10 @@ const Statemachine = function(sm_name, sm_definition) {
 	this.addOutcome = function(outcome) {
 		sm_definition.addOutcome(outcome);
 		var outcome_state = new State(outcome, WS.Statelib.getFromLib(concurrent? ":CONDITION" : ":OUTCOME"));
-		//outcome_state.setPosition({x: 30 + sm_outcomes.length * 100, y: UI.Statemachine.getR().height / 2});
-		outcome_state.setPosition({x: UI.Statemachine.getR().width - 50, y: (1 + sm_outcomes.length) * UI.Statemachine.getR().height / 10});
+		outcome_state.setPosition(getOutcomePlacement(
+			outcome_state,
+			getDefaultOutcomePreferredPoint(sm_outcomes.length, outcome_state)
+		));
 		outcome_state.setContainer(that);
 		sm_outcomes.push(outcome_state);
 		that.getOutcomes().push(outcome);

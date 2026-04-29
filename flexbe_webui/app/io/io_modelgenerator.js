@@ -2,7 +2,7 @@ IO.ModelGenerator = new (function() {
 	var that = this;
 
 	var dashboardValueToId = function(value) {
-		return value.replace(' ', '_');
+		return value.replace(/ /g, '_');
 	}
 
 	var validateInterfaceValues = function(values, value_label) {
@@ -46,9 +46,16 @@ IO.ModelGenerator = new (function() {
 		UI.Dashboard.addInterfaceOutputKey(key);
 	}
 
+	var describeBehaviorMatches = function(matches) {
+		return matches.map(function(match) {
+			return match.getStatePackage() + "::" + match.getBehaviorName();
+		}).join(", ");
+	}
+
 	var resolveBehaviorDefinition = function(behavior_ref) {
+		var resolution = { definition: undefined, ambiguous: false };
 		if (behavior_ref == undefined) {
-			return undefined;
+			return resolution;
 		}
 
 		if (behavior_ref.includes("__")) {
@@ -56,17 +63,43 @@ IO.ModelGenerator = new (function() {
 			if (type_split.length == 2) {
 				let behavior_def = WS.Behaviorlib.getByClassAndPackage(type_split[0], type_split[1]);
 				if (behavior_def != undefined) {
-					return behavior_def;
+					resolution.definition = behavior_def;
+					return resolution;
 				}
 			}
 		}
 
-		let behavior_def = WS.Behaviorlib.getByClass(behavior_ref);
-		if (behavior_def != undefined) {
-			return behavior_def;
+		let behavior_list = WS.Behaviorlib.getBehaviorList();
+		let class_matches = behavior_list.filter(function(entry) {
+			return entry.getStateClass() == behavior_ref;
+		});
+		if (class_matches.length > 1) {
+			T.logError("Ambiguous behavior class reference '" + behavior_ref + "' matches "
+				+ describeBehaviorMatches(class_matches)
+				+ ". Resave with explicit package qualification.");
+			resolution.ambiguous = true;
+			return resolution;
+		}
+		if (class_matches.length == 1) {
+			resolution.definition = class_matches[0];
+			return resolution;
 		}
 
-		return WS.Behaviorlib.getByName(behavior_ref);
+		let name_matches = behavior_list.filter(function(entry) {
+			return entry.getBehaviorName() == behavior_ref;
+		});
+		if (name_matches.length > 1) {
+			T.logError("Ambiguous behavior reference '" + behavior_ref + "' matches "
+				+ describeBehaviorMatches(name_matches)
+				+ ". Resave with explicit package qualification.");
+			resolution.ambiguous = true;
+			return resolution;
+		}
+		if (name_matches.length == 1) {
+			resolution.definition = name_matches[0];
+		}
+
+		return resolution;
 	}
 
 	this.generateBehaviorAttributes = function(data, manifest) {
@@ -164,10 +197,13 @@ IO.ModelGenerator = new (function() {
 			if (s_def.state_type == "container") {
 				s = that.buildStateMachine(s_def.state_name, s_def.state_class, sm_defs, sm_states, silent);
 			} else if (s_def.state_type == "behavior") {
-				var state_def = resolveBehaviorDefinition(s_def.state_class);
+				var behavior_resolution = resolveBehaviorDefinition(s_def.state_class);
+				var state_def = behavior_resolution.definition;
 				if (state_def == undefined) {
-					T.logError("Unable to find behavior definition for: " + s_def.state_class);
-					T.logInfo("Please check your workspace settings.");
+					if (!behavior_resolution.ambiguous) {
+						T.logError("Unable to find behavior definition for: " + s_def.state_class);
+						T.logInfo("Please check your workspace settings.");
+					}
 					continue;
 				}
 				s = new BehaviorState(s_def.state_name, state_def);
@@ -410,9 +446,12 @@ IO.ModelGenerator = new (function() {
 				}
 				if (state_class == ":BEHAVIOR") {
 					state_type = "behavior";
-					behavior_def = resolveBehaviorDefinition(s.behavior_class);
+					var behavior_resolution = resolveBehaviorDefinition(s.behavior_class);
+					var behavior_def = behavior_resolution.definition;
 					if (behavior_def == undefined) {
-						T.logWarn('Unknown behavior reference: ' + s.behavior_class);
+						if (!behavior_resolution.ambiguous) {
+							T.logWarn('Unknown behavior reference: ' + s.behavior_class);
+						}
 						return;
 					}
 					state_class = behavior_def.getStateClass();

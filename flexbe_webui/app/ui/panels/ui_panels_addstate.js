@@ -4,46 +4,50 @@ UI.Panels.AddState = new (function() {
 	var statelib = [];
 	var listeners_to_cleanup = [];
 
+	var sanitizeTooltipText = function(value) {
+		return String(value == undefined ? "" : value)
+			.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+			.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+			.replace(/<\/?[a-z][^>]*>/gi, "");
+	}
+
+	var appendTooltipLabel = function(parent, label, value) {
+		let row = document.createElement("div");
+		row.textContent = label + " ";
+		let formattedValue = document.createElement("i");
+		formattedValue.textContent = sanitizeTooltipText(value);
+		row.appendChild(formattedValue);
+		parent.appendChild(row);
+	}
+
+	var appendTooltipSection = function(parent, title, values, getType, marginBottom) {
+		if (values.length == 0) {
+			return;
+		}
+		let section = document.createElement("div");
+		section.style.marginBottom = marginBottom;
+		section.textContent = title + ":";
+		values.forEach(function(value) {
+			let row = document.createElement("div");
+			row.textContent = "  - " + sanitizeTooltipText(value);
+			if (getType != undefined) {
+				let typeValue = getType(value);
+				if (typeValue != undefined && typeValue != "") {
+					let formattedType = document.createElement("i");
+					formattedType.textContent = "  " + sanitizeTooltipText(typeValue);
+					row.appendChild(formattedType);
+				}
+			}
+			section.appendChild(row);
+		});
+		parent.appendChild(section);
+	}
+
 	this.addHoverDetails = function(el, state_def) {
-		let details = "<div style='margin-bottom: 0.5em;'>Package: <i>" + state_def.getStatePackage() + "</i></div>";
 		let params = state_def.getParameters();
-		if (params.length > 0) {
-			details += "<div style='margin-bottom: 0.5em;'>Parameters:";
-			params.forEach(param => {
-				details += "<br />&nbsp;&nbsp;- " + param;
-				let doc = state_def.getParamDesc().findElement(desc => { return desc.name == param; });
-				if (doc != undefined) details += "&nbsp;&nbsp;<i>" + doc.type + "</i>";
-			});
-			details += "</div>";
-		}
 		let input_keys = state_def.getInputKeys().filter(key => !key.startsWith("$"));
-		if (input_keys.length > 0) {
-			details += "<div style='margin-bottom: 0.5em;'>Input Keys:";
-			input_keys.forEach(key => {
-				details += "<br />&nbsp;&nbsp;- " + key;
-				let doc = state_def.getInputDesc().findElement(desc => { return desc.name == key; });
-				if (doc != undefined) details += "&nbsp;&nbsp;<i>" + doc.type + "</i>";
-			});
-			details += "</div>";
-		}
 		let output_keys = state_def.getOutputKeys().filter(key => !key.startsWith("$"));
-		if (output_keys.length > 0) {
-			details += "<div style='margin-bottom: 0.5em;'>Output Keys:";
-			output_keys.forEach(key => {
-				details += "<br />&nbsp;&nbsp;- " + key;
-				let doc = state_def.getOutputDesc().findElement(desc => { return desc.name == key; });
-				if (doc != undefined) details += "&nbsp;&nbsp;<i>" + doc.type + "</i>";
-			});
-			details += "</div>";
-		}
 		let outcomes = state_def.getOutcomes().filter(outcome => !outcome.startsWith("$"));
-		if (outcomes.length > 0) {
-			details += "<div style='margin-bottom: 0em;'>Outcomes:";
-			outcomes.forEach(outcome => {
-				details += "<br />&nbsp;&nbsp;- " + outcome;
-			});
-			details += "</div>";
-		}
 
 		const addHoverHandler = function() {
 			let rect = this.getBoundingClientRect();
@@ -51,7 +55,23 @@ UI.Panels.AddState = new (function() {
 			tt.setAttribute("style", "right: 370px; top: " + rect.top + "px; display: block;");
 			tt.setAttribute("class", "sidepanel_tooltip");
 			tt.setAttribute("id", "add_state_tooltip");
-			tt.innerHTML = details;
+			let summary = document.createElement("div");
+			summary.style.marginBottom = "0.5em";
+			appendTooltipLabel(summary, "Package:", state_def.getStatePackage());
+			tt.appendChild(summary);
+			appendTooltipSection(tt, "Parameters", params, function(param) {
+				let doc = state_def.getParamDesc().findElement(desc => { return desc.name == param; });
+				return doc != undefined ? doc.type : undefined;
+			}, "0.5em");
+			appendTooltipSection(tt, "Input Keys", input_keys, function(key) {
+				let doc = state_def.getInputDesc().findElement(desc => { return desc.name == key; });
+				return doc != undefined ? doc.type : undefined;
+			}, "0.5em");
+			appendTooltipSection(tt, "Output Keys", output_keys, function(key) {
+				let doc = state_def.getOutputDesc().findElement(desc => { return desc.name == key; });
+				return doc != undefined ? doc.type : undefined;
+			}, "0.5em");
+			appendTooltipSection(tt, "Outcomes", outcomes, undefined, "0em");
 			document.getElementsByTagName("body")[0].appendChild(tt);
 			if (tt.getBoundingClientRect().bottom >= window.innerHeight - 5) {
 				tt.setAttribute("style", "right: 370px; bottom: 5px; display: block;");

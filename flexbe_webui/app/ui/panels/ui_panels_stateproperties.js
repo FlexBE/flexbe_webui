@@ -7,6 +7,13 @@ UI.Panels.StateProperties = new (function() {
 	var synthesis_schema_cache = undefined;
 	var synthesis_schema_action_type = undefined;
 
+	var sanitizeTooltipText = function(value) {
+		return String(value == undefined ? "" : value)
+			.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+			.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+			.replace(/<\/?[a-z][^>]*>/gi, "");
+	}
+
 	var fadeOutBackground = function(id) {
 		document.getElementById(id).style.transition = "all 1s ease-out";
 		document.getElementById(id).style.backgroundColor = "";
@@ -43,13 +50,13 @@ UI.Panels.StateProperties = new (function() {
 				typeRow.style.marginBottom = "0.5em";
 				typeRow.textContent = "Type: ";
 				let typeValue = document.createElement("i");
-				typeValue.textContent = doc.type;
+				typeValue.textContent = sanitizeTooltipText(doc.type);
 				typeRow.appendChild(typeValue);
 				tt.appendChild(typeRow);
 			}
 			let desc = document.createElement("div");
 			desc.style.whiteSpace = "pre-wrap";
-			desc.innerHTML = doc.desc;
+			desc.textContent = sanitizeTooltipText(doc.desc);
 			tt.appendChild(desc);
 			document.getElementsByTagName("body")[0].appendChild(tt);
 		}
@@ -1560,8 +1567,8 @@ UI.Panels.StateProperties = new (function() {
 		console.log(JSON.stringify(current_prop_state));
 		console.log(current_prop_state.getStateImport());
 		let parts = current_prop_state.getStateImport().split(".");
-		const package_name = parts[0];
-		const state_file = parts[1];
+		const package_name = parts.shift();
+		const state_file = parts.join("/");
 		if (package_name != current_prop_state.getStatePackage()){
 			console.log(`\x1b[91m Mismatched packages ${package_name} ${current_prop_state.state_pkg}\x1b[0m`);
 		}

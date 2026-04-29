@@ -68,6 +68,9 @@ function makeElement(id = '') {
         this.options.splice(optionIndex, 1);
       }
       if (child) {
+        if (typeof document !== 'undefined' && document.unregisterElement) {
+          document.unregisterElement(child);
+        }
         child.parentNode = undefined;
         child.parentElement = undefined;
       }
@@ -164,6 +167,17 @@ function setupGlobals() {
       }
       return elements.get(id);
     },
+    unregisterElement(element) {
+      if (element == undefined) {
+        return;
+      }
+      if (element.id !== '' && elements.get(element.id) === element) {
+        elements.delete(element.id);
+      }
+      (element.children || []).forEach(child => {
+        this.unregisterElement(child);
+      });
+    },
     setStrictElementLookup(enabled) {
       strictElementLookup = enabled;
     },
@@ -207,7 +221,7 @@ function setupGlobals() {
       return { textContent: text };
     },
     getElementsByTagName() {
-      return [makeElement('body')];
+      return [this.body];
     },
     addEventListener() {},
   };
@@ -407,6 +421,17 @@ function assertLog(logs, level, fragment) {
     logs.some(entry => entry.level === level && entry.message.includes(fragment)),
     `Expected ${level} log containing '${fragment}', got ${JSON.stringify(logs, null, 2)}`
   );
+}
+
+function flattenElementText(node) {
+  if (node == undefined) {
+    return '';
+  }
+  let text = node.textContent || '';
+  (node.children || []).forEach(function(child) {
+    text += flattenElementText(child);
+  });
+  return text;
 }
 
 async function runBehaviorSaverCase() {
@@ -1311,6 +1336,18 @@ async function runDashboardOutcomeCollisionCase() {
     logs.some(entry => entry.level === 'warn' && entry.message.includes("Dashboard outcome id collision between 'alpha beta' and 'alpha_beta'")),
     `Expected collision warning log, got ${JSON.stringify(logs)}`
   );
+
+  acknowledgements.length = 0;
+  logs.length = 0;
+
+  UI.Dashboard._addBehaviorOutcome('multi word source', 2, true, false);
+  let multiRenameResult = await UI.Dashboard.changeBehaviorOutcome('multi word target', 'multi word source');
+  assert.strictEqual(multiRenameResult, true);
+  assert.strictEqual(document.getElementById('db_field_outcome_table_input_field_multi_word_source'), undefined);
+  assert.strictEqual(document.getElementById('db_field_outcome_table_row_multi_word_source'), undefined);
+  assert.notStrictEqual(document.getElementById('db_field_outcome_table_input_field_multi_word_target'), undefined);
+  assert.notStrictEqual(document.getElementById('db_field_outcome_table_row_multi_word_target'), undefined);
+  assert.deepStrictEqual(interfaceOutcomes, ['alpha_beta', 'gamma', 'multi word target']);
 }
 
 async function runDashboardInterfaceKeyFlowsCase() {
@@ -1388,7 +1425,18 @@ async function runDashboardInterfaceKeyFlowsCase() {
   assert.strictEqual(document.getElementById('db_field_input_key_table_remove_button_rename_source'), undefined);
   assert.notStrictEqual(document.getElementById('db_field_input_key_table_input_field_rename_target'), undefined);
 
+  UI.Dashboard._addInterfaceInputKey('multi word source');
+  activities.length = 0;
+
+  let multiInputRenameResult = await UI.Dashboard.changeInterfaceInputKey('multi word target', 'multi word source');
+  assert.strictEqual(multiInputRenameResult, true);
+  assert.strictEqual(document.getElementById('db_field_input_key_table_input_field_multi_word_source'), undefined);
+  assert.strictEqual(document.getElementById('db_field_input_key_table_row_multi_word_source'), undefined);
+  assert.notStrictEqual(document.getElementById('db_field_input_key_table_input_field_multi_word_target'), undefined);
+  assert.deepStrictEqual(interfaceInputKeys, ['rename_target', 'multi word target']);
+
   UI.Dashboard.removeInterfaceInputKey('rename_target', true);
+  UI.Dashboard.removeInterfaceInputKey('multi word target', true);
   activities.length = 0;
 
   UI.Dashboard._addInterfaceInputKey('goal_pose');
@@ -1471,6 +1519,19 @@ async function runDashboardInterfaceKeyFlowsCase() {
     logs.some(entry => entry.level === 'warn' && entry.message.includes("Dashboard output key id collision between 'final result' and 'final_result'")),
     `Expected output-key collision warning log, got ${JSON.stringify(logs)}`
   );
+
+  acknowledgements.length = 0;
+  logs.length = 0;
+
+  UI.Dashboard._addInterfaceOutputKey('multi word source');
+  activities.length = 0;
+
+  let multiOutputRenameResult = await UI.Dashboard.changeInterfaceOutputKey('multi word target', 'multi word source');
+  assert.strictEqual(multiOutputRenameResult, true);
+  assert.strictEqual(document.getElementById('db_field_output_key_table_input_field_multi_word_source'), undefined);
+  assert.strictEqual(document.getElementById('db_field_output_key_table_row_multi_word_source'), undefined);
+  assert.notStrictEqual(document.getElementById('db_field_output_key_table_input_field_multi_word_target'), undefined);
+  assert.deepStrictEqual(interfaceOutputKeys, ['final_result', 'other_output', 'multi word target']);
 }
 
 async function runModelGeneratorInterfaceValidationCase() {
@@ -1547,6 +1608,13 @@ async function runModelGeneratorInterfaceValidationCase() {
       smi_input: ['goal_pose', 'goal pose'],
     }), manifest);
   }, /conflicts with the Dashboard row id used by 'goal_pose'/);
+  assert.deepStrictEqual(addedValues, []);
+
+  assert.throws(function() {
+    IO.ModelGenerator.generateBehaviorAttributes(Object.assign({}, baseData, {
+      smi_outcomes: ['goal pose_final', 'goal_pose final'],
+    }), manifest);
+  }, /conflicts with the Dashboard row id used by 'goal pose_final'/);
   assert.deepStrictEqual(addedValues, []);
 
   IO.ModelGenerator.generateBehaviorAttributes(baseData, manifest);
@@ -2111,6 +2179,297 @@ async function runStatePanelDuplicateGuardsCase() {
     acknowledgements.some(message => message.includes("Output key 'result' already exists!")),
     `Expected duplicate output acknowledgement, got ${JSON.stringify(acknowledgements)}`
   );
+}
+
+async function runStatePanelHoverDocumentationCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ws/ws_documentation.js');
+  loadScript('flexbe_webui/app/ws/ws_statedefinition.js');
+  loadScript('flexbe_webui/app/ws/ws_behaviorstatedefinition.js');
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_stateproperties.js');
+
+  const behaviorDefinition = new WS.BehaviorStateDefinition({
+    rosnode_name: 'demo_pkg',
+    codefile_name: 'demo_behavior_sm.py',
+    class_name: 'DemoBehaviorSM',
+    name: 'DemoBehavior',
+    description: 'Demo behavior',
+    tags: 'demo',
+    params: [{
+      name: 'mode',
+      type: 'enum',
+      default: 'safe',
+      label: 'Mode <b>unsafe</b>',
+      hint: 'Pick <img src=x onerror=window.hacked=true>',
+      additional: ['safe', 'fast<script>alert(1)</script>'],
+    }],
+  }, [], [], []);
+
+  WS.Behaviorlib.getByKey = function(pkg, name) {
+    if (pkg === 'demo_pkg' && name === 'DemoBehavior') {
+      return behaviorDefinition;
+    }
+    return undefined;
+  };
+
+  const hoverTarget = document.createElement('div');
+  UI.Panels.StateProperties.addHoverDocumentation(
+    hoverTarget, 'param', 'mode', undefined, 'DemoBehavior', 'demo_pkg'
+  );
+  hoverTarget.dispatchEvent({ type: 'mouseover', preventDefault() {}, stopPropagation() {} });
+
+  const tooltip = document.getElementById('properties_tooltip');
+  assert(tooltip);
+  assert(document.body.children.includes(tooltip));
+  assert.strictEqual(tooltip.children.length, 2);
+  assert.strictEqual(tooltip.children[1].innerHTML, '');
+  const tooltipText = flattenElementText(tooltip.children[1]);
+  assert(tooltipText.includes('Default: "safe"'));
+  assert(tooltipText.includes('Mode unsafe: Pick '));
+  assert(tooltipText.includes('Possible values:'));
+  assert(tooltipText.includes('    - fast'));
+  assert(!tooltipText.includes('<b>'));
+  assert(!tooltipText.includes('<img'));
+  assert(!tooltipText.includes('<script>'));
+
+  hoverTarget.dispatchEvent({ type: 'mouseout', preventDefault() {}, stopPropagation() {} });
+  document.setStrictElementLookup(true);
+  assert.strictEqual(document.getElementById('properties_tooltip'), undefined);
+  document.setStrictElementLookup(false);
+}
+
+async function runBehaviorSourceViewNestedPathCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_stateproperties.js');
+
+  UI.Panels.STATE_PROPERTIES_PANEL = 'state_properties';
+  UI.Panels.setActivePanel = function() {};
+  UI.Panels.hidePanelIfActive = function() {};
+  UI.Panels.updatePanelTabTargets = function() {};
+  UI.Panels.setFocus = function() {};
+
+  global.Statemachine = function() {};
+  global.BehaviorState = function() {};
+
+  let sourceRequest = undefined;
+  UI.Tools.openFileInSourceViewer = function(jsonFileDict, sourceName, filePath) {
+    sourceRequest = { jsonFileDict, sourceName, filePath };
+  };
+
+  WS.Behaviorlib.getByKey = function(pkg, name) {
+    if (pkg === 'test_pkg' && name === 'Nested Behavior') {
+      return {
+        getBehaviorDesc() { return 'Nested behavior description'; },
+      };
+    }
+    return undefined;
+  };
+
+  const behaviorState = new BehaviorState();
+  behaviorState.getStateName = function() { return 'Nested Behavior State'; };
+  behaviorState.getBehaviorName = function() { return 'Nested Behavior'; };
+  behaviorState.getStatePackage = function() { return 'test_pkg'; };
+  behaviorState.getStatePath = function() { return '/nested_behavior_state'; };
+  behaviorState.getStateImport = function() { return 'test_pkg.nested.demo_behavior_sm'; };
+  behaviorState.getParameters = function() { return []; };
+  behaviorState.getParameterValues = function() { return []; };
+  behaviorState.getOutcomes = function() { return []; };
+  behaviorState.getAutonomy = function() { return []; };
+  behaviorState.getInputKeys = function() { return []; };
+  behaviorState.getInputMapping = function() { return []; };
+  behaviorState.getOutputKeys = function() { return []; };
+  behaviorState.getOutputMapping = function() { return []; };
+
+  UI.Panels.StateProperties.displayStateProperties(behaviorState);
+  UI.Panels.StateProperties.viewBehaviorSourceCode();
+
+  assert.deepStrictEqual(sourceRequest, {
+    jsonFileDict: {
+      package: 'test_pkg',
+      file: 'nested/demo_behavior_sm',
+    },
+    sourceName: 'Nested Behavior',
+    filePath: 'test_pkg/nested/demo_behavior_sm.py',
+  });
+}
+
+async function runBehaviorStateDefinitionNestedPathCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ws/ws_documentation.js');
+  loadScript('flexbe_webui/app/ws/ws_statedefinition.js');
+  loadScript('flexbe_webui/app/ws/ws_behaviorstatedefinition.js');
+
+  const behaviorDefinition = new WS.BehaviorStateDefinition({
+    rosnode_name: 'test_pkg',
+    codefile_name: 'demo_behavior_sm.py',
+    codefile_relpath: 'nested/demo_behavior_sm',
+    class_name: 'DemoBehaviorSM',
+    name: 'Nested Demo Behavior',
+    description: 'Demo behavior',
+    tags: 'demo',
+    params: [],
+  }, [], [], []);
+
+  assert.strictEqual(behaviorDefinition.getStatePath(), 'test_pkg.nested.demo_behavior_sm');
+}
+
+async function runManifestParserNestedPathsCase() {
+  setupGlobals();
+
+  global.DOMParser = function() {
+    this.parseFromString = function() {
+      const behavior = {
+        getAttribute(name) {
+          return name === 'name' ? 'Nested Demo Behavior' : undefined;
+        },
+      };
+      const executable = {
+        getAttribute(name) {
+          if (name === 'package_path') {
+            return 'test_pkg.nested.deeper.demo_nested_behavior_sm';
+          }
+          if (name === 'class') {
+            return 'NestedDemoBehaviorSM';
+          }
+          return undefined;
+        },
+      };
+      const description = { childNodes: [{ nodeValue: 'Nested demo behavior' }] };
+      const tagstring = { childNodes: [{ nodeValue: 'tag' }] };
+      const author = { childNodes: [{ nodeValue: 'tester' }] };
+      const date = { childNodes: [{ nodeValue: '2026-03-31' }] };
+      const containsA = {
+        getAttribute(name) {
+          if (name === 'name') return 'ChildBehavior';
+          if (name === 'package') return 'child_pkg';
+          return undefined;
+        },
+      };
+      const containsB = {
+        getAttribute(name) {
+          if (name === 'name') return 'LocalBehavior';
+          return undefined;
+        },
+      };
+
+      return {
+        getElementsByTagName(name) {
+          switch (name) {
+            case 'behavior': return [behavior];
+            case 'executable': return [executable];
+            case 'description': return [description];
+            case 'tagstring': return [tagstring];
+            case 'author': return [author];
+            case 'date': return [date];
+            case 'params': return [];
+            case 'contains': return [containsA, containsB];
+            default: return [];
+          }
+        },
+      };
+    };
+  };
+
+  loadScript('flexbe_webui/app/io/io_manifestparser.js');
+
+  const manifest = IO.ManifestParser.parseManifest('<behavior />', '/tmp/nested_demo.xml', '/workspace/test_pkg');
+
+  assert.deepStrictEqual(manifest, {
+    name: 'Nested Demo Behavior',
+    description: 'Nested demo behavior\n',
+    tags: 'tag',
+    author: 'tester',
+    date: '2026-03-31',
+    rosnode_name: 'test_pkg',
+    codefile_name: 'demo_nested_behavior_sm',
+    codefile_path: '/workspace/test_pkg/nested/deeper',
+    codefile_relpath: 'nested/deeper/demo_nested_behavior_sm',
+    class_name: 'NestedDemoBehaviorSM',
+    params: [],
+    contains: [
+      { name: 'ChildBehavior', package: 'child_pkg' },
+      'LocalBehavior',
+    ],
+    file_path: '/tmp/nested_demo.xml',
+  });
+}
+
+async function runLibraryHoverPanelsSafeTextCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_selectbehavior.js');
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_addstate.js');
+
+  const behaviorDefinition = {
+    getStatePackage() { return 'pkg_<b>demo</b>'; },
+    getBehaviorTagList() { return ['mode <i>tag</i>', 'nav<img src=x onerror=1>']; },
+    getParameters() { return ['goal <b>mode</b>']; },
+    getParamDesc() { return [{ name: 'goal <b>mode</b>', type: 'text<script>alert(1)</script>' }]; },
+    getInputKeys() { return ['goal<b>_pose</b>', '$internal']; },
+    getInputDesc() { return [{ name: 'goal<b>_pose</b>', type: 'Pose<i>Stamped</i>' }]; },
+    getOutputKeys() { return ['result<script>alert(1)</script>', '$hidden']; },
+    getOutputDesc() { return [{ name: 'result<script>alert(1)</script>', type: 'Path<b>Msg</b>' }]; },
+    getOutcomes() { return ['done<b>_now</b>', '$private']; },
+  };
+
+  const selectTarget = document.createElement('div');
+  UI.Panels.SelectBehavior.addHoverDetails(selectTarget, behaviorDefinition);
+  selectTarget.dispatchEvent({ type: 'mouseover', preventDefault() {}, stopPropagation() {} });
+
+  const selectTooltip = document.getElementById('select_behavior_tooltip');
+  assert(selectTooltip);
+  assert.strictEqual(selectTooltip.innerHTML, '');
+  const selectTooltipText = flattenElementText(selectTooltip);
+  assert(selectTooltipText.includes('Package: pkg_demo'));
+  assert(selectTooltipText.includes('Tags: mode tag, nav'));
+  assert(selectTooltipText.includes('Parameters:  - goal mode  text'));
+  assert(selectTooltipText.includes('Input Keys:  - goal_pose  PoseStamped'));
+  assert(selectTooltipText.includes('Output Keys:  - result  PathMsg'));
+  assert(selectTooltipText.includes('Outcomes:  - done_now'));
+  assert(!selectTooltipText.includes('<b>'));
+  assert(!selectTooltipText.includes('<img'));
+  assert(!selectTooltipText.includes('<script>'));
+
+  selectTarget.dispatchEvent({ type: 'mouseout', preventDefault() {}, stopPropagation() {} });
+  document.setStrictElementLookup(true);
+  assert.strictEqual(document.getElementById('select_behavior_tooltip'), undefined);
+  document.setStrictElementLookup(false);
+
+  const stateDefinition = {
+    getStatePackage() { return 'state_<b>pkg</b>'; },
+    getParameters() { return ['mode <b>setting</b>']; },
+    getParamDesc() { return [{ name: 'mode <b>setting</b>', type: 'enum<script>alert(1)</script>' }]; },
+    getInputKeys() { return ['input<b>_key</b>', '$internal']; },
+    getInputDesc() { return [{ name: 'input<b>_key</b>', type: 'Pose<i>Stamped</i>' }]; },
+    getOutputKeys() { return ['output<script>alert(1)</script>', '$internal']; },
+    getOutputDesc() { return [{ name: 'output<script>alert(1)</script>', type: 'Result<b>Msg</b>' }]; },
+    getOutcomes() { return ['done<b>_state</b>', '$hidden']; },
+  };
+
+  const addTarget = document.createElement('div');
+  UI.Panels.AddState.addHoverDetails(addTarget, stateDefinition);
+  addTarget.dispatchEvent({ type: 'mouseover', preventDefault() {}, stopPropagation() {} });
+
+  const addTooltip = document.getElementById('add_state_tooltip');
+  assert(addTooltip);
+  assert.strictEqual(addTooltip.innerHTML, '');
+  const addTooltipText = flattenElementText(addTooltip);
+  assert(addTooltipText.includes('Package: state_pkg'));
+  assert(addTooltipText.includes('Parameters:  - mode setting  enum'));
+  assert(addTooltipText.includes('Input Keys:  - input_key  PoseStamped'));
+  assert(addTooltipText.includes('Output Keys:  - output  ResultMsg'));
+  assert(addTooltipText.includes('Outcomes:  - done_state'));
+  assert(!addTooltipText.includes('<b>'));
+  assert(!addTooltipText.includes('<img'));
+  assert(!addTooltipText.includes('<script>'));
+
+  addTarget.dispatchEvent({ type: 'mouseout', preventDefault() {}, stopPropagation() {} });
+  document.setStrictElementLookup(true);
+  assert.strictEqual(document.getElementById('add_state_tooltip'), undefined);
+  document.setStrictElementLookup(false);
 }
 
 async function runApiClientCase() {
@@ -3193,7 +3552,7 @@ async function runCommandQualifiedBehaviorCase() {
 }
 
 async function runBehaviorCollisionResolutionCase() {
-  setupGlobals();
+  const { logs } = setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
   loadScript('flexbe_webui/app/ws/ws_behaviorlib.js');
   loadScript('flexbe_webui/app/io/io_modelgenerator.js');
@@ -3242,6 +3601,33 @@ async function runBehaviorCollisionResolutionCase() {
   WS.Behaviorlib.getBehaviorList();
   assert.strictEqual(global.list, undefined);
   assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_class, 'SharedSM');
+
+  logs.length = 0;
+  const ambiguousResult = IO.ModelGenerator.parseInstantiationMsg([{
+    state_path: '/Ambiguous Behavior State',
+    state_class: ':BEHAVIOR',
+    initial_state_name: '',
+    input_keys: [],
+    output_keys: [],
+    cond_outcome: [],
+    cond_transition: [],
+    behavior_class: 'SharedSM',
+    parameter_names: [],
+    parameter_values: [],
+    position: [0, 0],
+    outcomes: [],
+    transitions: [],
+    autonomy: [],
+    userdata_keys: [],
+    userdata_remapping: [],
+  }]);
+
+  assert.strictEqual(ambiguousResult.sm_states[0].sm_states.length, 0);
+  assertLog(logs, 'error', "Ambiguous behavior class reference 'SharedSM' matches pkg_a::Shared Behavior, pkg_b::Shared Behavior.");
+  assert(
+    !logs.some(entry => entry.level === 'warn' && entry.message.includes('Unknown behavior reference: SharedSM')),
+    `Unexpected fallback warning after ambiguity: ${JSON.stringify(logs)}`
+  );
 }
 
 async function runLegacyBehaviorImportResolutionCase() {
@@ -3790,6 +4176,49 @@ async function runOutcomeCopySingleSpareCase() {
   assert(fixture.sm.getSMOutcomeByName('done#3'));
 }
 
+async function runOutcomeCopyVisiblePlacementCase() {
+  const fixture = buildOutcomeCopyTransitionFixture();
+  const viewport = { left: 200, top: 100, right: 600, bottom: 400 };
+
+  UI.Statemachine.getPanShift = function() {
+    return { x: -viewport.left, y: -viewport.top };
+  };
+  UI.Statemachine.getR = function() {
+    return {
+      width: viewport.right - viewport.left,
+      height: viewport.bottom - viewport.top,
+    };
+  };
+
+  fixture.sm.getSMOutcomeByName('done').setPosition({ x: 760, y: 120 });
+  fixture.sm.getSMOutcomeByName('done#1').setPosition({ x: 760, y: 220 });
+  fixture.sm.getSMOutcomeByName('done#2').setPosition({ x: 760, y: 320 });
+
+  [
+    { name: 'BlockTop', position: { x: 430, y: 110 } },
+    { name: 'BlockMid', position: { x: 430, y: 210 } },
+    { name: 'BlockBottom', position: { x: 430, y: 300 } },
+  ].forEach(function(blocker) {
+    const state = new State(blocker.name, WS.Statelib.getFromLib('WorkerState'));
+    state.setPosition(blocker.position);
+    fixture.sm.addState(state);
+  });
+
+  const gamma = new State('Gamma', WS.Statelib.getFromLib('WorkerState'));
+  gamma.setPosition({ x: 520, y: 230 });
+  fixture.sm.addState(gamma);
+
+  fixture.sm.addTransition(new Transition(gamma, fixture.sm.getSMOutcomeByName('done#2'), 'done', 0));
+
+  const spare = fixture.sm.getSMOutcomeByName('done#3');
+  assert(spare);
+  assert(spare.getPosition().x >= viewport.left);
+  assert(spare.getPosition().x <= viewport.right - 50);
+  assert(spare.getPosition().y >= viewport.top);
+  assert(spare.getPosition().y <= viewport.bottom - 30);
+  assert(spare.getPosition().x < 360);
+}
+
 function buildOutcomeCopyContainerOutcomeFixture() {
   const { activities, sm: root } = setupOutcomeCopyEditorHarness();
   root.getStateName = function() { return ''; };
@@ -4249,6 +4678,97 @@ async function runBehaviorLoaderFailureCase() {
   assert.strictEqual(loadError, 'Failed to prepare sub-behavior state machines (child_pkg::ChildBehavior)');
 }
 
+async function runBehaviorLoaderOptionalCallbackCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  Behavior.resetBehavior = function() {};
+  UI.Dashboard.resetAllFields = function() {};
+  UI.Statemachine.resetStatemachine = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Menu.toDashboardClicked = function() {};
+  UI.Panels.NO_PANEL = 'none';
+  UI.Panels.setActivePanel = function() {};
+
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  IO.BehaviorLoader.ensureFullContent = function(_manifest, callback) {
+    callback(undefined);
+  };
+
+  assert.doesNotThrow(function() {
+    IO.BehaviorLoader.loadBehavior({
+      name: 'Broken',
+      manifest_path: '/tmp/broken.xml',
+      codefile_path: '/tmp/broken.py',
+      codefile_name: 'broken_behavior_sm.py',
+      rosnode_name: 'demo_pkg',
+    });
+  });
+
+  assertLog(logs, 'error', "Failed to load behavior source for 'Broken'");
+}
+
+async function runBehaviorLoaderBrowserDeferredCallbacksCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const originalProcess = global.process;
+  global.process = undefined;
+  try {
+    Behavior.createNames = function() {
+      return {
+        rosnode_name: 'demo_pkg',
+        file_name: 'broken_behavior_sm.py',
+      };
+    };
+    global.ROS = {
+      getPackagePythonPath(_packageName, callback) {
+        callback(undefined);
+      },
+    };
+    global.IO.CodeParser = {
+      parseSMInterface() {
+        throw new Error('interface parse failed');
+      },
+      parseCode() {
+        throw new Error('state machine parse failed');
+      },
+    };
+
+    loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+    let interfaceResult = 'pending';
+    let manualSectionsUpdated = false;
+    let parsedSm = 'pending';
+
+    IO.BehaviorLoader.loadBehaviorInterface({
+      name: 'Broken',
+      codefile_content: 'broken code',
+    }, function(result) {
+      interfaceResult = result;
+    });
+    IO.BehaviorLoader.updateManualSections(function() {
+      manualSectionsUpdated = true;
+    });
+    IO.BehaviorLoader.parseBehaviorSM({
+      name: 'Broken',
+      codefile_content: 'broken code',
+    }, function(result) {
+      parsedSm = result;
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    assert.strictEqual(interfaceResult, undefined);
+    assert.strictEqual(manualSectionsUpdated, true);
+    assert.strictEqual(parsedSm, undefined);
+    assertLog(logs, 'error', 'Failed to parse behavior interface of Broken: Error: interface parse failed');
+  } finally {
+    global.process = originalProcess;
+  }
+}
+
 async function runBehaviorLoaderLegacyPackageDefaultCase() {
   const { logs } = setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -4359,11 +4879,22 @@ async function runBehaviorLoaderLegacyPythonHintCase() {
     getBehaviorName() { return 'ChildBehavior'; },
     getBehaviorManifest() { return { rosnode_name: 'hint_pkg', contains: [] }; },
   };
+  const samePkgEntry = {
+    ensureBSMReady() {
+      throw new Error('same-package fallback should not be used when Python source hint is available');
+    },
+    getStatePackage() { return 'parent_pkg'; },
+    getBehaviorName() { return 'ChildBehavior'; },
+    getBehaviorManifest() { return { rosnode_name: 'parent_pkg', contains: [] }; },
+  };
 
   global.WS.Behaviorlib = {
     getByKey(pkg, name) {
       if (pkg === 'hint_pkg' && name === 'ChildBehavior') {
         return hintedEntry;
+      }
+      if (pkg === 'parent_pkg' && name === 'ChildBehavior') {
+        return samePkgEntry;
       }
       return undefined;
     },
@@ -4398,8 +4929,345 @@ async function runBehaviorLoaderLegacyPythonHintCase() {
 
   assert.strictEqual(loadError, undefined);
   assert.strictEqual(ensureReadyCalls, 1);
-  assertLog(logs, 'warn', "ensureSubbehaviorsReady: sub-behavior 'ChildBehavior' has no package in manifest; defaulting lookup to same package 'parent_pkg'.");
-  assertLog(logs, 'warn', "ensureSubbehaviorsReady: resolved legacy sub-behavior 'ChildBehavior' via Python source hint to package 'hint_pkg'.");
+  assertLog(logs, 'warn', "ensureSubbehaviorsReady: sub-behavior 'ChildBehavior' has no package in manifest; using Python source hint package 'hint_pkg'. Please resave to make this explicit.");
+}
+
+async function runBehaviorLoaderNestedPythonHintCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  const rootManifest = {
+    name: 'RootBehavior',
+    rosnode_name: 'parent_pkg',
+    codefile_content: 'root code',
+    contains: [{ name: 'ChildBehavior' }],
+  };
+  const childManifest = {
+    name: 'ChildBehavior',
+    rosnode_name: 'child_parent_pkg',
+    codefile_content: 'child code',
+    contains: [{ name: 'GrandBehavior' }],
+  };
+
+  global.IO.CodeParser = {
+    parseCode(code) {
+      if (code === 'root code') {
+        return {
+          state_types: { ChildBehaviorSM: 'hint_pkg_child' },
+          sm_states: [{
+            sm_states: [{
+              state_type: 'behavior',
+              state_class: 'ChildBehaviorSM',
+            }],
+          }],
+        };
+      }
+      if (code === 'child code') {
+        return {
+          state_types: { GrandBehaviorSM: 'hint_pkg_grand' },
+          sm_states: [{
+            sm_states: [{
+              state_type: 'behavior',
+              state_class: 'GrandBehaviorSM',
+            }],
+          }],
+        };
+      }
+      throw new Error(`unexpected parse request for ${code}`);
+    },
+  };
+
+  let childReadyCalls = 0;
+  let grandReadyCalls = 0;
+  const hintedGrandEntry = {
+    ensureBSMReady(callback) {
+      grandReadyCalls += 1;
+      callback(true);
+    },
+    getStatePackage() { return 'hint_pkg_grand'; },
+    getBehaviorName() { return 'GrandBehavior'; },
+    getStateClass() { return 'GrandBehaviorSM'; },
+    getBehaviorManifest() {
+      return { name: 'GrandBehavior', rosnode_name: 'hint_pkg_grand', contains: [] };
+    },
+  };
+  const samePkgGrandEntry = {
+    ensureBSMReady() {
+      throw new Error('same-package grandchild fallback should not be used when child Python hint is available');
+    },
+    getStatePackage() { return 'child_parent_pkg'; },
+    getBehaviorName() { return 'GrandBehavior'; },
+    getStateClass() { return 'GrandBehaviorSM'; },
+    getBehaviorManifest() {
+      return { name: 'GrandBehavior', rosnode_name: 'child_parent_pkg', contains: [] };
+    },
+  };
+  const hintedChildEntry = {
+    ensureBSMReady(callback) {
+      childReadyCalls += 1;
+      callback(true);
+    },
+    getStatePackage() { return 'hint_pkg_child'; },
+    getBehaviorName() { return 'ChildBehavior'; },
+    getStateClass() { return 'ChildBehaviorSM'; },
+    getBehaviorManifest() { return childManifest; },
+  };
+  const samePkgChildEntry = {
+    ensureBSMReady() {
+      throw new Error('same-package child fallback should not be used when root Python hint is available');
+    },
+    getStatePackage() { return 'parent_pkg'; },
+    getBehaviorName() { return 'ChildBehavior'; },
+    getStateClass() { return 'ChildBehaviorSM'; },
+    getBehaviorManifest() { return childManifest; },
+  };
+
+  global.WS.Behaviorlib = {
+    getByKey(pkg, name) {
+      if (pkg === 'hint_pkg_child' && name === 'ChildBehavior') {
+        return hintedChildEntry;
+      }
+      if (pkg === 'parent_pkg' && name === 'ChildBehavior') {
+        return samePkgChildEntry;
+      }
+      if (pkg === 'hint_pkg_grand' && name === 'GrandBehavior') {
+        return hintedGrandEntry;
+      }
+      if (pkg === 'child_parent_pkg' && name === 'GrandBehavior') {
+        return samePkgGrandEntry;
+      }
+      return undefined;
+    },
+    getByClassAndPackage(pkg, className) {
+      if (pkg === 'hint_pkg_child' && className === 'ChildBehaviorSM') {
+        return hintedChildEntry;
+      }
+      if (pkg === 'hint_pkg_grand' && className === 'GrandBehaviorSM') {
+        return hintedGrandEntry;
+      }
+      return undefined;
+    },
+    getByClass(className) {
+      if (className === 'ChildBehaviorSM') {
+        return hintedChildEntry;
+      }
+      if (className === 'GrandBehaviorSM') {
+        return hintedGrandEntry;
+      }
+      return undefined;
+    },
+    getBehaviorList() {
+      return [hintedChildEntry, hintedGrandEntry];
+    },
+  };
+
+  const readyResult = await new Promise(resolve => {
+    IO.BehaviorLoader.ensureSubbehaviorsReady(
+      rootManifest,
+      function(success, failedKey) {
+        resolve({ success, failedKey });
+      },
+      { ChildBehavior: 'hint_pkg_child' }
+    );
+  });
+
+  assert.deepStrictEqual(readyResult, { success: true, failedKey: undefined });
+  assert.strictEqual(childReadyCalls, 1);
+  assert.strictEqual(grandReadyCalls, 1);
+  assertLog(logs, 'warn', "ensureSubbehaviorsReady: sub-behavior 'ChildBehavior' has no package in manifest; using Python source hint package 'hint_pkg_child'. Please resave to make this explicit.");
+  assertLog(logs, 'warn', "ensureSubbehaviorsReady: sub-behavior 'GrandBehavior' has no package in manifest; using Python source hint package 'hint_pkg_grand'. Please resave to make this explicit.");
+}
+
+async function runBehaviorLoaderDuplicateNameHintsCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  const rootManifest = {
+    name: 'RootBehavior',
+    rosnode_name: 'parent_pkg',
+    codefile_content: 'root code',
+    contains: ['Shared Behavior', 'Shared Behavior', 'Shared Behavior'],
+  };
+
+  global.IO.CodeParser = {
+    parseCode(code) {
+      if (code !== 'root code') {
+        throw new Error(`unexpected parse request for ${code}`);
+      }
+      return {
+        state_types: {
+          SharedBehaviorSMA: 'pkg_a',
+          SharedBehaviorSMB: 'pkg_b',
+        },
+        sm_states: [{
+          sm_states: [
+            { state_type: 'behavior', state_class: 'SharedBehaviorSMA' },
+            { state_type: 'behavior', state_class: 'SharedBehaviorSMA' },
+            { state_type: 'behavior', state_class: 'SharedBehaviorSMB' },
+          ],
+        }],
+      };
+    },
+  };
+
+  let readyCallsA = 0;
+  let readyCallsB = 0;
+  let updatedEntries = [];
+  const entryA = {
+    ensureBSMReady(callback) {
+      readyCallsA += 1;
+      callback(true);
+    },
+    getStatePackage() { return 'pkg_a'; },
+    getBehaviorName() { return 'Shared Behavior'; },
+    getStateClass() { return 'SharedBehaviorSMA'; },
+    getBehaviorManifest() {
+      return { name: 'Shared Behavior', rosnode_name: 'pkg_a', contains: [] };
+    },
+  };
+  const entryB = {
+    ensureBSMReady(callback) {
+      readyCallsB += 1;
+      callback(true);
+    },
+    getStatePackage() { return 'pkg_b'; },
+    getBehaviorName() { return 'Shared Behavior'; },
+    getStateClass() { return 'SharedBehaviorSMB'; },
+    getBehaviorManifest() {
+      return { name: 'Shared Behavior', rosnode_name: 'pkg_b', contains: [] };
+    },
+  };
+
+  global.WS.Behaviorlib = {
+    getByKey(pkg, name) {
+      if (name !== 'Shared Behavior') {
+        return undefined;
+      }
+      if (pkg === 'pkg_a') {
+        return entryA;
+      }
+      if (pkg === 'pkg_b') {
+        return entryB;
+      }
+      return undefined;
+    },
+    getByClassAndPackage(pkg, className) {
+      if (pkg === 'pkg_a' && className === 'SharedBehaviorSMA') {
+        return entryA;
+      }
+      if (pkg === 'pkg_b' && className === 'SharedBehaviorSMB') {
+        return entryB;
+      }
+      return undefined;
+    },
+    getBehaviorList() {
+      return [entryA, entryB];
+    },
+    updateEntry(entry) {
+      updatedEntries.push(entry);
+    },
+  };
+
+  const readyResult = await new Promise(resolve => {
+    IO.BehaviorLoader.ensureSubbehaviorsReady(rootManifest, function(success, failedKey) {
+      resolve({ success, failedKey });
+    });
+  });
+
+  assert.deepStrictEqual(readyResult, { success: true, failedKey: undefined });
+  assert.strictEqual(readyCallsA, 1);
+  assert.strictEqual(readyCallsB, 1);
+  const ensureHintPackages = logs
+    .filter(entry => entry.level === 'warn' && entry.message.includes("ensureSubbehaviorsReady: sub-behavior 'Shared Behavior' has no package in manifest; using Python source hint package '"))
+    .map(entry => entry.message.match(/package '([^']+)'/)[1]);
+  assert.deepStrictEqual(ensureHintPackages, ['pkg_a', 'pkg_a', 'pkg_b']);
+
+  logs.length = 0;
+  const ignoreList = IO.BehaviorLoader.loadBehaviorDependencies(rootManifest, []);
+
+  assert.deepStrictEqual(ignoreList, ['pkg_a::Shared Behavior', 'pkg_b::Shared Behavior']);
+  assert.strictEqual(updatedEntries.length, 2);
+  assert.strictEqual(updatedEntries[0], entryA);
+  assert.strictEqual(updatedEntries[1], entryB);
+  const dependencyHintPackages = logs
+    .filter(entry => entry.level === 'warn' && entry.message.includes("loadBehaviorDependencies: sub-behavior 'Shared Behavior' has no package in manifest; using Python source hint package '"))
+    .map(entry => entry.message.match(/package '([^']+)'/)[1]);
+  assert.deepStrictEqual(dependencyHintPackages, ['pkg_a', 'pkg_a', 'pkg_b']);
+}
+
+async function runStateGeneratedKeysCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/_helper/varsolver.js');
+
+  // State definition with meta outcomes/input/output driven by parameters
+  const stateDefWithMeta = {
+    getStateClass() { return 'MetaState'; },
+    getStatePath() { return 'test_pkg/MetaState'; },
+    getStatePackage() { return 'test_pkg'; },
+    getParameters() { return ['outcomes_param', 'input_param', 'output_param']; },
+    getDefaultParameterValues() { return ["['go', 'stop']", "['key_a']", "['result']"]; },
+    getOutcomes() { return ['$outcomes_param', 'fixed']; },
+    getDefaultAutonomy() { return [0, 0]; },
+    getInputKeys() { return ['$input_param']; },
+    getOutputKeys() { return ['$output_param']; },
+  };
+
+  global.WS = { Statelib: { getFromLib() { return stateDefWithMeta; } } };
+  global.UI = {
+    Statemachine: {
+      getDrawnState() { return undefined; },
+      getPanShift() { return { x: 0, y: 0 }; },
+      getR() { return { width: 400, height: 300 }; },
+      getGridSize() { return 50; },
+    },
+  };
+
+  loadScript('flexbe_webui/app/_model/state.js');
+
+  const state = new State('TestState', stateDefWithMeta);
+
+  // Constructor passes empty new_vals so no generated outcomes yet — only static ones
+  assert.deepStrictEqual(state.getOutcomes(), ['fixed'], 'initial: only static outcome before setParameterValues');
+  assert.deepStrictEqual(state.getInputKeys(), [], 'initial: no input keys before setParameterValues');
+  assert.deepStrictEqual(state.getOutputKeys(), [], 'initial: no output keys before setParameterValues');
+
+  // Apply default parameter values — generates dynamic outcomes/keys
+  state.setParameterValues(["['go', 'stop']", "['key_a']", "['result']"]);
+  assert.deepStrictEqual(state.getOutcomes(), ['fixed', 'go', 'stop'], 'after set: go and stop generated');
+  assert.deepStrictEqual(state.getInputKeys(), ['key_a'], 'after set: key_a generated');
+  assert.deepStrictEqual(state.getOutputKeys(), ['result'], 'after set: result generated');
+
+  // Change parameter values — replaces dynamic outcomes, adds new input key, changes output
+  state.setParameterValues(["['go', 'halt', 'error']", "['key_a', 'key_b']", "['value']"]);
+  assert.deepStrictEqual(state.getOutcomes(), ['fixed', 'go', 'halt', 'error'], 'updated: stop removed, halt+error added');
+  assert.deepStrictEqual(state.getInputKeys(), ['key_a', 'key_b'], 'updated: key_b added');
+  assert.deepStrictEqual(state.getOutputKeys(), ['value'], 'updated: result replaced by value');
+
+  // Clear dynamic outcomes — only static remains
+  state.setParameterValues(["[]", "[]", "[]"]);
+  assert.deepStrictEqual(state.getOutcomes(), ['fixed'], 'cleared: only static outcome remains');
+  assert.deepStrictEqual(state.getInputKeys(), [], 'cleared: no input keys');
+  assert.deepStrictEqual(state.getOutputKeys(), [], 'cleared: no output keys');
+
+  // Restore — verify idempotent round-trip
+  state.setParameterValues(["['go', 'stop']", "['key_a']", "['result']"]);
+  assert.deepStrictEqual(state.getOutcomes(), ['fixed', 'go', 'stop'], 'restored outcomes');
+  assert.deepStrictEqual(state.getInputKeys(), ['key_a'], 'restored input keys');
+  assert.deepStrictEqual(state.getOutputKeys(), ['result'], 'restored output keys');
+
+  // setInputKeys/setOutputKeys must keep mapping arrays in sync (regression: var shadow
+  // caused the closure-level input_mapping to remain [] after setInputKeys was called,
+  // which triggered the Pydantic 'input_mapping length 0 does not match input_keys length 1'
+  // validation error when saving a behavior with interface input keys)
+  state.setInputKeys(['alpha', 'beta']);
+  assert.deepStrictEqual(state.getInputKeys(), ['alpha', 'beta'], 'setInputKeys: keys set');
+  assert.deepStrictEqual(state.getInputMapping(), ['alpha', 'beta'], 'setInputKeys: mapping in sync');
+  state.setOutputKeys(['result_a']);
+  assert.deepStrictEqual(state.getOutputKeys(), ['result_a'], 'setOutputKeys: keys set');
+  assert.deepStrictEqual(state.getOutputMapping(), ['result_a'], 'setOutputKeys: mapping in sync');
 }
 
 async function main() {
@@ -4479,6 +5347,26 @@ async function main() {
     await runStatePanelDuplicateGuardsCase();
     return;
   }
+  if (caseName === 'state_panel_hover_documentation') {
+    await runStatePanelHoverDocumentationCase();
+    return;
+  }
+  if (caseName === 'behavior_source_view_nested_path') {
+    await runBehaviorSourceViewNestedPathCase();
+    return;
+  }
+  if (caseName === 'behavior_state_definition_nested_path') {
+    await runBehaviorStateDefinitionNestedPathCase();
+    return;
+  }
+  if (caseName === 'manifest_parser_nested_paths') {
+    await runManifestParserNestedPathsCase();
+    return;
+  }
+  if (caseName === 'library_hover_panels_safe_text') {
+    await runLibraryHoverPanelsSafeTextCase();
+    return;
+  }
   if (caseName === 'api_client') {
     await runApiClientCase();
     return;
@@ -4547,6 +5435,10 @@ async function main() {
     await runOutcomeCopySingleSpareCase();
     return;
   }
+  if (caseName === 'outcome_copy_visible_placement') {
+    await runOutcomeCopyVisiblePlacementCase();
+    return;
+  }
   if (caseName === 'outcome_copy_container_outcome_undo') {
     await runOutcomeCopyContainerOutcomeUndoCase();
     return;
@@ -4567,12 +5459,32 @@ async function main() {
     await runBehaviorLoaderFailureCase();
     return;
   }
+  if (caseName === 'behavior_loader_optional_callback') {
+    await runBehaviorLoaderOptionalCallbackCase();
+    return;
+  }
+  if (caseName === 'behavior_loader_browser_deferred_callbacks') {
+    await runBehaviorLoaderBrowserDeferredCallbacksCase();
+    return;
+  }
   if (caseName === 'behavior_loader_legacy_package_default') {
     await runBehaviorLoaderLegacyPackageDefaultCase();
     return;
   }
   if (caseName === 'behavior_loader_legacy_python_hint') {
     await runBehaviorLoaderLegacyPythonHintCase();
+    return;
+  }
+  if (caseName === 'behavior_loader_nested_python_hint') {
+    await runBehaviorLoaderNestedPythonHintCase();
+    return;
+  }
+  if (caseName === 'behavior_loader_duplicate_name_hints') {
+    await runBehaviorLoaderDuplicateNameHintsCase();
+    return;
+  }
+  if (caseName === 'state_generated_keys') {
+    await runStateGeneratedKeysCase();
     return;
   }
   throw new Error(`Unknown case '${caseName}'`);
