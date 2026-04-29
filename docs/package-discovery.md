@@ -41,3 +41,12 @@ Expected layout:
 - `manifest/` folder with behavior manifests
 - Python module/package containing generated behavior code
 
+## Symlink Installs
+
+ROS workspaces built with `--symlink-install` are supported. The behavior and
+state parsers follow directory symlinks so the WebUI can load source files
+through the installed package layout.
+
+To avoid recursive symlink cycles, the parsers track each visited directory by
+its real path. If another path resolves to a directory that has already been
+parsed, that branch is skipped.

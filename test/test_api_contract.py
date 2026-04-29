@@ -20,7 +20,9 @@ import json
 
 from fastapi.routing import APIRoute
 
-from flexbe_webui.io.base_models import AutoLayoutRequest, BehaviorCodeGeneratorRequest, FileRequest, LayoutNode, LayoutTransition, OpenFileEditorRequest
+from flexbe_webui.io.base_models import (AutoLayoutRequest, BehaviorCodeGeneratorRequest,
+                                         FileRequest, LayoutNode, LayoutTransition,
+                                         ManifestGeneratorRequest, OpenFileEditorRequest)
 from flexbe_webui.ros import PackageData
 from flexbe_webui.webui_server import WebuiServer
 
@@ -40,7 +42,7 @@ def _find_endpoint(app, path, method):
     raise AssertionError(f'No endpoint for {method} {path}')
 
 
-def _build_request(path, method='POST', headers=None):
+def _build_request(path, method='POST', headers=None, client=('testclient', 12345)):
     """Construct a minimal Starlette request object."""
     header_items = []
     for key, value in (headers or {}).items():
@@ -55,7 +57,7 @@ def _build_request(path, method='POST', headers=None):
         'raw_path': path.encode('utf-8'),
         'query_string': b'',
         'headers': header_items,
-        'client': ('testclient', 12345),
+        'client': client,
         'server': ('localhost', 8000),
     }
     return Request(scope)
@@ -74,6 +76,25 @@ def _assert_envelope(result):
     assert {'success', 'data', 'error', 'status'}.issubset(result.keys())
     assert isinstance(result['success'], bool)
     assert isinstance(result['status'], int)
+
+
+def _auto_layout_request():
+    """Build a minimal valid auto-layout request."""
+    return AutoLayoutRequest(
+        container_name='root',
+        initial_state_name='Alpha',
+        states=[
+            LayoutNode(state_name='Alpha', state_class='AlphaState', position_x=0, position_y=0),
+            LayoutNode(state_name='Beta', state_class='BetaState', position_x=0, position_y=120),
+        ],
+        outcomes=[
+            LayoutNode(state_name='finished', state_class=':OUTCOME', position_x=200, position_y=0),
+        ],
+        transitions=[
+            LayoutTransition(from_state_name='Alpha', to_state_name='Beta', outcome='done'),
+            LayoutTransition(from_state_name='Beta', to_state_name='finished', outcome='done'),
+        ],
+    )
 
 
 @pytest.fixture
@@ -113,28 +134,46 @@ def test_api_http_routes_return_normalized_envelopes(server_with_package, monkey
 
     cases = [
         ('GET', '/api/v1/dev/diagnostics',
-         lambda endpoint: asyncio.run(endpoint())),
+         lambda endpoint: asyncio.run(endpoint(
+             request=_build_request('/api/v1/dev/diagnostics', method='GET', client=('127.0.0.1', 12345))))),
         ('GET', '/api/v1/ready',
          lambda endpoint: asyncio.run(endpoint())),
+        ('POST', '/api/v1/ui_connected',
+         lambda endpoint: asyncio.run(endpoint(request=_build_request('/api/v1/ui_connected')))),
         ('POST', '/api/v1/confirm_shutdown',
          lambda endpoint: asyncio.run(endpoint(request=_build_request('/api/v1/confirm_shutdown'), allow_shutdown=False))),
         ('GET', '/api/v1/get_config_files',
-         lambda endpoint: asyncio.run(endpoint())),
+         lambda endpoint: asyncio.run(endpoint(
+             request=_build_request('/api/v1/get_config_files', method='GET'),
+         ))),
         ('POST', '/api/v1/get_config_settings',
-         lambda endpoint: asyncio.run(endpoint(json_file_dict=None))),
+         lambda endpoint: asyncio.run(endpoint(
+             request=_build_request('/api/v1/get_config_settings'),
+             json_file_dict=None,
+         ))),
         ('POST', '/api/v1/save_config_settings',
          lambda endpoint: asyncio.run(endpoint(
              request=_build_request('/api/v1/save_config_settings'),
              json_dict={'configuration': server_with_package._settings.copy()},
          ))),
         ('GET', '/api/v1/packages/behaviors',
-         lambda endpoint: asyncio.run(endpoint())),
+         lambda endpoint: asyncio.run(endpoint(
+             request=_build_request('/api/v1/packages/behaviors', method='GET'),
+         ))),
         ('GET', '/api/v1/io/behaviors/{package_name}',
-         lambda endpoint: asyncio.run(endpoint(package_name='test_pkg'))),
+         lambda endpoint: asyncio.run(endpoint(
+             package_name='test_pkg',
+             request=_build_request('/api/v1/io/behaviors/test_pkg', method='GET'),
+         ))),
         ('GET', '/api/v1/packages/states',
-         lambda endpoint: asyncio.run(endpoint())),
+         lambda endpoint: asyncio.run(endpoint(
+             request=_build_request('/api/v1/packages/states', method='GET'),
+         ))),
         ('GET', '/api/v1/io/states/{package_name}',
-         lambda endpoint: asyncio.run(endpoint(package_name='test_pkg'))),
+         lambda endpoint: asyncio.run(endpoint(
+             package_name='test_pkg',
+             request=_build_request('/api/v1/io/states/test_pkg', method='GET'),
+         ))),
         ('POST', '/api/v1/open_file_editor',
          lambda endpoint: asyncio.run(endpoint(
              request=_build_request('/api/v1/open_file_editor'),
@@ -142,25 +181,13 @@ def test_api_http_routes_return_normalized_envelopes(server_with_package, monkey
          ))),
         ('POST', '/api/v1/view_file_source',
          lambda endpoint: asyncio.run(endpoint(
+             request=_build_request('/api/v1/view_file_source'),
              json_file_dict=FileRequest(package='test_pkg', file='inside.py'),
          ))),
         ('POST', '/api/v1/statemachine/auto_layout',
          lambda endpoint: asyncio.run(endpoint(
-             json_layout_dict=AutoLayoutRequest(
-                 container_name='root',
-                 initial_state_name='Alpha',
-                 states=[
-                     LayoutNode(state_name='Alpha', state_class='AlphaState', position_x=0, position_y=0),
-                     LayoutNode(state_name='Beta', state_class='BetaState', position_x=0, position_y=120),
-                 ],
-                 outcomes=[
-                     LayoutNode(state_name='finished', state_class=':OUTCOME', position_x=200, position_y=0),
-                 ],
-                 transitions=[
-                     LayoutTransition(from_state_name='Alpha', to_state_name='Beta', outcome='done'),
-                     LayoutTransition(from_state_name='Beta', to_state_name='finished', outcome='done'),
-                 ],
-             ),
+             request=_build_request('/api/v1/statemachine/auto_layout'),
+             json_layout_dict=_auto_layout_request(),
          ))),
         ('POST', '/api/v1/behavior/code_generator',
          lambda endpoint: asyncio.run(endpoint(
@@ -178,7 +205,7 @@ def test_api_http_routes_return_normalized_envelopes(server_with_package, monkey
         ('POST', '/api/v1/behavior/manifest_generator',
          lambda endpoint: asyncio.run(endpoint(
              request=_build_request('/api/v1/behavior/manifest_generator'),
-             json_manifest_dict={'behavior': {}, 'behavior_names': [], 'ws': '    '},
+             json_manifest_dict=ManifestGeneratorRequest(behavior={}, behavior_names=[]),
          ))),
     ]
 
@@ -186,6 +213,33 @@ def test_api_http_routes_return_normalized_envelopes(server_with_package, monkey
         endpoint = _find_endpoint(server_with_package._app, path, method)
         result = _decode_response(invoke(endpoint))
         _assert_envelope(result)
+
+
+def test_ready_endpoint_does_not_mutate_shutdown_state(server_with_package):
+    """Readiness checks should not force the UI shutdown-confirmation state."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/ready', 'GET')
+    server_with_package._shutdown_allowed = True
+
+    result = _decode_response(asyncio.run(endpoint()))
+
+    assert result['success'] is True
+    assert server_with_package._shutdown_allowed is True
+
+
+def test_auto_layout_endpoint_records_timing(server_with_package):
+    """Auto-layout endpoint should appear in development timing diagnostics."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/statemachine/auto_layout', 'POST')
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/statemachine/auto_layout'),
+        json_layout_dict=_auto_layout_request(),
+    )))
+
+    snapshot = server_with_package.get_diagnostics_snapshot()
+
+    assert result['success'] is True
+    assert snapshot['categories']['auto_layout']['count'] == 1
+    assert snapshot['counts']['auto_layout:/api/v1/statemachine/auto_layout:ok'] == 1
 
 
 def test_library_endpoints_return_items_and_errors(server_with_package, monkeypatch):
@@ -200,14 +254,20 @@ def test_library_endpoints_return_items_and_errors(server_with_package, monkeypa
     )
 
     states_endpoint = _find_endpoint(server_with_package._app, '/api/v1/io/states/{package_name}', 'GET')
-    states_result = _decode_response(asyncio.run(states_endpoint(package_name='test_pkg')))
+    states_result = _decode_response(asyncio.run(states_endpoint(
+        package_name='test_pkg',
+        request=_build_request('/api/v1/io/states/test_pkg', method='GET'),
+    )))
 
     assert states_result['success'] is True
     assert states_result['data']['items'] == [{'state_class': 'DemoState'}]
     assert states_result['data']['errors'] == []
 
     behaviors_endpoint = _find_endpoint(server_with_package._app, '/api/v1/io/behaviors/{package_name}', 'GET')
-    behaviors_result = _decode_response(asyncio.run(behaviors_endpoint(package_name='test_pkg')))
+    behaviors_result = _decode_response(asyncio.run(behaviors_endpoint(
+        package_name='test_pkg',
+        request=_build_request('/api/v1/io/behaviors/test_pkg', method='GET'),
+    )))
 
     assert behaviors_result['success'] is True
     assert behaviors_result['data']['items'] == [{'name': 'DemoBehavior'}]

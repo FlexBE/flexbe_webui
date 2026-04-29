@@ -17,11 +17,14 @@
 import argparse
 import asyncio
 import json
+import os
 
+from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 from flexbe_webui.io.base_models import FileRequest, OpenFileEditorRequest
 from flexbe_webui.ros import PackageData
+from flexbe_webui.webui_node import WebuiNode
 from flexbe_webui.webui_server import WebuiServer
 
 
@@ -31,6 +34,7 @@ import pytest
 
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.routing import WebSocketRoute
 
 
 def _find_endpoint(app, path, method):
@@ -41,6 +45,14 @@ def _find_endpoint(app, path, method):
         if route.path == path and method in route.methods:
             return route.endpoint
     raise AssertionError(f'No endpoint for {method} {path}')
+
+
+def _find_websocket_endpoint(app, path):
+    """Return websocket endpoint function for a path."""
+    for route in app.routes:
+        if isinstance(route, WebSocketRoute) and route.path == path:
+            return route.endpoint
+    raise AssertionError(f'No websocket endpoint for {path}')
 
 
 def _build_request(path, method='POST', headers=None):
@@ -71,7 +83,39 @@ def _decode_response(result):
     return result
 
 
-async def _request_app_json(app, path, method='POST', json_body=None, headers=None):
+class _FakeWebsocket:
+    """Minimal websocket object for websocket authorization tests."""
+
+    def __init__(self, headers=None, query_params=None):
+        """Initialize headers/query params and capture close calls."""
+        self.headers = headers or {}
+        self.query_params = query_params or {}
+        self.closed_code = None
+        self.closed_reason = None
+
+    async def close(self, code=1000, reason=None):
+        """Capture close data from authorize_websocket."""
+        self.closed_code = code
+        self.closed_reason = reason
+
+
+class _ShutdownWebsocket:
+    """Minimal active shutdown websocket for broadcast tests."""
+
+    def __init__(self, fail=False):
+        """Initialize sent message capture and optional failure mode."""
+        self.fail = fail
+        self.messages = []
+
+    async def send_text(self, message):
+        """Capture or reject a shutdown message."""
+        if self.fail:
+            raise RuntimeError('stale websocket')
+        self.messages.append(message)
+
+
+async def _request_app_json(app, path, method='POST', json_body=None, headers=None,
+                            client=('testclient', 12345)):
     """Execute an ASGI request directly against the app and decode the JSON response."""
     body = b''
     header_items = []
@@ -93,7 +137,7 @@ async def _request_app_json(app, path, method='POST', json_body=None, headers=No
         'raw_path': path.encode('utf-8'),
         'query_string': b'',
         'headers': header_items,
-        'client': ('testclient', 12345),
+        'client': client,
         'server': ('localhost', 8000),
     }
 
@@ -172,11 +216,28 @@ def test_view_file_source_enforces_package_path_boundary(server_with_package):
     """Reject file paths that escape the package Python root."""
     endpoint = _find_endpoint(server_with_package._app, '/api/v1/view_file_source', 'POST')
 
-    result = _decode_response(asyncio.run(endpoint(json_file_dict=FileRequest(package='test_pkg', file='../outside.py'))))
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/view_file_source'),
+        json_file_dict=FileRequest(package='test_pkg', file='../outside.py'),
+    )))
 
     assert result['success'] is False
     assert result['data']['text']
     assert 'outside package Python path' in result['error']
+
+
+def test_view_file_source_returns_package_relative_path(server_with_package):
+    """Source viewer responses should not expose absolute server paths."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/view_file_source', 'POST')
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/view_file_source'),
+        json_file_dict=FileRequest(package='test_pkg', file='inside.py'),
+    )))
+
+    assert result['success'] is True
+    assert result['data']['file_path'] == 'inside.py'
+    assert not os.path.isabs(result['data']['file_path'])
 
 
 def test_open_file_editor_enforces_package_path_boundary(server_with_package):
@@ -219,10 +280,276 @@ def test_view_file_source_handles_malformed_payload(server_with_package):
         FileRequest.parse_obj([])
 
 
+def test_view_file_source_requires_token_when_auth_enabled(token_protected_server):
+    """Full source viewing should be protected by token auth when enabled."""
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/view_file_source',
+        json_body={'package': 'test_pkg', 'file': 'inside.py'},
+    ))
+
+    assert status == 401
+    assert result['success'] is False
+    assert result['status'] == 401
+    assert result['error'] == 'Unauthorized'
+
+
 def test_open_file_editor_handles_malformed_payload(server_with_package):
     """Malformed payloads are rejected by request-model validation."""
     with pytest.raises(ValidationError):
         OpenFileEditorRequest.parse_obj([])
+
+
+def test_get_config_settings_reload_requires_token(token_protected_server, tmp_path):
+    """Configuration reloads should be protected when token auth is enabled."""
+    config_path = tmp_path / 'alternate.json'
+    config_path.write_text(json.dumps({'pkg_cache_enabled': False}), encoding='utf-8')
+
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/get_config_settings',
+        json_body={'folder_path': str(tmp_path), 'file_name': config_path.name},
+    ))
+
+    assert status == 401
+    assert result['success'] is False
+    assert result['status'] == 401
+    assert result['error'] == 'Unauthorized'
+
+
+def test_ui_connected_requires_token_when_auth_enabled(token_protected_server):
+    """UI connection state should not be mutated by unauthenticated callers."""
+    token_protected_server._shutdown_allowed = True
+
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/ui_connected',
+        json_body={},
+    ))
+
+    assert status == 401
+    assert result['success'] is False
+    assert token_protected_server._shutdown_allowed is True
+
+
+def test_ui_connected_marks_shutdown_confirmation_required(token_protected_server):
+    """Authenticated UI connections should require shutdown confirmation."""
+    token_protected_server._shutdown_allowed = True
+
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/ui_connected',
+        json_body={},
+        headers={'x-api-token': 'secret-token'},
+    ))
+
+    assert status == 200
+    assert result['success'] is True
+    assert result['data']['ok'] is True
+    assert token_protected_server._shutdown_allowed is False
+
+
+def test_ui_connected_returns_command_failure_for_runtime_error(server_with_package):
+    """UI connection endpoint should use a command envelope for non-auth runtime errors."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/ui_connected', 'POST')
+
+    def fail_success():
+        raise RuntimeError('connection bookkeeping failed')
+
+    server_with_package.api_command_success = fail_success
+
+    result = _decode_response(asyncio.run(endpoint(request=_build_request('/api/v1/ui_connected'))))
+
+    assert result['success'] is False
+    assert result['data']['ok'] is False
+    assert 'connection bookkeeping failed' in result['error']
+
+
+def test_get_config_settings_current_requires_token(token_protected_server):
+    """The active configuration should not be exposed without auth when tokens are enabled."""
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/get_config_settings',
+        json_body=None,
+    ))
+
+    assert status == 401
+    assert result['success'] is False
+    assert result['status'] == 401
+    assert result['error'] == 'Unauthorized'
+
+
+def test_get_config_settings_reload_rejects_paths_outside_config_folder(token_protected_server, tmp_path):
+    """Authenticated configuration reloads should stay inside the configured folder."""
+    outside_path = tmp_path.parent / f'{tmp_path.name}_outside.json'
+    outside_path.write_text(json.dumps({'pkg_cache_enabled': False}), encoding='utf-8')
+
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/get_config_settings',
+        json_body={'folder_path': str(outside_path.parent), 'file_name': outside_path.name},
+        headers={'x-api-token': 'secret-token'},
+    ))
+
+    assert status == 200
+    assert result['success'] is False
+    assert 'outside the config folder' in result['error']
+
+
+@pytest.mark.parametrize(
+    'path',
+    [
+        '/api/v1/get_config_files',
+        '/api/v1/packages/behaviors',
+        '/api/v1/packages/states',
+    ],
+)
+def test_metadata_read_routes_require_token_when_auth_enabled(token_protected_server, path):
+    """Read endpoints that reveal local paths/settings should require token auth."""
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        path,
+        method='GET',
+    ))
+
+    assert status == 401
+    assert result['success'] is False
+    assert result['status'] == 401
+    assert result['error'] == 'Unauthorized'
+
+
+def test_io_behaviors_requires_token_before_parsing(token_protected_server, monkeypatch):
+    """Behavior-library parsing should not be reachable without auth when tokens are enabled."""
+    def fail_parse_behavior_folder(*_args, **_kwargs):
+        raise AssertionError('parse_behavior_folder should not be called')
+
+    monkeypatch.setattr('flexbe_webui.webui_server.parse_behavior_folder', fail_parse_behavior_folder)
+
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/io/behaviors/test_pkg',
+        method='GET',
+    ))
+
+    assert status == 401
+    assert result['success'] is False
+    assert result['status'] == 401
+    assert result['error'] == 'Unauthorized'
+
+
+def test_packages_behaviors_returns_failure_envelope_on_query_error(server_with_package, monkeypatch):
+    """Behavior package listing should not fall through to an unhandled 500."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/packages/behaviors', 'GET')
+
+    def fail_has_behaviors(_package):
+        raise ValueError('behavior package scan failed')
+
+    monkeypatch.setattr('flexbe_webui.webui_server.has_behaviors', fail_has_behaviors)
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/packages/behaviors', method='GET'),
+    )))
+
+    assert result['success'] is False
+    assert 'behavior package scan failed' in result['error']
+
+
+def test_packages_states_returns_failure_envelope_on_query_error(server_with_package, monkeypatch):
+    """State package listing should not fall through to an unhandled 500."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/packages/states', 'GET')
+
+    def fail_has_states(_package):
+        raise ValueError('state package scan failed')
+
+    monkeypatch.setattr('flexbe_webui.webui_server.has_states', fail_has_states)
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/packages/states', method='GET'),
+    )))
+
+    assert result['success'] is False
+    assert 'state package scan failed' in result['error']
+
+
+def test_websocket_auth_rejects_missing_token(token_protected_server):
+    """Token-protected websocket routes should reject unauthenticated handshakes."""
+    websocket = _FakeWebsocket()
+
+    authorized = asyncio.run(token_protected_server.authorize_websocket(websocket))
+
+    assert authorized is False
+    assert websocket.closed_code == 1008
+    assert websocket.closed_reason == 'Unauthorized'
+
+
+def test_websocket_auth_accepts_bearer_token(token_protected_server):
+    """Websocket auth should accept tokens supplied by request interceptors."""
+    websocket = _FakeWebsocket(headers={'authorization': 'Bearer secret-token'})
+
+    authorized = asyncio.run(token_protected_server.authorize_websocket(websocket))
+
+    assert authorized is True
+    assert websocket.closed_code is None
+
+
+def test_websocket_auth_accepts_query_token(token_protected_server):
+    """Websocket auth should support browser clients that cannot set custom headers."""
+    websocket = _FakeWebsocket(query_params={'token': 'secret-token'})
+
+    authorized = asyncio.run(token_protected_server.authorize_websocket(websocket))
+
+    assert authorized is True
+    assert websocket.closed_code is None
+
+
+def test_shutdown_websocket_requires_token_when_auth_enabled(token_protected_server):
+    """Shutdown notification websocket should be protected with token auth."""
+    endpoint = _find_websocket_endpoint(token_protected_server._app, '/ws/check_shutdown')
+    websocket = _FakeWebsocket()
+
+    asyncio.run(endpoint(websocket))
+
+    assert websocket.closed_code == 1008
+    assert websocket.closed_reason == 'Unauthorized'
+    assert token_protected_server._active_connections == []
+
+
+def test_confirm_shutdown_continues_past_stale_websocket(server_with_package):
+    """A stale shutdown websocket should not block delivery to remaining clients."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/confirm_shutdown', 'POST')
+    stale = _ShutdownWebsocket(fail=True)
+    active = _ShutdownWebsocket()
+    server_with_package._active_connections = [stale, active]
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/confirm_shutdown'),
+        allow_shutdown=True,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['confirm'] is True
+    assert active.messages == ['Shutdown is allowed.']
+    assert stale not in server_with_package._active_connections
+    assert active in server_with_package._active_connections
+
+
+def test_io_states_requires_token_before_parsing(token_protected_server, monkeypatch):
+    """State-library parsing should not be reachable without auth when tokens are enabled."""
+    def fail_parse_state_folder(*_args, **_kwargs):
+        raise AssertionError('parse_state_folder should not be called')
+
+    monkeypatch.setattr('flexbe_webui.webui_server.parse_state_folder', fail_parse_state_folder)
+
+    status, result = asyncio.run(_request_app_json(
+        token_protected_server._app,
+        '/api/v1/io/states/test_pkg',
+        method='GET',
+    ))
+
+    assert status == 401
+    assert result['success'] is False
+    assert result['status'] == 401
+    assert result['error'] == 'Unauthorized'
 
 
 @pytest.mark.parametrize(
@@ -230,6 +557,15 @@ def test_open_file_editor_handles_malformed_payload(server_with_package):
     [
         ('/api/v1/save_config_settings', {'configuration': {'pkg_cache_enabled': True}}),
         ('/api/v1/open_file_editor', {'package': 'test_pkg', 'file': 'inside.py', 'line': '1'}),
+        (
+            '/api/v1/statemachine/auto_layout',
+            {
+                'container_name': 'root',
+                'states': [],
+                'outcomes': [],
+                'transitions': [],
+            },
+        ),
         (
             '/api/v1/behavior/code_generator',
             {
@@ -253,3 +589,129 @@ def test_protected_mutation_routes_return_normalized_unauthorized_envelope(token
     assert result['status'] == 401
     assert result['error'] == 'Unauthorized'
     assert 'data' in result
+
+
+class _FakeWsBridge:
+    """Minimal websocket-bridge stub for loopback-guard diagnostics tests."""
+
+    def get_diagnostics_snapshot(self):
+        """Return empty diagnostics snapshot."""
+        return {}
+
+
+@pytest.fixture
+def node_stub_with_server(tmp_path):
+    """Create a WebuiNode stub with a real WebuiServer wired in for loopback-guard tests."""
+    args = argparse.Namespace(
+        config_folder=str(tmp_path),
+        config_file='',
+        clear_cache=True,
+    )
+    server = WebuiServer(args)
+
+    node = WebuiNode.__new__(WebuiNode)
+    node._action_clients = {}
+    node._pub_data = {}
+    node._sub_data = {}
+    node._running = True
+    node._ws_bridge = _FakeWsBridge()
+    node._server = server
+    return node
+
+
+def test_node_diagnostics_rejects_non_loopback(node_stub_with_server):
+    """GET /api/v1/dev/diagnostics/node must reject non-loopback clients with 403."""
+    app = FastAPI()
+    node_stub_with_server.register(app)
+
+    status, result = asyncio.run(
+        _request_app_json(app, '/api/v1/dev/diagnostics/node', method='GET',
+                          client=('10.0.0.1', 12345))
+    )
+
+    assert status == 403
+
+
+def test_node_diagnostics_allows_loopback(node_stub_with_server):
+    """GET /api/v1/dev/diagnostics/node succeeds from a loopback address."""
+    app = FastAPI()
+    node_stub_with_server.register(app)
+
+    status, result = asyncio.run(
+        _request_app_json(app, '/api/v1/dev/diagnostics/node', method='GET',
+                          client=('127.0.0.1', 12345))
+    )
+
+    assert status == 200
+    assert result['success'] is True
+
+
+def test_node_diagnostics_rejects_unresolved_localhost(node_stub_with_server):
+    """Loopback guard accepts resolved loopback addresses, not hostnames."""
+    app = FastAPI()
+    node_stub_with_server.register(app)
+
+    status, result = asyncio.run(
+        _request_app_json(app, '/api/v1/dev/diagnostics/node', method='GET',
+                          client=('localhost', 12345))
+    )
+
+    assert status == 403
+
+
+def test_action_schema_import_failure_returns_http_400(node_stub_with_server, monkeypatch):
+    """Action schema lookup failures should use the intended HTTP 400 status."""
+    app = FastAPI()
+    node_stub_with_server.register(app)
+    monkeypatch.setattr(
+        node_stub_with_server,
+        '_load_action_class',
+        lambda _action_type: (_ for _ in ()).throw(ImportError('missing action')),
+    )
+
+    status, result = asyncio.run(
+        _request_app_json(
+            app,
+            '/api/v1/action_schema',
+            json_body={'action_type': 'missing_pkg/Demo'},
+        )
+    )
+
+    assert status == 400
+    assert result['success'] is False
+    assert result['status'] == 400
+    assert result['error'] == 'missing action'
+
+
+@pytest.mark.parametrize('path', ['/api/v1/ros/namespace', '/api/v1/ros/params/demo'])
+def test_ros_metadata_routes_require_token_when_auth_enabled(node_stub_with_server, path):
+    """ROS metadata routes should not bypass token auth."""
+    node_stub_with_server._server._api_token = 'secret-token'
+    app = node_stub_with_server._server._app
+    node_stub_with_server.register(app)
+
+    status, result = asyncio.run(_request_app_json(app, path, method='GET'))
+
+    assert status == 401
+    assert result['success'] is False
+    assert result['status'] == 401
+    assert result['error'] == 'Unauthorized'
+
+
+def test_ros_namespace_allows_authenticated_request(node_stub_with_server):
+    """Authenticated ROS namespace requests should continue to work."""
+    node_stub_with_server._server._api_token = 'secret-token'
+    node_stub_with_server.get_namespace = lambda: '/demo'
+    app = node_stub_with_server._server._app
+    node_stub_with_server.register(app)
+
+    status, result = asyncio.run(_request_app_json(
+        app,
+        '/api/v1/ros/namespace',
+        method='GET',
+        headers={'x-api-token': 'secret-token'},
+    ))
+
+    assert status == 200
+    assert result['success'] is True
+    assert result['data'] == '/demo'

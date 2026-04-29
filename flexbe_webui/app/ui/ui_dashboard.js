@@ -269,18 +269,20 @@ UI.Dashboard = new (function() {
 	// =======================
 	this.removePrivateVariable = function(var_key) {
 		let entry = Behavior.getPrivateVariables().findElement(function (el) { return el.key == var_key; });
-		let childRow = document.getElementById("db_field_variable_table_row_" + var_key.replace(' ', '_'));
+		let childRow = document.getElementById("db_field_variable_table_row_" + var_key.replace(/ /g, '_'));
 		if (entry == undefined || childRow == undefined) {
 			console.log(`\x1b[93mPrivateVariable.removePrivateVariable - unknown entry (${entry}) or child row (${childRow}) for '${var_key}'\x1b[0m`);
 			return false;
 		}
 
+		const key = var_key;
+		const value = entry.value;
 		Behavior.getPrivateVariables().remove(entry);
 
 		// clear using exact match
-		that.clearChildElements("db_field_variable_table_remove_button_" + var_key.replace(' ', '_'));
-		that.clearChildElements("db_field_variable_table_key_input_" + var_key.replace(' ', '_'));
-		that.clearChildElements("db_field_variable_table_value_input_" + var_key.replace(' ', '_'));
+		that.clearChildElements("db_field_variable_table_remove_button_" + var_key.replace(/ /g, '_'));
+		that.clearChildElements("db_field_variable_table_key_input_" + var_key.replace(/ /g, '_'));
+		that.clearChildElements("db_field_variable_table_value_input_" + var_key.replace(/ /g, '_'));
 		document.getElementById("db_variable_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_variable_key_add").focus({ preventScroll: true });
@@ -299,7 +301,7 @@ UI.Dashboard = new (function() {
 			return false;
 		}
 
-		const old_id = old_key.replace(' ', '_');
+		const old_id = old_key.replace(/ /g, '_');
 
 		let privateVars = Behavior.getPrivateVariables();
 		let entry = privateVars.findElement((el) => { return el.key == old_key; });
@@ -330,7 +332,7 @@ UI.Dashboard = new (function() {
 			return;
 		}
 
-		const new_id = new_key.replace(' ', '_');
+		const new_id = new_key.replace(/ /g, '_');
 
 		// new key is acceptable
 		entry.key = new_key;
@@ -364,7 +366,8 @@ UI.Dashboard = new (function() {
 			return false;
 		}
 		let element = document.getElementById('db_field_variable_table_value_input_' + key);
-		element.setAttribute("old_value", entry.value);
+		const old_value = entry.value;
+		element.setAttribute("old_value", old_value);
 		element.style.backgroundColor = Checking.setColorByEntryType(new_value);
 		element.value = new_value;
 		entry.value = new_value;
@@ -384,7 +387,7 @@ UI.Dashboard = new (function() {
 			return false;
 		}
 
-		const new_id = new_key.replace(' ', '_');
+		const new_id = new_key.replace(/ /g, '_');
 
 		let key_input_field = document.createElement("input");
 		key_input_field.setAttribute("id", "db_field_variable_table_key_input_" + new_id);
@@ -444,7 +447,7 @@ UI.Dashboard = new (function() {
 
 				const onEnterRemove = function(event) {
 					if (event.key === 'Enter' || event.key === ' ') {
-						removeButtonHandler(event);
+						removeHandler(event);
 					}
 				}
 		remove_button.addEventListener("keydown", onEnterRemove);
@@ -494,17 +497,19 @@ UI.Dashboard = new (function() {
 	this.removeDefaultUserdata = function(var_key) {
 		var_key = var_key.trim();
 		let element = Behavior.getDefaultUserdata().findElement(function (element) { return element.key == var_key; });
-		let childRow = document.getElementById("db_field_userdata_table_row_"+var_key.replace(' ', '_'));
+		let childRow = document.getElementById("db_field_userdata_table_row_"+var_key.replace(/ /g, '_'));
 		if (element == undefined || childRow == undefined) {
 			console.log(`\x1b[93m removeUserdata - unknown entry (${element}) or `
 						+`child row (${childRow}) for '${var_key}'\x1b[0m`);
 			return;
 		}
 
+		const key = var_key;
+		const value = element.value;
 		Behavior.getDefaultUserdata().remove(element);
-		that.clearChildElements("db_field_userdata_table_remove_button_"+var_key.replace(' ', '_'));
-		that.clearChildElements("db_field_userdata_table_key_input_"+var_key.replace(' ', '_'));
-		that.clearChildElements("db_field_userdata_table_value_input_"+var_key.replace(' ', '_'));
+		that.clearChildElements("db_field_userdata_table_remove_button_"+var_key.replace(/ /g, '_'));
+		that.clearChildElements("db_field_userdata_table_key_input_"+var_key.replace(/ /g, '_'));
+		that.clearChildElements("db_field_userdata_table_value_input_"+var_key.replace(/ /g, '_'));
 		document.getElementById("db_userdata_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_userdata_key_add").focus({ preventScroll: true });
@@ -525,7 +530,7 @@ UI.Dashboard = new (function() {
 		}
 		let userData = Behavior.getDefaultUserdata();
 		let entry = userData.findElement(function (el) { return el.key == old_key; });
-		let keyElement = document.getElementById('db_field_userdata_table_key_input_' + old_key);
+		let keyElement = document.getElementById('db_field_userdata_table_key_input_' + old_key.replace(/ /g, '_'));
 		if (entry == undefined || keyElement == undefined) {
 			console.log(`\x1b[91mFailed to find matching entry for '${old_key}' (ignore '${new_key}') - ${entry} ${keyElement}\x1b[0m`);
 			if (keyElement) {
@@ -552,7 +557,7 @@ UI.Dashboard = new (function() {
 			// allow designer to override this warning
 		}
 
-		const new_id = new_key.replace(' ', '_');
+		const new_id = new_key.replace(/ /g, '_');
 
 		// new key is acceptable
 		entry.key = new_key;
@@ -563,7 +568,7 @@ UI.Dashboard = new (function() {
 		keyElement.style.backgroundColor = "#fff"; // clear error
 
 		// Update the other element ids with new key value
-		const old_id = old_key.replace(' ', '_');
+		const old_id = old_key.replace(/ /g, '_');
 
 		let userdataRow = document.getElementById("db_field_userdata_table_row_" + old_id);
 		userdataRow.id = "db_field_userdata_table_row_" + new_id;
@@ -613,7 +618,7 @@ UI.Dashboard = new (function() {
 			T.logError(`\xb1[93mAdded duplicate key '${new_key}' to userdata! (fix bad code)\x1b[0m`);
 		}
 
-		const new_id = new_key.replace(' ', '_');
+		const new_id = new_key.replace(/ /g, '_');
 
 		let key_input_field = document.createElement("input");
 		key_input_field.setAttribute("id", "db_field_userdata_table_key_input_"+new_id);
@@ -712,7 +717,7 @@ UI.Dashboard = new (function() {
 	// ===================
 	this.removeBehaviorParameter = function(param_name) {
 		let entry = Behavior.getBehaviorParameterElement(param_name);
-		let childRow = document.getElementById("db_field_parameter_table_row_"+param_name.replace(' ', '_'));
+		let childRow = document.getElementById("db_field_parameter_table_row_"+param_name.replace(/ /g, '_'));
 		if (entry == undefined || childRow == undefined) {
 			console.log(`\x1b[93m removeBehaviorParameter - unknown entry (${entry}) or `
 						+`child row (${childRow}) for '${param_name}'\x1b[0m`);
@@ -720,10 +725,10 @@ UI.Dashboard = new (function() {
 		}
 
 		Behavior.removeBehaviorParameter(param_name);
-		that.clearChildElements("db_field_parameter_table_type_input_" + param_name.replace(' ', '_'));
-		that.clearChildElements("db_field_parameter_table_name_input_" + param_name.replace(' ', '_'));
-		that.clearChildElements("db_field_parameter_table_edit_button_" + param_name.replace(' ', '_'));
-		that.clearChildElements("db_field_parameter_table_remove_button_" + param_name.replace(' ', '_'));
+		that.clearChildElements("db_field_parameter_table_type_input_" + param_name.replace(/ /g, '_'));
+		that.clearChildElements("db_field_parameter_table_name_input_" + param_name.replace(/ /g, '_'));
+		that.clearChildElements("db_field_parameter_table_edit_button_" + param_name.replace(/ /g, '_'));
+		that.clearChildElements("db_field_parameter_table_remove_button_" + param_name.replace(/ /g, '_'));
 
 		document.getElementById("db_parameter_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
@@ -745,7 +750,7 @@ UI.Dashboard = new (function() {
 		}
 
 		let entry = Behavior.getBehaviorParameterElement(old_name);
-		let keyElement = document.getElementById('db_field_parameter_table_name_input_' + old_name.replace(' ', '_'));
+		let keyElement = document.getElementById('db_field_parameter_table_name_input_' + old_name.replace(/ /g, '_'));
 		if (entry == undefined || keyElement == undefined) {
 			console.log(`\x1b[93m changeBehaviorParameterName - unknown entry (${entry}) or key element (${keyElement}) for '${old_name}'\x1b[0m`);
 			if (keyElement != undefined) {
@@ -784,7 +789,7 @@ UI.Dashboard = new (function() {
 		if (entry.label == old_name) entry.label = new_name;
 		if (entry.hint == "Sets the " + old_name) entry.hint = "Sets the " + new_name;
 
-		const old_id = old_name.replace(' ', '_');
+		const old_id = old_name.replace(/ /g, '_');
 		let typeEl = document.getElementById("db_field_parameter_table_type_input_" + old_id);
 		let editEl = document.getElementById("db_field_parameter_table_edit_button_" + old_id);
 		let removeEl = document.getElementById("db_field_parameter_table_remove_button_" + old_id);
@@ -794,7 +799,7 @@ UI.Dashboard = new (function() {
 		editEl.setAttribute("name", new_name);
 		removeEl.setAttribute("name", new_name);
 
-		const new_id = new_name.replace(' ', '_');
+		const new_id = new_name.replace(/ /g, '_');
 		keyElement.id = "db_field_parameter_table_name_input_" + new_id;
 		typeEl.id     = "db_field_parameter_table_type_input_" + new_id;
 		editEl.id = "db_field_parameter_table_edit_button_" + new_id;
@@ -820,7 +825,7 @@ UI.Dashboard = new (function() {
 		}
 
 		let edit_button = document.createElement("img");
-		edit_button.setAttribute("id", "db_field_parameter_table_edit_button_" + new_name.replace(' ', '_'));
+		edit_button.setAttribute("id", "db_field_parameter_table_edit_button_" + new_name.replace(/ /g, '_'));
 		edit_button.setAttribute("src", "img/pencil.png");
 		edit_button.setAttribute("title", "Edit this parameter");
 		edit_button.setAttribute("class", "img_button");
@@ -847,7 +852,7 @@ UI.Dashboard = new (function() {
 		listeners_to_cleanup.push({'element': edit_button, 'listener_type': 'keydown', 'handler': onEnterEdit});
 
 		let remove_button = document.createElement("img");
-		remove_button.setAttribute("id", "db_field_parameter_table_remove_button_" + new_name.replace(' ', '_'));
+		remove_button.setAttribute("id", "db_field_parameter_table_remove_button_" + new_name.replace(/ /g, '_'));
 		remove_button.setAttribute("src", "img/table_row_delete.png");
 		remove_button.setAttribute("title", "Remove this parameter");
 		remove_button.setAttribute("class", "img_button");
@@ -874,7 +879,7 @@ UI.Dashboard = new (function() {
 
 		let type_input_field = document.createElement("select");
 		populateParameterTypeSelect(type_input_field, new_type);
-		type_input_field.setAttribute("id", "db_field_parameter_table_type_input_" + new_name.replace(' ', '_'));
+		type_input_field.setAttribute("id", "db_field_parameter_table_type_input_" + new_name.replace(/ /g, '_'));
 		type_input_field.setAttribute("name", new_name);
 		type_input_field.setAttribute("class", "inline_text_edit");
 		const typeBlurHandler = function(event) {
@@ -901,7 +906,7 @@ UI.Dashboard = new (function() {
 
 
 		let name_input_field = document.createElement("input");
-		name_input_field.setAttribute("id", "db_field_parameter_table_name_input_"+new_name.replace(' ', '_'));
+		name_input_field.setAttribute("id", "db_field_parameter_table_name_input_"+new_name.replace(/ /g, '_'));
 		name_input_field.setAttribute("value", new_name);
 		name_input_field.setAttribute("name", new_name);
 		name_input_field.setAttribute("class", "inline_text_edit");
@@ -937,7 +942,7 @@ UI.Dashboard = new (function() {
 			additional: daa.additional
 		});
 		let tr = document.createElement("tr");
-		tr.id = "db_field_parameter_table_row_" + new_name.replace(' ', '_');
+		tr.id = "db_field_parameter_table_row_" + new_name.replace(/ /g, '_');
 		tr.appendChild(td_type_input_field);
 		tr.appendChild(td_name_input_field); // adapt changes on backside name change event
 		tr.appendChild(td_edit_button);
@@ -3042,7 +3047,7 @@ UI.Dashboard = new (function() {
 		let index = Behavior.getManualCodeImport().findIndex(function (element) {
 			return element.trim() == import_value.trim(); });
 
-		let childRow = document.getElementById("db_field_manual_import_table_row_"+import_value.replace(' ', '_'));
+		let childRow = document.getElementById("db_field_manual_import_table_row_"+import_value.replace(/ /g, '_'));
 		if (index == -1 || childRow == undefined) {
 			console.log(`\x1b[93m removeManualImport - unknown entry (${index}) or `
 						+`child row (${childRow}) for '${import_value}'\x1b[0m`);
@@ -3050,8 +3055,8 @@ UI.Dashboard = new (function() {
 		}
 
 		Behavior.getManualCodeImport().splice(index, 1);
-		that.clearChildElements("db_manual_import_table_remove_button_"+import_value.replace(' ', '_'));
-		that.clearChildElements("db_manual_import_table_input_" + import_value.replace(' ', '_'));
+		that.clearChildElements("db_manual_import_table_remove_button_"+import_value.replace(/ /g, '_'));
+		that.clearChildElements("db_manual_import_table_input_" + import_value.replace(/ /g, '_'));
 		document.getElementById("db_manual_import_table").removeChild(childRow);
 		tab_targets = that.updateTabTargets("dashboard");
 		document.getElementById("input_db_manual_import_value_add").focus({ preventScroll: true });
@@ -3067,8 +3072,8 @@ UI.Dashboard = new (function() {
 
 		new_value = new_value.trim();
 		old_value = old_value.trim();
-		const old_id = old_value.replace(' ', '_');
-		const new_id = new_value.replace(' ', '_');
+		const old_id = old_value.replace(/ /g, '_');
+		const new_id = new_value.replace(/ /g, '_');
 
 		if (new_value == old_value) {
 			return false;
@@ -3130,7 +3135,7 @@ UI.Dashboard = new (function() {
 			return f;
 		}
 
-		const new_id = new_value.replace(' ', '_');
+		const new_id = new_value.replace(/ /g, '_');
 
 		let value_input_field = document.createElement("input");
 		value_input_field.setAttribute("id", "db_field_manual_import_table_input_" + new_id);

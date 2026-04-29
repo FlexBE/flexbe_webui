@@ -19,10 +19,11 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from xml.etree import ElementTree as ET
 
 from fastapi.routing import APIRoute
 
-from flexbe_webui.io.base_models import BehaviorCodeGeneratorRequest
+from flexbe_webui.io.base_models import BehaviorCodeGeneratorRequest, ContainsEntry
 from flexbe_webui.io.code_generator import CodeGenerator
 from flexbe_webui.ros import PackageData
 from flexbe_webui.webui_server import WebuiServer
@@ -231,6 +232,26 @@ def test_behavior_code_generator_reports_source_save_failure_after_install_succe
     assert "Failed to find source code package 'test_pkg'" in result['data']['src_error_msg']
 
 
+def test_behavior_code_generator_reports_install_only_when_source_save_disabled(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch
+):
+    """Source-save success should remain false when source saving is disabled."""
+    server_with_package._settings['save_in_source'] = False
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+    monkeypatch.setattr('flexbe_webui.webui_server.validate_path_consistency', lambda *_args: True)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=valid_behavior_request,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is True
+    assert result['data']['src_save_success'] is False
+    assert result['data']['src_error_msg'] == ''
+
+
 def test_behavior_code_generator_reports_behavior_extraction_failure(
     server_with_package, code_generator_endpoint
 ):
@@ -270,6 +291,80 @@ def test_behavior_code_generator_reports_inconsistent_package_paths(
     assert 'Inconsistent paths!' in result['data']['error_msg']
 
 
+def test_behavior_code_generator_rejects_package_name_mismatch(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch
+):
+    """Request package and behavior package mismatch should fail before writing files."""
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.behavior['behavior_package'] = 'other_pkg'
+
+    def fail_code_generator(*_args, **_kwargs):
+        raise AssertionError('Code generation should not run for package mismatches')
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', fail_code_generator)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is False
+    assert result['data']['src_save_success'] is False
+    assert 'request targets "test_pkg"' in result['data']['error_msg']
+    assert "behavior model targets 'other_pkg'" in result['data']['error_msg']
+
+
+def test_behavior_code_generator_rejects_code_file_outside_python_root(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
+):
+    """Existing behavior saves must not write Python files outside the package root."""
+    outside_file = tmp_path / 'outside.py'
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.save_as = False
+    request_payload.file_name = '../outside'
+    request_payload.behavior['file_name'] = '../outside'
+    request_payload.behavior['manifest_path'] = str(
+        Path(server_with_package.packages['test_pkg'].path) / 'lib' / 'test_pkg' / 'manifest' / 'demo_behavior.xml'
+    )
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is False
+    assert 'outside package Python path' in result['data']['error_msg']
+    assert not outside_file.exists()
+
+
+def test_behavior_code_generator_rejects_manifest_file_outside_manifest_root(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
+):
+    """Existing behavior saves must not write manifest files outside accepted manifest roots."""
+    outside_manifest = tmp_path / 'outside.xml'
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.save_as = False
+    request_payload.file_name = 'demo_behavior'
+    request_payload.behavior['file_name'] = 'demo_behavior'
+    request_payload.behavior['manifest_path'] = str(outside_manifest)
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is False
+    assert 'outside package manifest path' in result['data']['error_msg']
+    assert not outside_manifest.exists()
+
+
 def test_behavior_code_generator_preserves_nested_relative_file_paths(
     server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch
 ):
@@ -301,7 +396,65 @@ def test_behavior_code_generator_preserves_nested_relative_file_paths(
     assert 'package_path="test_pkg.nested.demo_behavior"' in manifest_text
 
 
-def test_io_behavior_full_accepts_nested_relative_paths(server_with_package):
+def test_behavior_code_generator_escapes_manifest_xml(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch
+):
+    """Generated manifests should remain valid XML when metadata contains XML syntax characters."""
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.behavior_names = [ContainsEntry(name='Child & "Behavior"', package='child_pkg')]
+    request_payload.behavior.update({
+        'behavior_name': 'Demo & "Behavior"',
+        'behavior_description': 'Move <object> & report "done"',
+        'tags': 'alpha & beta',
+        'author': 'Tester <QA>',
+        'creation_date': '2026-03-06 & later',
+        'behavior_parameters': [
+            {
+                'type': 'text',
+                'name': 'target',
+                'default': 'A&B',
+                'label': 'Target "name"',
+                'hint': 'Use <item> & confirm',
+                'additional': None,
+            },
+            {
+                'type': 'enum',
+                'name': 'mode',
+                'default': 'left',
+                'label': 'Mode',
+                'hint': 'Pick "side"',
+                'additional': ['left & right', 'top <bottom>'],
+            },
+        ],
+    })
+
+    server_with_package._settings['save_in_source'] = False
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+    monkeypatch.setattr('flexbe_webui.webui_server.validate_path_consistency', lambda *_args: True)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is True
+
+    root = ET.parse(result['data']['manifest_file_path']).getroot()
+    assert root.attrib['name'] == 'Demo & "Behavior"'
+    assert root.find('description').text.strip() == 'Move <object> & report "done"'
+    assert root.find('tagstring').text == 'alpha & beta'
+    assert root.find('author').text == 'Tester <QA>'
+    assert root.find('contains').attrib == {'name': 'Child & "Behavior"', 'package': 'child_pkg'}
+
+    params = {param.attrib['name']: param for param in root.find('params').findall('param')}
+    assert params['target'].attrib['default'] == 'A&B'
+    assert params['target'].attrib['label'] == 'Target "name"'
+    assert params['target'].attrib['hint'] == 'Use <item> & confirm'
+    assert [opt.attrib['value'] for opt in params['mode'].findall('option')] == ['left & right', 'top <bottom>']
+
+
+def test_io_behavior_full_accepts_nested_relative_paths(server_with_package, monkeypatch):
     """Full behavior fetch should use the relative module path, not just the basename."""
     package_root = Path(server_with_package.packages['test_pkg'].python_path)
     nested_dir = package_root / 'nested'
@@ -332,11 +485,63 @@ class DemoBehaviorSM(Behavior):
     )
 
     endpoint = _find_endpoint(server_with_package._app, '/api/v1/io/behavior/{package_name}/{codefile_name:path}', 'GET')
-    result = _decode_response(asyncio.run(endpoint(package_name='test_pkg', codefile_name='nested/demo_behavior')))
+    result = _decode_response(asyncio.run(endpoint(
+        package_name='test_pkg',
+        codefile_name='nested/demo_behavior',
+        request=_build_request('/api/v1/io/behavior/test_pkg/nested/demo_behavior', method='GET'),
+    )))
 
     assert result['success'] is True
     assert result['data']['codefile_relpath'] == 'nested/demo_behavior'
     assert 'class DemoBehaviorSM(Behavior):' in result['data']['codefile_content']
+    assert 'test_pkg' in server_with_package._behaviors_cache
+
+    def fail_parse_behavior_folder(*_args, **_kwargs):
+        raise AssertionError('full behavior endpoint should use cache after first miss')
+
+    monkeypatch.setattr('flexbe_webui.webui_server.parse_behavior_folder', fail_parse_behavior_folder)
+    cached_result = _decode_response(asyncio.run(endpoint(
+        package_name='test_pkg',
+        codefile_name='nested/demo_behavior',
+        request=_build_request('/api/v1/io/behavior/test_pkg/nested/demo_behavior', method='GET'),
+    )))
+
+    assert cached_result['success'] is True
+    assert cached_result['data']['codefile_relpath'] == 'nested/demo_behavior'
+
+
+def test_io_behaviors_parses_off_event_loop(server_with_package, monkeypatch):
+    """Behavior package parsing should be dispatched through asyncio.to_thread."""
+    calls = []
+
+    def fake_parse_behavior_folder(*_args, **_kwargs):
+        return []
+
+    async def fake_to_thread(func, *args, **kwargs):
+        calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr('flexbe_webui.webui_server.parse_behavior_folder', fake_parse_behavior_folder)
+    monkeypatch.setattr('flexbe_webui.webui_server.asyncio.to_thread', fake_to_thread)
+
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/io/behaviors/{package_name}', 'GET')
+    result = _decode_response(asyncio.run(endpoint(
+        package_name='test_pkg',
+        request=_build_request('/api/v1/io/behaviors/test_pkg', method='GET'),
+    )))
+
+    assert result['success'] is True
+    assert result['data']['items'] == []
+    assert calls == [(
+        fake_parse_behavior_folder,
+        (
+            server_with_package.packages['test_pkg'].path,
+            server_with_package.packages['test_pkg'].python_path,
+            server_with_package.packages['test_pkg'].editable,
+            server_with_package._settings['text_encoding'],
+        ),
+        {'errors': []},
+    )]
 
 
 def test_code_generator_aliases_colliding_behavior_imports_and_references():
@@ -421,6 +626,112 @@ def test_code_generator_aliases_colliding_behavior_imports_and_references():
     assert "self.add_behavior(pkg_b__SharedSM, 'Behavior B', node)" in code
     assert "self.use_behavior(pkg_a__SharedSM, 'Behavior A')" in code
     assert "self.use_behavior(pkg_b__SharedSM, 'Behavior B')" in code
+
+
+def test_code_generator_aliases_behavior_references_across_nested_containers():
+    """Behavior class aliases should be chosen from the whole behavior, not only one container."""
+    generator = CodeGenerator()
+
+    state_a = SimpleNamespace(
+        state_name='Behavior A',
+        state_path='/Behavior A',
+        state_class='SharedSM',
+        state_pkg='pkg_a',
+        state_import='pkg_a.foo_sm',
+        state_machine=False,
+        behavior_state=True,
+        position_x=0,
+        position_y=0,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[],
+        input_mapping=[],
+        outcomes=[],
+        autonomy=[],
+        output_keys=[],
+        output_mapping=[],
+    )
+    state_b = SimpleNamespace(
+        state_name='Behavior B',
+        state_path='/Nested/Behavior B',
+        state_class='SharedSM',
+        state_pkg='pkg_b',
+        state_import='pkg_b.bar_sm',
+        state_machine=False,
+        behavior_state=True,
+        position_x=100,
+        position_y=50,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[],
+        input_mapping=[],
+        outcomes=[],
+        autonomy=[],
+        output_keys=[],
+        output_mapping=[],
+    )
+    nested_sm = SimpleNamespace(
+        state_name='Nested',
+        state_path='/Nested',
+        state_class='OperatableStateMachine',
+        state_pkg='',
+        state_import='',
+        state_machine=True,
+        behavior_state=False,
+        position_x=50,
+        position_y=100,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[],
+        input_mapping=[],
+        outcomes=[],
+        autonomy=[],
+        output_keys=[],
+        output_mapping=[],
+        states=[state_b],
+        transitions=[SimpleNamespace(from_state_name='INIT', to_state_name='Behavior B')],
+        sm_outcomes=[],
+        concurrent=False,
+        priority=False,
+        conditions={},
+    )
+    root_sm = SimpleNamespace(
+        state_name='',
+        state_path='',
+        states=[state_a, nested_sm],
+        transitions=[SimpleNamespace(from_state_name='INIT', to_state_name='Behavior A')],
+        sm_outcomes=[],
+        outcomes=[],
+        input_keys=[],
+        output_keys=[],
+        concurrent=False,
+        priority=False,
+        conditions={},
+    )
+    behavior = SimpleNamespace(
+        behavior_name='Demo Behavior',
+        behavior_description='desc',
+        author='tester',
+        creation_date='2026-03-30',
+        manual_code_import=[],
+        manual_code_init='',
+        manual_code_create='',
+        manual_code_func='',
+        comment_notes=[],
+        behavior_parameters=[],
+        private_variables=[],
+        interface_input_keys=[],
+        interface_output_keys=[],
+        default_userdata=[],
+        root_sm=root_sm,
+    )
+
+    code = generator.generate_behavior_code(behavior, 'dummy license\n')
+
+    assert "self.add_behavior(pkg_a__SharedSM, 'Behavior A', node)" in code
+    assert "self.add_behavior(pkg_b__SharedSM, 'Nested/Behavior B', node)" in code
+    assert "self.use_behavior(pkg_a__SharedSM, 'Behavior A')" in code
+    assert "self.use_behavior(pkg_b__SharedSM, 'Nested/Behavior B')" in code
 
 
 def test_code_generator_encodes_multi_copy_outcome_comment_names():
@@ -560,3 +871,109 @@ def test_code_generator_keeps_root_outcome_copies_out_of_interface_outcomes():
     assert '# route: Alpha%20State>go%20now --> finished%231' in code
     assert '_state_machine = OperatableStateMachine(outcomes=' + repr(['finished']) + ')' in code
     assert 'finished#1' not in code.split('_state_machine = OperatableStateMachine(', 1)[1].split(')\n', 1)[0]
+
+
+def test_code_generator_escapes_user_string_literals():
+    """Generated source should remain valid with quotes and backslashes in model strings."""
+    generator = CodeGenerator()
+    state_name = "State's \\ One"
+    outcome = "done's \\ out"
+    target = "finished's \\ final"
+    input_key = "input's \\ key"
+    output_key = "output's \\ key"
+    input_mapping = "mapped's \\ input"
+    output_mapping = "mapped's \\ output"
+    param_name = "target's \\ name"
+    param_default = "Bob's \\ tool"
+    userdata_key = "data's \\ key"
+
+    simple_state = SimpleNamespace(
+        state_name=state_name,
+        state_path='/' + state_name,
+        state_class='SomeState',
+        state_pkg='pkg_a',
+        state_import='pkg_a.some_state',
+        state_machine=False,
+        behavior_state=False,
+        position_x=0,
+        position_y=0,
+        parameters=[],
+        parameter_values=[],
+        input_keys=[input_key],
+        input_mapping=[input_mapping],
+        outcomes=[outcome],
+        autonomy=[0],
+        output_keys=[output_key],
+        output_mapping=[output_mapping],
+    )
+    root_sm = SimpleNamespace(
+        state_name='',
+        state_path='',
+        states=[simple_state],
+        transitions=[
+            SimpleNamespace(from_state_name='INIT', to_state_name=state_name, to_state_class='pkg_a.SomeState'),
+            SimpleNamespace(
+                from_state_name=state_name,
+                to_state_name=target,
+                to_state_class=':OUTCOME',
+                outcome=outcome,
+                x=None,
+                y=None,
+                beg_x=None,
+                beg_y=None,
+                end_x=None,
+                end_y=None,
+            ),
+        ],
+        sm_outcomes=[SimpleNamespace(state_name=target, position_x=10, position_y=20)],
+        outcomes=[target],
+        input_keys=[input_key],
+        output_keys=[output_key],
+        concurrent=False,
+        priority=False,
+        conditions={},
+    )
+    behavior = SimpleNamespace(
+        behavior_name="Demo's \\ Behavior",
+        behavior_description='desc',
+        author='tester',
+        creation_date='2026-04-27',
+        manual_code_import=[],
+        manual_code_init='',
+        manual_code_create='',
+        manual_code_func='',
+        comment_notes=[],
+        behavior_parameters=[{'type': 'text', 'name': param_name, 'default': param_default}],
+        private_variables=[],
+        interface_input_keys=[input_key],
+        interface_output_keys=[output_key],
+        default_userdata=[{'key': userdata_key, 'value': '{"nested": "value"}'}],
+        root_sm=root_sm,
+    )
+
+    code = generator.generate_behavior_code(behavior, '# dummy license\n')
+
+    compile(code, '<generated_behavior>', 'exec')
+    assert 'self.add_parameter(' + repr(param_name) + ', ' + repr(param_default) + ')' in code
+    assert '_state_machine = OperatableStateMachine(outcomes=' + repr([target]) in code
+    assert 'setattr(_state_machine.userdata, ' + repr(userdata_key) in code
+    assert 'OperatableStateMachine.add(' + repr(state_name) in code
+    assert repr(outcome) + ': ' + repr(target) in code
+    assert repr(input_key) + ': ' + repr(input_mapping) in code
+    assert repr(output_key) + ': ' + repr(output_mapping) in code
+
+
+def test_code_generator_docstring_text_strips_embedded_newlines():
+    """Generated docstrings should not inherit embedded newlines from one-line fields."""
+    generator = CodeGenerator()
+
+    head = generator.generate_behavior_head(
+        '2026-04-28',
+        'tester\rname',
+        'Name\nBreak """quoted"""',
+        'description',
+    )
+
+    compile(head, '<generated_head>', 'exec')
+    assert 'Define Name Break \\"\\"\\"quoted\\"\\"\\".' in head
+    assert '@author: tester name' in head

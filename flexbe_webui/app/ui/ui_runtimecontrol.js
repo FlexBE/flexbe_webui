@@ -18,6 +18,8 @@ UI.RuntimeControl = new (function() {
 	var pending_outcome_requests = new Map();
 
 	var force_redraw = false;
+	var level_fallback_timer = undefined;
+	var LEVEL_FALLBACK_MS = 150;
 
 	var param_keys = [];
 	var param_vals = [];
@@ -106,7 +108,7 @@ UI.RuntimeControl = new (function() {
 
 		let selected_drawings = drawings.filter(function(d) { return d != previous_state_drawing; });
 		next_states_list.forEach(function(key) {
-			new_transitions = []
+			let new_transitions = []
 			next_states[key].incoming.forEach(function(element) {
 				let highlight = outcome_request.target != undefined && outcome_request.target == current_state.getStatePath() && outcome_request.outcome == element.getOutcome();
 
@@ -334,6 +336,10 @@ UI.RuntimeControl = new (function() {
 	}
 
 	this.resetStateDisplay = function() {
+		if (level_fallback_timer != undefined) {
+			clearTimeout(level_fallback_timer);
+			level_fallback_timer = undefined;
+		}
 		current_level = 0;
 		current_state = undefined;
 		current_states = [];
@@ -501,6 +507,11 @@ UI.RuntimeControl = new (function() {
 		let checkResult = function() {
 			tagsToGo -= 1;
 			if (tagsToGo == 0) callback(result);
+		}
+
+		if (children.length === 0) {
+			callback(result);
+			return;
 		}
 
 		for (let i = 0; i < children.length; i++) {
@@ -877,8 +888,11 @@ UI.RuntimeControl = new (function() {
 				d.setAttribute('class', 'sync_entry');
 				d.setAttribute('key', p.key);
 				d.setAttribute('removing', 'false');
-				d_content  = '<div class="sync_bar_border">';
-				d_content += '<div class="sync_bar_content" style="width: ' + (p.fulfilled * 100) + '%; background-color: ' + color + ';"></div>';
+				let entry_color = (p.status == RC.Sync.STATUS_WARN)? '#dd2' :
+								  (p.status == RC.Sync.STATUS_ERROR)? '#c64' :
+								  '#9d5';
+				let d_content  = '<div class="sync_bar_border">';
+				d_content += '<div class="sync_bar_content" style="width: ' + (p.fulfilled * 100) + '%; background-color: ' + entry_color + ';"></div>';
 				d_content += '</div><font>' + p.key + '</font>';
 				d.innerHTML = d_content;
 				document.getElementById("sync_extension").appendChild(d);
@@ -929,17 +943,20 @@ UI.RuntimeControl = new (function() {
 		that.resetStateDisplay();
 		document.getElementById("runtime_no_behavior_display").style.display = "inline";
 		let updateHistoryDisplay = function() {
-			let historyHTML = "";
 			let currentIdx = ActivityTracer.getCurrentIndex();
+			let historyContainer = document.getElementById("rc_save_history");
+			historyContainer.innerHTML = "";
+			let historyList = document.createElement("ul");
 			ActivityTracer.getActivityList().forEach((activity, idx) => {
 				if (activity == undefined) return;
-				let fontStyle = "";
+				let item = document.createElement("li");
 				if (idx > currentIdx) {
-					fontStyle = ' style="text-decoration: line-through;"';
+					item.style.textDecoration = "line-through";
 				}
-				historyHTML += "<li" + fontStyle + ">" + activity.description + "</li>";
+				item.textContent = activity.description;
+				historyList.appendChild(item);
 			});
-			document.getElementById("rc_save_history").innerHTML = "<ul>" + historyHTML + "</ul>";
+			historyContainer.appendChild(historyList);
 		};
 		updateHistoryDisplay();
 		ActivityTracer.setUpdateCallback(updateHistoryDisplay);
@@ -972,6 +989,7 @@ UI.RuntimeControl = new (function() {
 					const stateEntry = Behavior.getStateMap().get(key);
 					if (stateEntry == undefined) {
 						console.log(`\x1b[93mPending outcome request for hash=${key} not found in state map (${Behavior.getStateMap().size} entries) — skipping\x1b[0m`);
+						continue;
 					}
 					const path = stateEntry.path;
 					if (path.startsWith(targetPath)) {
@@ -1265,6 +1283,7 @@ UI.RuntimeControl = new (function() {
 
 		// always update current states when state path updated
 		let path_segments = state_path.split("/");
+		let new_depth = path_segments.length - 1;
 		let path_recreate = "";
 		for (let i=1; i<path_segments.length; i++) {
 			path_recreate += "/" + path_segments[i];
@@ -1273,6 +1292,32 @@ UI.RuntimeControl = new (function() {
 				previous_states[i] = current_states[i];
 			}
 			current_states[i] = new_current_state;
+		}
+
+		if (new_depth < current_level && !force_redraw) {
+			// Path got shallower (container exit). Keep displaying the current level
+			// for a short window — if a new deeper path arrives within LEVEL_FALLBACK_MS
+			// (typical for rapid container-exit → next-state-entry transitions), the timer
+			// is cancelled and the display updates cleanly with no intermediate flash.
+			if (level_fallback_timer == undefined) {
+				let fallback_depth = new_depth;
+				level_fallback_timer = setTimeout(function() {
+					level_fallback_timer = undefined;
+					current_states = current_states.slice(0, fallback_depth + 1);
+					previous_states = previous_states.slice(0, fallback_depth + 1);
+					current_level = fallback_depth;
+					if (!RC.Controller.isLocked()) that.displayLockBehavior();
+					that.updateStateDisplay();
+					if (UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
+				}, LEVEL_FALLBACK_MS);
+			}
+			return;
+		}
+
+		// New path is at the same or deeper level — cancel any pending level fallback.
+		if (level_fallback_timer != undefined) {
+			clearTimeout(level_fallback_timer);
+			level_fallback_timer = undefined;
 		}
 		current_states = current_states.slice(0, path_segments.length);
 		previous_states = previous_states.slice(0, path_segments.length);

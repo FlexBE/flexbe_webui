@@ -61,6 +61,64 @@ const Checking = new (function() {
 		const stringPattern = /^(?:'(?:[^'\\]|\\.)*')$/;
 		return items.every(item => item !== "" && (numericPattern.test(item) || stringPattern.test(item)));
 	};
+
+	const normalizeDocType = function(typeName) {
+		if (typeof typeName !== "string") return undefined;
+		let normalized = typeName.trim().toLowerCase();
+		if (normalized == "") return undefined;
+
+		normalized = normalized.replace(/^typing\./, "");
+		if (["str", "string", "text"].contains(normalized)) return "string";
+		if (["bool", "boolean"].contains(normalized)) return "boolean";
+		if (/^(u?int|uint|integer|long)(8|16|32|64)?$/.test(normalized)) return "integer";
+		if (["float", "float32", "float64", "double"].contains(normalized)) return "float";
+		if (["number", "numeric"].contains(normalized)) return "numeric";
+		if (["list", "array", "tuple", "sequence", "collection"].contains(normalized)) return "collection";
+		if (/^(list|array|tuple|sequence)<.+>$/.test(normalized)) return "collection";
+		if (/^(list|array|tuple|sequence)\[.+\]$/.test(normalized)) return "collection";
+		if (normalized.endsWith("[]")) return "collection";
+		if (["object", "any", "type", "function", "callable", "lambda"].contains(normalized)) return "any";
+
+		return undefined;
+	};
+
+	const parseDocTypeAlternatives = function(docType) {
+		if (typeof docType !== "string") return [];
+		return docType.split(/[|/]/)
+			.map(typeName => normalizeDocType(typeName))
+			.filter(typeName => typeName != undefined);
+	};
+
+	const isRuntimeTypedExpression = function(valueType) {
+		return ["variable", "reference", "indexed", "composite", "equation", "lambda"].contains(valueType);
+	};
+
+	const isDocTypeCompatible = function(docType, valueType) {
+		let alternatives = parseDocTypeAlternatives(docType);
+		if (alternatives.length == 0 || alternatives.contains("any")) return true;
+		if (isRuntimeTypedExpression(valueType)) return true;
+		if (valueType == "unknown") return true;
+		if (alternatives.contains(valueType)) return true;
+		if (alternatives.contains("numeric") && ["integer", "float"].contains(valueType)) return true;
+		return false;
+	};
+
+	const warnOnStateParameterTypeMismatch = function(state, paramName, paramValue, valueType) {
+		if (typeof WS === "undefined" || WS.Statelib == undefined) return;
+		let state_def = WS.Statelib.getFromLib(state.getStateType());
+		if (state_def == undefined || typeof state_def.getParamDesc != "function") return;
+
+		let param_doc = state_def.getParamDesc().findElement(function(desc) {
+			return desc.name == paramName;
+		});
+		if (param_doc == undefined || param_doc.type == undefined || param_doc.type.trim() == "") return;
+		if (isDocTypeCompatible(param_doc.type, valueType)) return;
+
+		let message = `Parameter '${paramName}' of state '${state.getStatePath()}' is documented as `
+			+ `'${param_doc.type}', but value '${paramValue}' looks like ${valueType}.`;
+		T.logWarn(message);
+		addValidationWarning(message);
+	};
 	var variables;
 
 	const addValidationWarning = function(message) {
@@ -395,6 +453,12 @@ const Checking = new (function() {
 					addValidationWarning(err_text);
 					// Keep this non-fatal so the user can inspect and repair the state machine in place.
 				} else {
+					warnOnStateParameterTypeMismatch(
+						state,
+						state.getParameters()[i],
+						sparams[i],
+						param_type
+					);
 					let valid = true;
 					let param_vars = Checking.extractVariables(sparams[i]);
 					if (param_vars.length > 0){

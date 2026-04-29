@@ -1,4 +1,19 @@
-"""Server-side statemachine auto-layout helpers.
+# Copyright 2026 Christopher Newport University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Server-side statemachine auto-layout helpers.
 
 This module implements a deterministic, dependency-light layout pass for the
 active FlexBE container.  The goal is not to produce mathematically optimal
@@ -8,14 +23,16 @@ runtime dependency on Graphviz or another native layout tool.
 At a high level the algorithm works in four stages:
 
 1. Build a directed graph from the active container's states, outcomes, and
-   transitions.  The synthetic ``INIT`` connection is modeled separately so the
-   initial state can influence ordering without being rendered as a normal node.
+   transitions.  The initial state is seeded at order 0 within its rank and
+   pinned there after all barycenter passes, so it always appears upper-left
+   in the rendered layout regardless of prior visual position.
 2. Collapse strongly connected components (Tarjan SCC) so cycles and feedback
    loops can be ranked as one logical unit.  The condensed graph is a DAG, which
    gives us a stable left-to-right layer assignment.
 3. Refine node order within each rank using barycenter-style sweeps.  We first
-   preserve the current visual order as a stable seed, then do forward and
-   backward passes that try to align nodes with neighboring ranks.
+   preserve the current visual order as a stable seed (with the initial state
+   forced to position 0), then do forward and backward passes that try to align
+   nodes with neighboring ranks.
 4. Place outcomes in a dedicated final column and stack each column vertically
    with coarse node-size estimates and fixed gaps.  Sequential outcome copies
    stay grouped by base outcome name, while concurrent outcomes are ordered from
@@ -29,7 +46,7 @@ cause the entire container to reshuffle unpredictably.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 from .base_models import AutoLayoutRequest, LayoutNode
 
@@ -42,7 +59,8 @@ MARGIN_Y = 60
 
 
 def _node_size(node: LayoutNode) -> Tuple[int, int]:
-    """Return a coarse node size estimate in editor canvas pixels.
+    """
+    Return a coarse node size estimate in editor canvas pixels.
 
     The server does not have access to browser-rendered bounding boxes, so the
     layout pass uses conservative width/height estimates by node category.  The
@@ -57,7 +75,8 @@ def _node_size(node: LayoutNode) -> Tuple[int, int]:
 
 
 def _stable_sort_key(node: LayoutNode) -> Tuple[float, float, str]:
-    """Prefer the current visual ordering before falling back to name.
+    """
+    Prefer the current visual ordering before falling back to name.
 
     We use the existing ``y``/``x`` placement as the initial ordering signal so
     relayout behaves more like refinement than random reflow.  The state name is
@@ -67,7 +86,8 @@ def _stable_sort_key(node: LayoutNode) -> Tuple[float, float, str]:
 
 
 def _base_outcome_name(name: str) -> str:
-    """Collapse duplicate outcome copies into their shared base name.
+    """
+    Collapse duplicate outcome copies into their shared base name.
 
     Sequential containers may duplicate outcome nodes as ``name#N``.  During
     layout we often want all of those copies to move as one conceptual outcome
@@ -77,7 +97,8 @@ def _base_outcome_name(name: str) -> str:
 
 
 def _copy_index(name: str) -> int:
-    """Return the duplicate outcome copy index, defaulting to zero.
+    """
+    Return the duplicate outcome copy index, defaulting to zero.
 
     The base outcome (without ``#N``) is treated as copy ``0`` so sequential
     outcomes can be ordered in a predictable group-first, copy-second fashion.
@@ -92,50 +113,63 @@ def _copy_index(name: str) -> int:
 
 
 def _tarjan_scc(nodes: Iterable[str], adjacency: Dict[str, List[str]]) -> List[List[str]]:
-    """Return strongly-connected components for the node set.
+    """
+    Return strongly-connected components for the node set.
 
     We collapse SCCs before assigning ranks so feedback loops do not force
     unstable or contradictory layer assignments.  Each SCC becomes one node in
     the condensed DAG used by the rest of the algorithm.
+
+    The implementation is iterative (explicit work stack) to avoid hitting
+    Python's default recursion limit on large state machines.
     """
     node_list = list(nodes)
-    index = 0
+    index_counter = 0
     stack: List[str] = []
     on_stack: set[str] = set()
     indices: Dict[str, int] = {}
     lowlinks: Dict[str, int] = {}
     components: List[List[str]] = []
 
-    def strongconnect(node: str):
-        nonlocal index
-        indices[node] = index
-        lowlinks[node] = index
-        index += 1
-        stack.append(node)
-        on_stack.add(node)
+    for root in node_list:
+        if root in indices:
+            continue
+        indices[root] = index_counter
+        lowlinks[root] = index_counter
+        index_counter += 1
+        stack.append(root)
+        on_stack.add(root)
+        work: List[Tuple[str, Iterator[str]]] = [(root, iter(adjacency.get(root, [])))]
 
-        for neighbor in adjacency.get(node, []):
+        while work:
+            node, nbrs = work[-1]
+            try:
+                neighbor = next(nbrs)
+            except StopIteration:
+                work.pop()
+                if work:
+                    parent = work[-1][0]
+                    lowlinks[parent] = min(lowlinks[parent], lowlinks[node])
+                if lowlinks[node] == indices[node]:
+                    component: List[str] = []
+                    while stack:
+                        member = stack.pop()
+                        on_stack.remove(member)
+                        component.append(member)
+                        if member == node:
+                            break
+                    components.append(component)
+                continue
+
             if neighbor not in indices:
-                strongconnect(neighbor)
-                lowlinks[node] = min(lowlinks[node], lowlinks[neighbor])
+                indices[neighbor] = index_counter
+                lowlinks[neighbor] = index_counter
+                index_counter += 1
+                stack.append(neighbor)
+                on_stack.add(neighbor)
+                work.append((neighbor, iter(adjacency.get(neighbor, []))))
             elif neighbor in on_stack:
                 lowlinks[node] = min(lowlinks[node], indices[neighbor])
-
-        if lowlinks[node] != indices[node]:
-            return
-
-        component: List[str] = []
-        while stack:
-            member = stack.pop()
-            on_stack.remove(member)
-            component.append(member)
-            if member == node:
-                break
-        components.append(component)
-
-    for node in node_list:
-        if node not in indices:
-            strongconnect(node)
 
     return components
 
@@ -147,7 +181,8 @@ def _neighbor_barycenter(
     order_lookup: Dict[str, int],
     target_rank: int,
 ) -> Optional[float]:
-    """Average neighbor order for one adjacent rank.
+    """
+    Average neighbor order for one adjacent rank.
 
     This is the core barycenter signal: if a node mostly connects to neighbors
     near the top of the adjacent rank, it should also drift upward within its
@@ -170,7 +205,8 @@ def _rank_sort_key(
     order_lookup: Dict[str, int],
     target_rank: int,
 ) -> Tuple[bool, float, float, float, str]:
-    """Build a stable sort key that tolerates missing barycenters.
+    """
+    Build a stable sort key that tolerates missing barycenters.
 
     Nodes with no usable neighbor barycenter should not crash sorting or jump to
     arbitrary positions, so we sort them after nodes with a real barycenter and
@@ -198,7 +234,8 @@ def _average_predecessor_order(
     reverse_adjacency: Dict[str, List[str]],
     order_lookup: Dict[str, int],
 ) -> Optional[float]:
-    """Average predecessor order for one node or node group.
+    """
+    Average predecessor order for one node or node group.
 
     Outcomes live in a dedicated final column, so we cannot position them using
     normal inter-rank sweeps alone.  Instead, we order them from the average
@@ -218,7 +255,8 @@ def _average_predecessor_order(
 
 
 def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
-    """Compute a deterministic layered layout for one active container.
+    """
+    Compute a deterministic layered layout for one active container.
 
     The returned structure contains only node positions for the active
     container's normal states and outcome nodes.  Transition control points are
@@ -242,7 +280,6 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
     outcome_nodes = list(layout_request.outcomes)
     all_nodes = state_nodes + outcome_nodes
     all_names = {node.state_name for node in all_nodes}
-    node_by_name = {node.state_name: node for node in all_nodes}
 
     adjacency: Dict[str, List[str]] = defaultdict(list)
     reverse_adjacency: Dict[str, List[str]] = defaultdict(list)
@@ -270,14 +307,6 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
     for index, component in enumerate(components):
         for node in component:
             component_by_node[node] = index
-
-    component_nodes = {
-        index: sorted(
-            component,
-            key=lambda name: _stable_sort_key(node_by_name[name]),
-        )
-        for index, component in enumerate(components)
-    }
 
     component_graph: Dict[int, set[int]] = defaultdict(set)
     reverse_component_graph: Dict[int, set[int]] = defaultdict(set)
@@ -335,9 +364,11 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
     for node in all_nodes:
         ranked_nodes[node_rank[node.state_name]].append(node)
 
+    init_name = layout_request.initial_state_name or ''
+
     order_lookup: Dict[str, int] = {}
     for rank, nodes in ranked_nodes.items():
-        nodes.sort(key=_stable_sort_key)
+        nodes.sort(key=lambda n: (n.state_name != init_name, *_stable_sort_key(n)))
         for order, node in enumerate(nodes):
             order_lookup[node.state_name] = order
 
@@ -356,17 +387,22 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
         for order, node in enumerate(nodes):
             order_lookup[node.state_name] = order
 
+    if init_name and init_name in node_rank:
+        init_rank = node_rank[init_name]
+        rank_list = ranked_nodes[init_rank]
+        idx = next((i for i, n in enumerate(rank_list) if n.state_name == init_name), None)
+        if idx is not None and idx > 0:
+            rank_list.insert(0, rank_list.pop(idx))
+            for order, node in enumerate(rank_list):
+                order_lookup[node.state_name] = order
+
     if outcome_nodes:
         outcome_rank = node_rank[outcome_nodes[0].state_name]
         if layout_request.concurrent:
-            ranked_nodes[outcome_rank].sort(
-                key=lambda node: (
-                    _average_predecessor_order([node.state_name], reverse_adjacency, order_lookup) is None,
-                    0.0 if _average_predecessor_order([node.state_name], reverse_adjacency, order_lookup) is None
-                    else _average_predecessor_order([node.state_name], reverse_adjacency, order_lookup),
-                    *_stable_sort_key(node),
-                )
-            )
+            def _concurrent_sort_key(node):
+                avg = _average_predecessor_order([node.state_name], reverse_adjacency, order_lookup)
+                return (avg is None, 0.0 if avg is None else avg, *_stable_sort_key(node))
+            ranked_nodes[outcome_rank].sort(key=_concurrent_sort_key)
         else:
             base_barycenters = {
                 base_name: _average_predecessor_order(

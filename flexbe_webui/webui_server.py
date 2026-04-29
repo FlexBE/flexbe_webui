@@ -15,6 +15,7 @@
 """WebServer for flexbe_webui."""
 
 import argparse
+import asyncio
 import glob
 import hmac
 import importlib
@@ -24,6 +25,7 @@ import os
 import shlex
 import shutil
 import threading
+import traceback
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -41,11 +43,12 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 
 from .io.auto_layout import compute_auto_layout
-from .io.base_models import AutoLayoutRequest, Behavior, BehaviorCodeGeneratorRequest, FileRequest, OpenFileEditorRequest
+from .io.base_models import (AutoLayoutRequest, Behavior, BehaviorCodeGeneratorRequest,
+                             FileRequest, ManifestGeneratorRequest, OpenFileEditorRequest)
 from .io.behavior_parser import parse_behavior_folder
 from .io.code_generator import CodeGenerator
 from .io.manifest_generator import ManifestGenerator
-from .io.manifest_generator import generate_file_name, generate_manifest_name
+from .io.manifest_generator import generate_file_name, generate_manifest_name, xml_attr
 from .io.state_parser import parse_state_folder
 from .ros import PackageData
 from .ros.packages import get_packages, has_behaviors, has_states
@@ -91,6 +94,8 @@ class WebuiServer:
 
         # package cache
         self._packages: Optional[Dict[str, PackageData]] = None
+        self._behaviors_cache: Dict[str, List] = {}
+        self._behaviors_cache_lock = asyncio.Lock()
         if self._settings['pkg_cache_enabled'] and not args.clear_cache:
             file_path = os.path.join(self._config_file_folder, 'flexbe_packages.cache')
             try:
@@ -229,6 +234,65 @@ class WebuiServer:
         except ValueError:
             return False
 
+    @staticmethod
+    def _is_resolved_within_root(root: str, path: str) -> bool:
+        """Return true only if the resolved path stays inside the resolved root."""
+        try:
+            root_real = os.path.realpath(root)
+            path_real = os.path.realpath(path)
+            return os.path.commonpath([root_real, path_real]) == root_real
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _relative_path_within_root(root: str, path: str) -> Optional[str]:
+        """Return a package-relative path when path is contained in root."""
+        try:
+            root_abs = os.path.abspath(root)
+            path_abs = os.path.abspath(path)
+            if os.path.commonpath([root_abs, path_abs]) == root_abs:
+                return os.path.relpath(path_abs, root_abs).replace(os.sep, '/')
+
+            root_real = os.path.realpath(root)
+            path_real = os.path.realpath(path)
+            if os.path.commonpath([root_real, path_real]) == root_real:
+                return os.path.relpath(path_real, root_real).replace(os.sep, '/')
+        except ValueError:
+            pass
+        return None
+
+    def _get_package_python_relative_path(self, package_name: str, package: PackageData,
+                                          file_path: str, manifest_path: Optional[str] = None) -> str:
+        """Return a display-safe relative path for a resolved package Python file."""
+        roots = self._get_package_python_roots(package_name, package)
+        for root in self._candidate_roots_from_manifest(manifest_path, package_name):
+            if root not in roots:
+                roots.append(root)
+        for root in roots:
+            relative_path = self._relative_path_within_root(root, file_path)
+            if relative_path is not None:
+                return relative_path
+        return os.path.basename(file_path)
+
+    def _normalize_config_load_request(self, json_dict: Dict):
+        """Return a safe load_settings request constrained to the config folder."""
+        if not isinstance(json_dict, dict):
+            raise ValueError('Configuration load request must be a JSON object')
+        if 'file_name' not in json_dict:
+            raise ValueError('Configuration load request requires file_name')
+
+        folder_path = str(json_dict.get('folder_path', self._config_file_folder))
+        file_name = str(json_dict['file_name'])
+        file_path = os.path.abspath(os.path.join(folder_path, file_name))
+        if not self._is_resolved_within_root(self._config_file_folder, file_path):
+            raise ValueError(f"Config load path '{file_path}' is outside the config folder")
+        if not file_path.endswith('.json'):
+            raise ValueError(f"Config load path '{file_path}' must have a .json extension")
+        return {
+            'folder_path': os.path.dirname(file_path),
+            'file_name': os.path.basename(file_path),
+        }
+
     def _get_package_python_roots(self, package_name: str, package: PackageData) -> List[str]:
         """Collect candidate Python roots for ROS package source resolution."""
         roots: List[str] = []
@@ -274,7 +338,7 @@ class WebuiServer:
         requested = str(file_name).strip()
         if requested == '':
             raise ValueError('No file name provided')
-        if '.py' not in requested:
+        if not requested.lower().endswith('.py'):
             requested += '.py'
 
         roots = self._get_package_python_roots(package_name, package)
@@ -298,32 +362,66 @@ class WebuiServer:
                 if os.path.exists(candidate):
                     return candidate
 
-        # If only a bare file name was provided, search recursively under allowed roots.
-        if os.path.basename(requested) == requested:
-            matches: List[str] = []
-            for root in roots:
-                for dirpath, _, files in os.walk(root):
-                    if requested in files:
-                        match = os.path.abspath(os.path.join(dirpath, requested))
-                        if self._is_within_root(root, match):
-                            matches.append(match)
-            if len(matches) == 0 and os.path.isdir(package.path):
-                package_root = os.path.abspath(package.path)
-                for dirpath, _, files in os.walk(package_root):
-                    if requested in files:
-                        match = os.path.abspath(os.path.join(dirpath, requested))
-                        if self._is_within_root(package_root, match):
-                            matches.append(match)
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                raise ValueError(f"Ambiguous file '{file_name}' in package '{package_name}'")
-
         if len(direct_candidates) > 0:
             # Keep previous behavior for editor/viewer: let open/read handle non-existent file.
             return direct_candidates[0]
 
         raise ValueError(f"Path '{file_name}' is outside package Python path")
+
+    def _resolve_package_python_write_file(self, package_name: str, package: PackageData,
+                                           file_name: str) -> tuple[str, str]:
+        """Resolve a writable behavior Python file under the package Python root."""
+        requested = str(file_name).strip()
+        if requested == '':
+            raise ValueError('No file name provided')
+        if not requested.lower().endswith('.py'):
+            requested += '.py'
+
+        roots = self._get_package_python_roots(package_name, package)
+        if len(roots) == 0:
+            raise ValueError(f"Invalid package '{package_name}' for behavior code generation")
+
+        root = roots[0]
+        candidate = os.path.abspath(requested if os.path.isabs(requested) else os.path.join(root, requested))
+        if not self._is_resolved_within_root(root, candidate):
+            raise ValueError(f"Path '{file_name}' is outside package Python path")
+
+        relative_name = os.path.relpath(candidate, root)
+        if relative_name.startswith(os.pardir + os.sep) or relative_name == os.pardir:
+            raise ValueError(f"Path '{file_name}' is outside package Python path")
+        relative_name = relative_name.replace(os.sep, '/')
+        return candidate, relative_name
+
+    def _get_package_manifest_roots(self, package_name: str, package: PackageData) -> List[str]:
+        """Return accepted roots for behavior manifest writes."""
+        roots = [
+            os.path.join(package.path, 'lib', package_name, 'manifest'),
+            os.path.join(package.path, 'share', package_name, 'manifest'),
+            os.path.join(package.path, 'manifest'),
+        ]
+        unique_roots: List[str] = []
+        for root in roots:
+            root_abs = os.path.abspath(root)
+            if root_abs not in unique_roots:
+                unique_roots.append(root_abs)
+        return unique_roots
+
+    def _resolve_package_manifest_write_file(self, package_name: str, package: PackageData,
+                                             manifest_path: str) -> str:
+        """Resolve a writable behavior manifest file under an accepted manifest root."""
+        requested = str(manifest_path).strip()
+        if requested == '':
+            raise ValueError('No manifest path provided')
+        if not requested.lower().endswith('.xml'):
+            raise ValueError(f"Manifest path '{manifest_path}' must end with .xml")
+
+        manifest_roots = self._get_package_manifest_roots(package_name, package)
+        default_root = manifest_roots[0]
+        candidate = os.path.abspath(requested if os.path.isabs(requested) else os.path.join(default_root, requested))
+        if any(self._is_resolved_within_root(root, candidate) for root in manifest_roots):
+            return candidate
+
+        raise ValueError(f"Manifest path '{manifest_path}' is outside package manifest path")
 
     @property
     def packages(self) -> Dict[str, PackageData]:
@@ -361,7 +459,6 @@ class WebuiServer:
         async def unhandled_exception_handler(request: Request, exc: Exception):
             """Handle truly unexpected server errors at API boundary."""
             print(f'\x1b[91mUnhandled exception for {request.url.path}: {type(exc)} - {exc}\x1b[0m', flush=True)
-            import traceback
             tb = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             print(tb.replace('%', '%%'), flush=True)
             if request.url.path.startswith('/api/'):
@@ -376,13 +473,15 @@ class WebuiServer:
             return JSONResponse(status_code=exc.status_code, content={'detail': exc.detail})
 
         @app.get('/api/v1/dev/diagnostics')
-        async def diagnostics():
+        async def diagnostics(request: Request):
             """Return server timing diagnostics for development troubleshooting."""
+            self._require_loopback(request)
             return self.api_success(self.get_diagnostics_snapshot())
 
         @app.get('/dev/diagnostics', response_class=HTMLResponse)
-        async def diagnostics_page():
+        async def diagnostics_page(request: Request):
             """Serve lightweight diagnostics page with auto-refresh."""
+            self._require_loopback(request)
             return """<!doctype html>
 <html>
 <head>
@@ -417,8 +516,18 @@ class WebuiServer:
         @app.get('/api/v1/ready')
         async def read_ready():
             print('\x1b[92mFlexBE WebUI Server is ready!\x1b[0m', flush=True)
-            self._shutdown_allowed = False  # UI is now connected, require confirmation
             return self.api_success({'status': 'ok', 'online_mode': self._online_mode})
+
+        @app.post('/api/v1/ui_connected')
+        async def ui_connected(request: Request):
+            """Record that a UI session is connected and should confirm shutdown."""
+            try:
+                self.authorize_request(request)
+                self._shutdown_allowed = False
+                return self.api_command_success()
+            except (RuntimeError, ValueError, TypeError, AttributeError) as exc:
+                print(f'\x1b[91mFailed to record UI connection:\n{exc}\x1b[0m', flush=True)
+                return self.api_command_failure(exc)
 
         @app.post('/api/v1/confirm_shutdown')
         async def confirm_shutdown(request: Request, allow_shutdown: bool = Body(False)):
@@ -433,9 +542,17 @@ class WebuiServer:
 
                 # PySide6 won't let us return value from JavaScript, so send command to websocket
                 print(f"Broadcast shutdown message '{msg}' to {len(self._active_connections)} UIs ...", flush=True)
-                for websock in self._active_connections:
-                    print('Sending shutdown command to UI...', flush=True)
-                    await websock.send_text(msg)
+                failed_connections = []
+                for websock in list(self._active_connections):
+                    try:
+                        print('Sending shutdown command to UI...', flush=True)
+                        await websock.send_text(msg)
+                    except (RuntimeError, WebSocketDisconnect, OSError, ValueError) as exc:
+                        print(f'\x1b[93mFailed to send shutdown command to UI: {exc}\x1b[0m', flush=True)
+                        failed_connections.append(websock)
+                for websock in failed_connections:
+                    if websock in self._active_connections:
+                        self._active_connections.remove(websock)
 
                 return self.api_success({'confirm': self._shutdown_allowed})
             except (RuntimeError, WebSocketDisconnect, ValueError) as exc:
@@ -446,6 +563,8 @@ class WebuiServer:
         async def websocket_endpoint(websocket: WebSocket):
             print('defining websocket endpoint for checking shutdown', flush=True)
 
+            if not await self.authorize_websocket(websocket):
+                return
             await websocket.accept()
             print('accepted websocket for checking shutdown', flush=True)
             self._active_connections.append(websocket)
@@ -474,8 +593,9 @@ class WebuiServer:
             return templates.TemplateResponse(request, 'window.html')
 
         @app.get('/api/v1/get_config_files')
-        async def get_config_files():
+        async def get_config_files(request: Request):
             try:
+                self.authorize_request(request)
                 print(f"get available configuration files from '{self._config_file_folder}'", flush=True)
                 files = [f for f in os.listdir(self._config_file_folder) if f.endswith('.json')]
                 files.sort()
@@ -484,13 +604,14 @@ class WebuiServer:
                 return self.api_failure(exc)
 
         @app.post('/api/v1/get_config_settings')
-        async def get_config_settings(json_file_dict: Dict = Body(None)):
+        async def get_config_settings(request: Request, json_file_dict: Dict = Body(None)):
             try:
-                if self._settings is None:
-                    self._settings = load_settings(json_file_dict)
-                elif (json_file_dict is not None and 'file_name' in json_file_dict):
+                self.authorize_request(request)
+                if json_file_dict is not None and 'file_name' in json_file_dict:
                     print(f' get_config_settings {json_file_dict}')
-                    self._settings = load_settings(json_file_dict)
+                    self._settings = load_settings(self._normalize_config_load_request(json_file_dict))
+                elif self._settings is None:
+                    self._settings = load_settings()
                 else:
                     print('Return existing settings', flush=True)
                 return self.api_success({'configuration': self._settings})
@@ -504,29 +625,30 @@ class WebuiServer:
             try:
                 self.authorize_request(request)
                 save_cache = self._settings['pkg_cache_enabled']
-                self._settings.update(json_dict['configuration'])
-                self._settings = update_settings(self._settings)  # Load custom information based on settings
+                new_settings = self._settings.copy()
+                new_settings.update(json_dict['configuration'])
+                new_settings = update_settings(new_settings)  # Load custom information based on settings
                 if 'file_name' in json_dict:
                     try:
                         print('Save current settings to the configuration file ...', flush=True)
-                        save_settings = self._settings.copy()
-                        save_settings.pop('license_text')
+                        save_settings = new_settings.copy()
+                        save_settings.pop('license_text', None)
                         print(save_settings, flush=True)
                         file_path = os.path.realpath(
                             os.path.join(json_dict['folder_path'], json_dict['file_name'])
                         )
-                        allowed_root = os.path.realpath(self._config_file_folder)
-                        if os.path.commonpath([allowed_root, file_path]) != allowed_root:
+                        if not self._is_resolved_within_root(self._config_file_folder, file_path):
                             raise ValueError(f"Config save path '{file_path}' is outside the config folder")
                         if not file_path.endswith('.json'):
                             raise ValueError(f"Config save path '{file_path}' must have a .json extension")
-                        with open(file_path, 'w', encoding=self._settings['text_encoding']) as json_file:
+                        with open(file_path, 'w', encoding=new_settings['text_encoding']) as json_file:
                             json.dump(save_settings, json_file, indent=4, sort_keys=True)
                         print(f"Dictionary saved to '{file_path}'", flush=True)
                     except (OSError, TypeError, ValueError, KeyError) as exc:
                         print('Failed to save configuration settings to file', flush=True)
                         return self.api_failure(exc)
 
+                self._settings = new_settings
                 if self._settings['pkg_cache_enabled'] and not save_cache:
                     # We have recently enabled package cache, so save what we currently have
                     self.save_package_cache()
@@ -538,24 +660,30 @@ class WebuiServer:
                 return self.api_command_failure(exc)
 
         @app.get('/api/v1/packages/behaviors')
-        async def packages_behaviors():
+        async def packages_behaviors(request: Request):
             """Return list of packages that may define behaviors."""
-            list_of_behaviors = list(filter(has_behaviors, self.packages.values()))
-            print(30 * '=', flush=True)
-            print('packages_behaviors: list of behaviors ...')
-            for beh in list_of_behaviors:
-                print(f'    {beh}', flush=True)
-            print(30 * '=', flush=True)
+            try:
+                self.authorize_request(request)
+                list_of_behaviors = list(filter(has_behaviors, self.packages.values()))
+                print(30 * '=', flush=True)
+                print('packages_behaviors: list of behaviors ...')
+                for beh in list_of_behaviors:
+                    print(f'    {beh}', flush=True)
+                print(30 * '=', flush=True)
 
-            return self.api_success(list_of_behaviors)
+                return self.api_success(list_of_behaviors)
+            except (OSError, TypeError, ValueError) as exc:
+                print(f'Failed to list behavior packages - {exc}', flush=True)
+                return self.api_failure(exc)
 
         @app.get('/api/v1/io/behaviors/{package_name}')
-        async def io_behaviors(package_name: str):
+        async def io_behaviors(package_name: str, request: Request):
             """Return list of manifest data for all behaviors in given package."""
             # print(f' ready to process io_behaviors using {package_name} for behaviors ...', flush=True)
             start_clock = datetime.now().timestamp()
             endpoint = '/api/v1/io/behaviors/{package_name}'
             try:
+                self.authorize_request(request)
                 package = self.packages.get(package_name)
                 if package is None:
                     raise HTTPException(status_code=404, detail=f'Package {package_name} not found!')
@@ -563,13 +691,16 @@ class WebuiServer:
                 # print(f'   ready to parse_behavior_folder({package.path}, '
                 #       f'{package.python_path}, {package.editable}) ...', flush=True)
                 errors = []
-                result = parse_behavior_folder(
+                result = await asyncio.to_thread(
+                    parse_behavior_folder,
                     package.path,
                     package.python_path,
                     package.editable,
                     self._settings['text_encoding'],
                     errors=errors,
                 )
+                async with self._behaviors_cache_lock:
+                    self._behaviors_cache[package_name] = result
                 elapsed = datetime.now().timestamp() - start_clock
                 self._record_timing('parse_behaviors', endpoint, elapsed, True, package=package_name)
                 return self.api_success({'items': result, 'errors': errors})
@@ -585,27 +716,34 @@ class WebuiServer:
                 return self.api_failure(f'Error in {package_name}: {exc}')
 
         @app.get('/api/v1/io/behavior/{package_name}/{codefile_name:path}')
-        async def io_behavior_full(package_name: str, codefile_name: str, request: Request = None):
+        async def io_behavior_full(package_name: str, codefile_name: str, request: Request):
             """Return full BehaviorDefinition including codefile_content for a single behavior."""
             start_clock = datetime.now().timestamp()
             endpoint = '/api/v1/io/behavior/{package_name}/{codefile_name}'
             try:
-                if request is not None:
-                    self.authorize_request(request)
-                elif self._api_token:
-                    raise HTTPException(status_code=401, detail='Unauthorized')
+                self.authorize_request(request)
                 package = self.packages.get(package_name)
                 if package is None:
                     raise HTTPException(status_code=404, detail=f'Package {package_name} not found!')
 
                 errors = []
-                behaviors = parse_behavior_folder(
-                    package.path,
-                    package.python_path,
-                    package.editable,
-                    self._settings['text_encoding'],
-                    errors=errors,
-                )
+                async with self._behaviors_cache_lock:
+                    behaviors = self._behaviors_cache.get(package_name)
+                if behaviors is None:
+                    behaviors = await asyncio.to_thread(
+                        parse_behavior_folder,
+                        package.path,
+                        package.python_path,
+                        package.editable,
+                        self._settings['text_encoding'],
+                        errors=errors,
+                    )
+                    async with self._behaviors_cache_lock:
+                        self._behaviors_cache[package_name] = behaviors
+                    if errors:
+                        LOGGER.warning('parse_behavior_folder errors for package %s: %s',
+                                       package_name, errors)
+
                 match = next((
                     b for b in behaviors
                     if (b.codefile_relpath or b.codefile_name) == codefile_name
@@ -636,16 +774,22 @@ class WebuiServer:
                 return self.api_failure(f"Error loading '{codefile_name}' from '{package_name}': {exc}")
 
         @app.get('/api/v1/packages/states')
-        async def packages_states():
+        async def packages_states(request: Request):
             """Return list of packages with FlexBE states."""
-            return self.api_success(list(filter(has_states, self.packages.values())))
+            try:
+                self.authorize_request(request)
+                return self.api_success(list(filter(has_states, self.packages.values())))
+            except (OSError, TypeError, ValueError) as exc:
+                print(f'Failed to list state packages - {exc}', flush=True)
+                return self.api_failure(exc)
 
         @app.get('/api/v1/io/states/{package_name}')
-        async def io_states(package_name: str):
+        async def io_states(package_name: str, request: Request):
             print(f' ready to process {package_name} for states ...', flush=True)
             start_clock = datetime.now().timestamp()
             endpoint = '/api/v1/io/states/{package_name}'
             try:
+                self.authorize_request(request)
                 package = self.packages.get(package_name)
                 if package is None:
                     raise HTTPException(status_code=404, detail=f"Package '{package_name}' not found!")
@@ -759,13 +903,14 @@ class WebuiServer:
                 return self.api_command_failure(exc)
 
         @app.post('/api/v1/view_file_source')
-        async def view_file_source(json_file_dict: FileRequest = Body(...)):
+        async def view_file_source(request: Request, json_file_dict: FileRequest = Body(...)):
             start_clock = datetime.now().timestamp()
             endpoint = '/api/v1/view_file_source'
             package_name = None
             file_name = None
             package_path = None
             try:
+                self.authorize_request(request)
                 package_name = json_file_dict.package
                 file_name = json_file_dict.file
                 manifest_path = json_file_dict.manifest_path
@@ -775,6 +920,12 @@ class WebuiServer:
                     raise ValueError(f"Invalid package '{package_name}' for viewing source")
                 package_path = package.path
                 file_path = self._resolve_package_python_file(package_name, package, file_name, manifest_path)
+                display_file_path = self._get_package_python_relative_path(
+                    package_name,
+                    package,
+                    file_path,
+                    manifest_path,
+                )
 
                 try:
                     with open(file_path, 'r', encoding=self._settings['text_encoding']) as file:
@@ -792,7 +943,7 @@ class WebuiServer:
                         file=file_name,
                     )
                     self._record_timing('viewer', endpoint, elapsed, True, package=package_name, file=file_name)
-                    return self.api_success({'text': highlighted_code, 'file_path': file_path})
+                    return self.api_success({'text': highlighted_code, 'file_path': display_file_path})
                 except (OSError, ValueError, UnicodeError) as exc:
                     elapsed = datetime.now().timestamp() - start_clock
                     self._log_request(
@@ -825,10 +976,23 @@ class WebuiServer:
                 return self.api_failure(exc, data={'text': str(exc)})
 
         @app.post('/api/v1/statemachine/auto_layout')
-        async def statemachine_auto_layout(json_layout_dict: AutoLayoutRequest = Body(...)):
+        async def statemachine_auto_layout(request: Request,
+                                           json_layout_dict: AutoLayoutRequest = Body(...)):
+            start_clock = datetime.now().timestamp()
+            endpoint = '/api/v1/statemachine/auto_layout'
             try:
-                return self.api_success(compute_auto_layout(json_layout_dict))
+                self.authorize_request(request)
+                result = compute_auto_layout(json_layout_dict)
+                elapsed = datetime.now().timestamp() - start_clock
+                self._record_timing('auto_layout', endpoint, elapsed, True)
+                return self.api_success(result)
+            except HTTPException as exc:
+                elapsed = datetime.now().timestamp() - start_clock
+                self._record_timing('auto_layout', endpoint, elapsed, False, error=str(exc))
+                raise exc
             except (TypeError, ValueError, KeyError, RuntimeError) as exc:
+                elapsed = datetime.now().timestamp() - start_clock
+                self._record_timing('auto_layout', endpoint, elapsed, False, error=str(exc))
                 return self.api_failure(exc)
 
         @app.post('/api/v1/behavior/code_generator')
@@ -864,7 +1028,13 @@ class WebuiServer:
                     return self.api_success(result_dict)
 
                 if package_name != behavior.behavior_package:
-                    print(f"package name difference! '{package_name}' '{behavior.package_name}'", flush=True)
+                    error_msg = (
+                        f'Package mismatch: request targets "{package_name}" but behavior model '
+                        f"targets '{behavior.behavior_package}'"
+                    )
+                    print(f'\x1b[91m{error_msg}\x1b[0m', flush=True)
+                    result_dict.update({'error_msg': error_msg})
+                    return self.api_success(result_dict)
 
                 package = self.packages.get(package_name)
                 print(f'package: {package}', flush=True)
@@ -882,9 +1052,14 @@ class WebuiServer:
                     print(f"behavior name difference! '{file_name}' '{behavior_file_name}'", flush=True)
                     file_name = behavior_file_name
 
-                if '.py' not in file_name:
+                if not file_name.lower().endswith('.py'):
                     print(f"Adding .py to file name '{file_name}'", flush=True)
                     file_name += '.py'  # remaining code presumes .py extension
+                python_file_path, file_name = self._resolve_package_python_write_file(
+                    package_name,
+                    package,
+                    file_name,
+                )
 
                 print(f" Generate code to '{file_name}' at '{package.path}' using ws='{ws}' "
                       f'and explicit package={explicit_package} ...', flush=True)
@@ -922,7 +1097,8 @@ class WebuiServer:
                           f" given behavior='{behavior.behavior_name}'", flush=True)
                 else:
                     manifest_path = behavior.manifest_path
-                    manifest_name = os.path.basename(manifest_path)
+                manifest_path = self._resolve_package_manifest_write_file(package_name, package, manifest_path)
+                manifest_name = os.path.basename(manifest_path)
 
                 # Validate that python_path and manifest paths are consistent
                 if not validate_path_consistency(python_path, manifest_path):
@@ -938,7 +1114,7 @@ class WebuiServer:
                 manifest_content = ''
                 manifest_content += f'<?xml version="1.0" encoding="{encoding}"?>\n'
                 manifest_content += '\n'
-                manifest_content += '<behavior name=\"' + behavior.behavior_name + '\">\n'
+                manifest_content += '<behavior name="' + xml_attr(behavior.behavior_name) + '">\n'
                 manifest_content += '\n'
 
                 manifest_content += mg.generate_manifest_header(behavior.behavior_package,
@@ -959,15 +1135,16 @@ class WebuiServer:
                     print(f" Saving manifest file to '{manifest_path}' ...", flush=True)
                     fout.write(manifest_content)
 
-                python_file_path = os.path.join(python_path, file_name)
                 with open(python_file_path, 'w', encoding=self._settings['text_encoding']) as fout:
                     print(f" Saving behavior code to '{python_file_path}' ...", flush=True)
                     fout.write(code)
 
                 result_dict.update({'install_success': True,
                                     'python_file_path': python_path,
-                                    'python_file_name': file_name.replace('.py', ''),
+                                    'python_file_name': file_name[:-3],
                                     'manifest_file_path': manifest_path})
+                async with self._behaviors_cache_lock:
+                    self._behaviors_cache.pop(package_name, None)
                 if self._settings['save_in_source']:
                     source_code_root = self._settings['source_code_root']
                     if os.path.exists(source_code_root) and os.path.isdir(source_code_root):
@@ -1003,11 +1180,17 @@ class WebuiServer:
                         return self.api_success(result_dict)
                     try:
                         manifest_path = os.path.join(manifest_path, manifest_name)
+                        if not self._is_resolved_within_root(package_folder, manifest_path):
+                            raise ValueError(f"manifest path escapes source root: '{manifest_path}'")
+
+                        python_file_path = os.path.join(python_path, file_name)
+                        if not self._is_resolved_within_root(package_folder, python_file_path):
+                            raise ValueError(f"python path escapes source root: '{python_file_path}'")
+
                         with open(manifest_path, 'w', encoding=self._settings['text_encoding']) as fout:
                             print(f" Saving manifest file to '{manifest_path}' ...", flush=True)
                             fout.write(manifest_content)
 
-                        python_file_path = os.path.join(python_path, file_name)
                         with open(python_file_path, 'w', encoding=self._settings['text_encoding']) as fout:
                             print(f" Saving behavior code to '{python_file_path}' ...", flush=True)
                             fout.write(code)
@@ -1017,12 +1200,13 @@ class WebuiServer:
                         return self.api_success(result_dict)
 
                     print(f"\x1b[92mSuccessfully saved behavior to '{package_folder}'!\x1b[0m")
+                    async with self._behaviors_cache_lock:
+                        self._behaviors_cache.pop(package_name, None)
+                    result_dict.update({'src_save_success': True})
                 print(' done!', flush=True)
-                result_dict.update({'src_save_success': True})
                 return self.api_success(result_dict)
             except (AttributeError, IndexError, OSError, TypeError, ValueError, KeyError, RuntimeError) as exc:
                 print(f" Exception generating code for '{file_name}' in '{package_name}'  -- {exc}", flush=True)
-                import traceback
                 print(traceback.format_exc().replace('%', '%%'), flush=True)
                 print(30 * '-')
                 print(json_dict.behavior, flush=True)
@@ -1031,27 +1215,23 @@ class WebuiServer:
                 return self.api_success(result_dict)
 
         @app.post('/api/v1/behavior/manifest_generator')
-        async def behavior_manifest_generator(request: Request, json_manifest_dict: Dict = Body(...)):
+        async def behavior_manifest_generator(request: Request,
+                                              json_manifest_dict: ManifestGeneratorRequest = Body(...)):
             try:
                 self.authorize_request(request)
-                behavior = Behavior(**json_manifest_dict['behavior'])
-                contained_behavior_names = json_manifest_dict['behavior_names']
+                behavior = Behavior(**json_manifest_dict.behavior)
+                contained_behavior_names = json_manifest_dict.behavior_names
                 print(' Manifest_generator:  behavior_manifest_generator for '
                       f"'{behavior.behavior_package}/{behavior.behavior_name}' ...", flush=True)
             except (TypeError, ValueError, KeyError) as exc:
                 print(' Manifest_generator: Exception generating manifest '
                       f'for:\n {json_manifest_dict} -- {exc}', flush=True)
-                import traceback
                 print(traceback.format_exc().replace('%', '%%'))
                 return self.api_command_failure(exc)
 
             try:
                 manifest_content = ''
-                try:
-                    ws = json_manifest_dict['ws']
-                except KeyError:
-                    print('Using default 4 spaces to generate the manifest!')
-                    ws = '    '
+                ws = json_manifest_dict.ws
 
                 mg = ManifestGenerator(ws)
 
@@ -1073,11 +1253,16 @@ class WebuiServer:
                     manifest_path = os.path.join(folder_path, manifest_name)
                 else:
                     manifest_path = behavior.manifest_path
+                manifest_path = self._resolve_package_manifest_write_file(
+                    behavior.behavior_package,
+                    package,
+                    manifest_path,
+                )
 
                 encoding = self._settings['text_encoding'].upper()
                 manifest_content += f'<?xml version="1.0" encoding="{encoding}"?>\n'
                 manifest_content += '\n'
-                manifest_content += '<behavior name=\"' + behavior.behavior_name + '\">\n'
+                manifest_content += '<behavior name="' + xml_attr(behavior.behavior_name) + '">\n'
                 manifest_content += '\n'
 
                 manifest_content += mg.generate_manifest_header(behavior.behavior_package,
@@ -1099,27 +1284,57 @@ class WebuiServer:
                     fout.write(manifest_content)
                     print(' done!', flush=True)
 
+                async with self._behaviors_cache_lock:
+                    self._behaviors_cache.pop(behavior.behavior_package, None)
+
                 return self.api_command_success()
             except (OSError, TypeError, ValueError, KeyError, RuntimeError) as exc:
-                print(f'Exception generating manifest for:\n {behavior.name} -- {exc}', flush=True)
-                import traceback
+                print(f'Exception generating manifest for:\n {behavior.behavior_name} -- {exc}', flush=True)
                 print(traceback.format_exc().replace('%', '%%'))
                 return self.api_command_failure(exc)
+
+    @staticmethod
+    def _require_loopback(request: Request):
+        """Raise 403 if the request did not originate from a loopback address."""
+        host = (request.client.host if request.client else '') or ''
+        if host not in ('127.0.0.1', '::1'):
+            raise HTTPException(status_code=403, detail='Available on loopback only')
 
     def authorize_request(self, request: Request):
         """Authorize mutating API requests when token auth is enabled."""
         if not self._api_token:
             return
 
-        header_token = request.headers.get('x-api-token', '').strip()
-        auth_header = request.headers.get('authorization', '').strip()
+        supplied_token = self._get_supplied_token(request.headers)
+        if not supplied_token or not hmac.compare_digest(supplied_token, self._api_token):
+            raise HTTPException(status_code=401, detail='Unauthorized')
+
+    @staticmethod
+    def _get_supplied_token(headers, query_params=None):
+        """Extract an API token from HTTP/websocket headers or query params."""
+        header_token = headers.get('x-api-token', '').strip()
+        query_token = ''
+        if query_params is not None:
+            query_token = query_params.get('api_token', '').strip()
+        if query_token == '' and query_params is not None:
+            query_token = query_params.get('token', '').strip()
+
+        auth_header = headers.get('authorization', '').strip()
         bearer_token = ''
         if auth_header.lower().startswith('bearer '):
             bearer_token = auth_header[7:].strip()
+        return bearer_token or header_token or query_token
 
-        supplied_token = bearer_token or header_token
+    async def authorize_websocket(self, websocket: WebSocket):
+        """Authorize a websocket handshake when token auth is enabled."""
+        if not self._api_token:
+            return True
+
+        supplied_token = self._get_supplied_token(websocket.headers, websocket.query_params)
         if not supplied_token or not hmac.compare_digest(supplied_token, self._api_token):
-            raise HTTPException(status_code=401, detail='Unauthorized')
+            await websocket.close(code=1008, reason='Unauthorized')
+            return False
+        return True
 
     def run(self, port: int = 8000, host: str = '127.0.0.1', logging: str = 'warning'):
         """Run main web server loop."""
@@ -1202,5 +1417,4 @@ if __name__ == '__main__':
         if isinstance(exc, (SystemExit, KeyboardInterrupt)):
             raise
         print(f'Exception in executor       at {datetime.now()} - ! {type(exc)}\n  {exc}', flush=True)
-        import traceback
         print(f"{traceback.format_exc().replace('%', '%%')}", flush=True)

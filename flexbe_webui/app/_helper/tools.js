@@ -560,14 +560,12 @@ Tools = new (function() {
 	}
 
 	this.viewSource = function(state_type, file_path, code_text) {
-		const html1 = `
+		const html = `
 		<!DOCTYPE html>
 		<html lang="en">
 		<head>
 		<meta charset="UTF-8">
-		<title>`;
-
-		const html2 = `</title>
+		<title></title>
 		<style>
 			body {
 				font-family: Arial, sans-serif;
@@ -589,22 +587,26 @@ Tools = new (function() {
 		</style>
 		</head>
 		<body>
-		<h5><b>`
-
-		const html2b = `</b></h5>
-		  <p>`;
-
-		const html3 = `
-		</p>
 		</body>
 		</html>`;
 
-		let html_response = html1 + state_type + html2;
-		html_response += state_type + ' : ' + file_path;
-		html_response += html2b + code_text + html3;
 		const new_window = window.open('', '_blank');
-		new_window.document.write(html_response);
-		new_window.document.close();
+		const source_document = new_window.document;
+		source_document.open();
+		source_document.write(html);
+		source_document.close();
+		source_document.title = state_type;
+
+		let title = source_document.createElement("h5");
+		let title_text = source_document.createElement("b");
+		title_text.textContent = state_type + ' : ' + file_path;
+		title.appendChild(title_text);
+
+		let code_container = source_document.createElement("div");
+		code_container.innerHTML = code_text;
+
+		source_document.body.appendChild(title);
+		source_document.body.appendChild(code_container);
 
 	}
 

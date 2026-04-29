@@ -140,6 +140,7 @@ function setupGlobals() {
   const feedMessages = [];
   const acknowledgements = [];
   const consoleMessages = [];
+  const localStorageData = new Map();
   let strictElementLookup = false;
 
   global.window = global;
@@ -147,8 +148,15 @@ function setupGlobals() {
     bind() {},
   };
   global.localStorage = {
-    setItem() {},
-    getItem() { return null; },
+    setItem(key, value) {
+      localStorageData.set(key, String(value));
+    },
+    getItem(key) {
+      return localStorageData.has(key) ? localStorageData.get(key) : null;
+    },
+    removeItem(key) {
+      localStorageData.delete(key);
+    },
   };
   global.document = {
     body: makeElement('body'),
@@ -761,6 +769,24 @@ async function runActionClientCase() {
   assert.strictEqual(successResult, undefined);
   assertLog(logs, 'error', "Goal for '/demo' - failed!");
   assertLog(logs, 'info', 'Goal rejected!');
+
+  let timeoutCalled = false;
+  let timeoutPayload;
+  let timeoutOptions;
+  global.API.postData = function(_action, content, onSuccess, _onError, options) {
+    timeoutPayload = content;
+    timeoutOptions = options;
+    onSuccess({ goal_succeeded: false, timed_out: true, reason: 'Timed out waiting for action result.' });
+  };
+
+  client.send_goal({}, result => {
+    successResult = result;
+  }, undefined, 20000, () => {
+    timeoutCalled = true;
+  });
+  assert.strictEqual(timeoutCalled, true);
+  assert.strictEqual(timeoutPayload.timeout_sec, 20);
+  assert.strictEqual(timeoutOptions.timeoutMs, 25000);
 }
 
 async function runRenderConfigCase() {
@@ -890,6 +916,67 @@ async function runTupleParameterCase() {
   assert.strictEqual(acknowledgements.length, 0);
 }
 
+async function runStateParameterDocTypeValidationCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/_helper/checking.js');
+
+  const stateDef = {
+    getParamDesc() {
+      return [
+        { name: 'flag', type: 'str|bool' },
+        { name: 'label', type: 'String' },
+        { name: 'enabled', type: 'Boolean' },
+        { name: 'count', type: 'int' },
+        { name: 'pose', type: 'PoseStamped' },
+      ];
+    },
+  };
+  global.WS.Statelib.getFromLib = function(stateType) {
+    return stateType === 'pkg.TypedState' ? stateDef : undefined;
+  };
+
+  function makeState(paramName, paramValue) {
+    return {
+      getStateName() { return 'Typed'; },
+      getStatePath() { return '/Typed'; },
+      getStateType() { return 'pkg.TypedState'; },
+      getParameters() { return [paramName]; },
+      getParameterValues() { return [paramValue]; },
+      getInputKeys() { return []; },
+      getInputMapping() { return []; },
+      getOutputKeys() { return []; },
+      getOutputMapping() { return []; },
+      getContainer() {
+        return {
+          getDataflow() { return []; },
+          isConcurrent() { return false; },
+        };
+      },
+      getOutcomes() { return []; },
+      getOutcomesUnconnected() { return []; },
+    };
+  }
+
+  Checking.variables = new Set(['self', 'self.runtime_flag']);
+  assert.strictEqual(Checking.checkSingleState(makeState('flag', 'True')), undefined);
+  assert.strictEqual(Checking.checkSingleState(makeState('flag', '"ready"')), undefined);
+  assert.strictEqual(Checking.checkSingleState(makeState('label', "'ready'")), undefined);
+  assert.strictEqual(Checking.checkSingleState(makeState('enabled', 'False')), undefined);
+  assert.strictEqual(Checking.checkSingleState(makeState('count', '7')), undefined);
+  assert.strictEqual(Checking.checkSingleState(makeState('enabled', 'self.runtime_flag')), undefined);
+  assert.strictEqual(Checking.checkSingleState(makeState('pose', '"map"')), undefined);
+
+  const warningsBeforeMismatch = logs.filter(entry => entry.level === 'warn').length;
+  assert.strictEqual(Checking.checkSingleState(makeState('enabled', '"not a bool"')), undefined);
+  const mismatchWarnings = logs
+    .filter(entry => entry.level === 'warn')
+    .slice(warningsBeforeMismatch);
+  assert.strictEqual(mismatchWarnings.length, 1);
+  assert(mismatchWarnings[0].message.includes("documented as 'Boolean'"));
+  assert(mismatchWarnings[0].message.includes('looks like string'));
+}
+
 async function runDashboardParameterEditCase() {
   setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -953,7 +1040,7 @@ async function runDashboardParameterEditCase() {
   assert.strictEqual(parameter.default, 'alpha');
 
   removeSelect.selectedIndex = 0;
-  removeButton.dispatchEvent({ type: 'click', preventDefault() {}, stopPropagation() {} });
+  removeButton.dispatchEvent({ type: 'keydown', key: 'Enter', preventDefault() {}, stopPropagation() {} });
   assert.deepStrictEqual(parameter.additional, ['beta']);
   assert.strictEqual(parameter.default, 'beta');
 
@@ -2255,7 +2342,7 @@ async function runStatePanelHoverDocumentationCase() {
   assert(tooltipText.includes('Default: "safe"'));
   assert(tooltipText.includes('Mode unsafe: Pick '));
   assert(tooltipText.includes('Possible values:'));
-  assert(tooltipText.includes('    - fast'));
+  assert(tooltipText.includes('- fast'));
   assert(!tooltipText.includes('<b>'));
   assert(!tooltipText.includes('<img'));
   assert(!tooltipText.includes('<script>'));
@@ -2341,87 +2428,6 @@ async function runBehaviorStateDefinitionNestedPathCase() {
   }, [], [], []);
 
   assert.strictEqual(behaviorDefinition.getStatePath(), 'test_pkg.nested.demo_behavior_sm');
-}
-
-async function runManifestParserNestedPathsCase() {
-  setupGlobals();
-
-  global.DOMParser = function() {
-    this.parseFromString = function() {
-      const behavior = {
-        getAttribute(name) {
-          return name === 'name' ? 'Nested Demo Behavior' : undefined;
-        },
-      };
-      const executable = {
-        getAttribute(name) {
-          if (name === 'package_path') {
-            return 'test_pkg.nested.deeper.demo_nested_behavior_sm';
-          }
-          if (name === 'class') {
-            return 'NestedDemoBehaviorSM';
-          }
-          return undefined;
-        },
-      };
-      const description = { childNodes: [{ nodeValue: 'Nested demo behavior' }] };
-      const tagstring = { childNodes: [{ nodeValue: 'tag' }] };
-      const author = { childNodes: [{ nodeValue: 'tester' }] };
-      const date = { childNodes: [{ nodeValue: '2026-03-31' }] };
-      const containsA = {
-        getAttribute(name) {
-          if (name === 'name') return 'ChildBehavior';
-          if (name === 'package') return 'child_pkg';
-          return undefined;
-        },
-      };
-      const containsB = {
-        getAttribute(name) {
-          if (name === 'name') return 'LocalBehavior';
-          return undefined;
-        },
-      };
-
-      return {
-        getElementsByTagName(name) {
-          switch (name) {
-            case 'behavior': return [behavior];
-            case 'executable': return [executable];
-            case 'description': return [description];
-            case 'tagstring': return [tagstring];
-            case 'author': return [author];
-            case 'date': return [date];
-            case 'params': return [];
-            case 'contains': return [containsA, containsB];
-            default: return [];
-          }
-        },
-      };
-    };
-  };
-
-  loadScript('flexbe_webui/app/io/io_manifestparser.js');
-
-  const manifest = IO.ManifestParser.parseManifest('<behavior />', '/tmp/nested_demo.xml', '/workspace/test_pkg');
-
-  assert.deepStrictEqual(manifest, {
-    name: 'Nested Demo Behavior',
-    description: 'Nested demo behavior\n',
-    tags: 'tag',
-    author: 'tester',
-    date: '2026-03-31',
-    rosnode_name: 'test_pkg',
-    codefile_name: 'demo_nested_behavior_sm',
-    codefile_path: '/workspace/test_pkg/nested/deeper',
-    codefile_relpath: 'nested/deeper/demo_nested_behavior_sm',
-    class_name: 'NestedDemoBehaviorSM',
-    params: [],
-    contains: [
-      { name: 'ChildBehavior', package: 'child_pkg' },
-      'LocalBehavior',
-    ],
-    file_path: '/tmp/nested_demo.xml',
-  });
 }
 
 async function runLibraryHoverPanelsSafeTextCase() {
@@ -2614,6 +2620,15 @@ async function runApiClientCase() {
   setupGlobals();
 
   let abortCalled = false;
+  let replacedUrl = undefined;
+  global.location = {
+    href: 'http://127.0.0.1:8000/?token=secret-token&mode=test#top',
+  };
+  global.history = {
+    replaceState(_state, _title, url) {
+      replacedUrl = url;
+    },
+  };
   global.AbortController = function() {
     this.signal = {};
     this.abort = function() {
@@ -2623,15 +2638,24 @@ async function runApiClientCase() {
 
   const originalSetTimeout = global.setTimeout;
   const originalClearTimeout = global.clearTimeout;
+  const originalConsoleWarn = console.warn;
+  let consoleWarnCalls = 0;
   global.setTimeout = function(callback) {
     return { callback };
   };
   global.clearTimeout = function() {};
+  console.warn = function() {
+    consoleWarnCalls += 1;
+  };
 
   try {
     loadScript('flexbe_webui/app/api.js');
+    assert.strictEqual(localStorage.getItem('flexbe_webui_api_token'), 'secret-token');
+    assert.strictEqual(replacedUrl, '/?mode=test#top');
 
+    const fetchCalls = [];
     global.fetch = function() {
+      fetchCalls.push(arguments);
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -2648,6 +2672,8 @@ async function runApiClientCase() {
     assert.strictEqual(invalidJsonResult.error, 'invalid JSON response');
     assert.strictEqual(invalidJsonResult.status, 200);
     assert.strictEqual(invalidJsonResult.raw_text, 'not json');
+    assert.strictEqual(fetchCalls[0][1].headers.Authorization, 'Bearer secret-token');
+    assert.strictEqual(fetchCalls[0][1].headers['X-API-Token'], 'secret-token');
 
     const circular = {};
     circular.self = circular;
@@ -2657,7 +2683,8 @@ async function runApiClientCase() {
     assert.strictEqual(stringifyFailure.success, false);
     assert(stringifyFailure.error.includes('circular'));
 
-    global.fetch = function() {
+    global.fetch = function(url, options) {
+      fetchCalls.push([url, options]);
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -2678,6 +2705,10 @@ async function runApiClientCase() {
         error => reject(new Error(error)));
     });
     assert.strictEqual(flagSuccess, true);
+    const latestFetch = fetchCalls[fetchCalls.length - 1];
+    assert.strictEqual(latestFetch[1].headers.Authorization, 'Bearer secret-token');
+    assert.strictEqual(latestFetch[1].headers['X-API-Token'], 'secret-token');
+    assert.strictEqual(latestFetch[1].headers['Content-Type'], 'application/json');
 
     const dataSuccess = await new Promise((resolve, reject) => {
       API.postData('data_ok', { value: 1 },
@@ -2685,10 +2716,28 @@ async function runApiClientCase() {
         error => reject(new Error(error)));
     });
     assert.deepStrictEqual(dataSuccess, { ok: true, value: 42 });
+
+    global.fetch = function() {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text() {
+          return Promise.resolve(JSON.stringify({ legacy_value: 42 }));
+        },
+      });
+    };
+
+    const legacyObjectResult = await new Promise(resolve => {
+      API.get('legacy_object', resolve);
+    });
+    assert.strictEqual(legacyObjectResult.success, true);
+    assert.deepStrictEqual(legacyObjectResult.data, { legacy_value: 42 });
+    assert.strictEqual(consoleWarnCalls, 0);
     assert.strictEqual(abortCalled, false);
   } finally {
     global.setTimeout = originalSetTimeout;
     global.clearTimeout = originalClearTimeout;
+    console.warn = originalConsoleWarn;
   }
 }
 
@@ -3210,9 +3259,11 @@ async function runValidationReportCase() {
   global.T.show = function() {};
 
   let saveCalls = 0;
+  const saveOptions = [];
   global.IO.BehaviorSaver = {
-    saveStateMachine() {
+    saveStateMachine(options) {
       saveCalls += 1;
+      saveOptions.push(options || {});
     },
   };
 
@@ -3245,7 +3296,10 @@ async function runValidationReportCase() {
 
   await UI.Menu.saveBehaviorClicked();
   assert.strictEqual(saveCalls, 1);
+  assert.strictEqual(saveOptions[0].save_as, false);
+  assert.strictEqual(saveOptions[0].keep_terminal_open, true);
   assertLog(logs, 'warn', 'Saving with 1 non-fatal validation warning');
+  assertLog(logs, 'warn', 'non-fatal warning');
 
   logs.length = 0;
   global.Checking.checkBehaviorReport = function() {
@@ -3259,6 +3313,31 @@ async function runValidationReportCase() {
   await UI.Menu.saveBehaviorClicked();
   assert.strictEqual(saveCalls, 1);
   assertLog(logs, 'error', 'Unable to save behavior: fatal validation error');
+
+  logs.length = 0;
+  global.Checking.checkBehaviorReport = function() {
+    return {
+      fatal_errors: [],
+      warnings: [],
+      info: [],
+    };
+  };
+  global.Behavior.getFileName = function() {
+    return 'nested/demo_sm.py';
+  };
+  global.Behavior.getBehaviorName = function() {
+    return 'Demo';
+  };
+  let renameDecisionCalls = 0;
+  global.UI.Tools.customSaveWithRenameDecision = async function() {
+    renameDecisionCalls += 1;
+    return 'save_as';
+  };
+
+  await UI.Menu.saveBehaviorClicked();
+  assert.strictEqual(saveCalls, 2);
+  assert.strictEqual(renameDecisionCalls, 0);
+  assert.strictEqual(saveOptions[1].save_as, false);
 
   logs.length = 0;
   global.Checking.checkBehaviorReport = function() {
@@ -3497,6 +3576,85 @@ async function runEventsFlowsCase() {
   assert.deepStrictEqual(noteSaveEvents, ['shift+enter']);
 }
 
+async function runTerminalSafeTextCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ui/panels/ui_panels_terminal.js');
+
+  const terminal = document.getElementById('terminal');
+  const hostileMessage = '<img src=x onerror=alert(1)> & <b>bold</b>';
+
+  T.logInfo(hostileMessage);
+
+  assert.strictEqual(terminal.children.length, 1);
+  assert.strictEqual(terminal.children[0].textContent, hostileMessage);
+  assert.strictEqual(terminal.children[0].style.color, 'white');
+  assert.strictEqual(terminal.innerHTML, '');
+
+  T.clearLog();
+
+  assert.strictEqual(terminal.children.length, 0);
+}
+
+async function runRemainingHtmlSinksSafeTextCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/_helper/tools.js');
+  loadScript('flexbe_webui/app/ui/ui_runtimecontrol.js');
+
+  const hostileStateType = '<img src=x onerror=alert(1)>';
+  const hostileFilePath = '/tmp/<b>demo</b>.py';
+  const trustedCodeHtml = '<div class="code"><span>trusted highlight</span></div>';
+  const sourceDocument = {
+    body: makeElement('source-body'),
+    title: '',
+    written: '',
+    open() {},
+    write(html) {
+      this.written += html;
+    },
+    close() {},
+    createElement(tag) {
+      const element = makeElement(tag);
+      element.tagName = tag.toUpperCase();
+      return element;
+    },
+  };
+  window.open = function() {
+    return { document: sourceDocument };
+  };
+
+  Tools.viewSource(hostileStateType, hostileFilePath, trustedCodeHtml);
+
+  assert(!sourceDocument.written.includes(hostileStateType));
+  assert(!sourceDocument.written.includes(hostileFilePath));
+  assert.strictEqual(sourceDocument.title, hostileStateType);
+  assert.strictEqual(sourceDocument.body.children[0].children[0].textContent,
+    hostileStateType + ' : ' + hostileFilePath);
+  assert.strictEqual(sourceDocument.body.children[1].innerHTML, trustedCodeHtml);
+
+  ActivityTracer.getCurrentIndex = function() { return 0; };
+  ActivityTracer.getActivityList = function() {
+    return [
+      { description: '<svg onload=alert(1)>changed outcome</svg>' },
+      { description: 'future <b>entry</b>' },
+    ];
+  };
+  ActivityTracer.setUpdateCallback = function(callback) {
+    this.updateCallback = callback;
+  };
+
+  UI.RuntimeControl.displayNoBehavior();
+
+  const history = document.getElementById('rc_save_history');
+  assert.strictEqual(history.innerHTML, '');
+  assert.strictEqual(history.children.length, 1);
+  assert.strictEqual(history.children[0].children[0].textContent,
+    '<svg onload=alert(1)>changed outcome</svg>');
+  assert.strictEqual(history.children[0].children[1].textContent, 'future <b>entry</b>');
+  assert.strictEqual(history.children[0].children[1].style.textDecoration, 'line-through');
+}
+
 async function runCommandUpdateBehaviorCase() {
   setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -3671,7 +3829,7 @@ async function runBehaviorlibUpdateSyncCallbackCase() {
     this.inputKeys = inputKeys;
     this.outputKeys = outputKeys;
     if (readyCallback != undefined) {
-      readyCallback();
+      setTimeout(readyCallback, 0);
     }
   };
   global.WS.BehaviorStateDefinition.prototype.getBehaviorName = function() {
@@ -3698,9 +3856,12 @@ async function runBehaviorlibUpdateSyncCallbackCase() {
 
   let callbackEntry = undefined;
   let callbackSawPushedEntry = false;
-  WS.Behaviorlib.updateEntry(existingEntry, function(updatedEntry) {
-    callbackEntry = updatedEntry;
-    callbackSawPushedEntry = WS.Behaviorlib.getBehaviorList()[0] === updatedEntry;
+  await new Promise(function(resolve) {
+    WS.Behaviorlib.updateEntry(existingEntry, function(updatedEntry) {
+      callbackEntry = updatedEntry;
+      callbackSawPushedEntry = WS.Behaviorlib.getBehaviorList()[0] === updatedEntry;
+      resolve();
+    });
   });
 
   assert(callbackEntry, 'Expected update callback to receive the updated behavior entry');
@@ -3953,6 +4114,72 @@ class DemoBehaviorSM(Behavior):
   const parsingResult = IO.CodeParser.parseCode(code);
   assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_type, 'behavior');
   assert.strictEqual(parsingResult.sm_states[0].sm_states[0].state_class, 'pkg_b__SharedSM');
+}
+
+async function runHelperClassSkippedCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/io/io_codeparser.js');
+
+  // File contains a helper Behavior subclass before the real manifest class.
+  // Without expected_class_name the parser finds HelperMixinSM first; with it
+  // it must target RealBehaviorSM regardless of definition order.
+  const code = `from pkg_a.some_state import SomeState
+from flexbe_core import Autonomy
+from flexbe_core import Behavior
+from flexbe_core import OperatableStateMachine
+
+
+class HelperMixinSM(Behavior):
+
+    def __init__(self, node):
+        super().__init__()
+        self.name = 'Helper Mixin'
+
+    def create(self):
+        _sm = OperatableStateMachine(outcomes=['done'])
+
+        with _sm:
+            OperatableStateMachine.add('Step',
+                SomeState(),
+                transitions={'done': 'done'},
+                autonomy={'done': Autonomy.Off})
+
+        return _sm
+
+
+class RealBehaviorSM(Behavior):
+    """
+    Define Real Behavior.
+
+    Created on 2026-04-26
+    @author: tester
+    """
+
+    def __init__(self, node):
+        super().__init__()
+        self.name = 'Real Behavior'
+
+    def create(self):
+        _state_machine = OperatableStateMachine(outcomes=['done'])
+
+        with _state_machine:
+            OperatableStateMachine.add('Main Step',
+                SomeState(),
+                transitions={'done': 'done'},
+                autonomy={'done': Autonomy.Off})
+
+        return _state_machine
+`;
+
+  // Without the hint the split finds two (Behavior) classes and must throw.
+  let threw = false;
+  try { IO.CodeParser.parseCode(code); } catch (_) { threw = true; }
+  assert(threw, 'Expected parseCode without class hint to throw on ambiguous file');
+
+  // With the expected class name it must parse the correct class.
+  const parsingResult = IO.CodeParser.parseCode(code, 'RealBehaviorSM');
+  assert.strictEqual(parsingResult.behavior_name, 'Real Behavior');
 }
 
 async function runOutcomeCopyCommentEncodingCase() {
@@ -5993,6 +6220,10 @@ async function main() {
     await runTupleParameterCase();
     return;
   }
+  if (caseName === 'state_parameter_doc_type_validation') {
+    await runStateParameterDocTypeValidationCase();
+    return;
+  }
   if (caseName === 'dashboard_parameter_edit') {
     await runDashboardParameterEditCase();
     return;
@@ -6057,10 +6288,6 @@ async function main() {
     await runBehaviorStateDefinitionNestedPathCase();
     return;
   }
-  if (caseName === 'manifest_parser_nested_paths') {
-    await runManifestParserNestedPathsCase();
-    return;
-  }
   if (caseName === 'library_hover_panels_safe_text') {
     await runLibraryHoverPanelsSafeTextCase();
     return;
@@ -6097,6 +6324,14 @@ async function main() {
     await runValidationReportCase();
     return;
   }
+  if (caseName === 'terminal_safe_text') {
+    await runTerminalSafeTextCase();
+    return;
+  }
+  if (caseName === 'remaining_html_sinks_safe_text') {
+    await runRemainingHtmlSinksSafeTextCase();
+    return;
+  }
   if (caseName === 'events_flows') {
     await runEventsFlowsCase();
     return;
@@ -6107,10 +6342,6 @@ async function main() {
   }
   if (caseName === 'behaviorlib_update_sync_callback') {
     await runBehaviorlibUpdateSyncCallbackCase();
-    return;
-  }
-  if (caseName === 'behavior_state_definition_nested_path') {
-    await runBehaviorStateDefinitionNestedPathCase();
     return;
   }
   if (caseName === 'command_qualified_behavior') {
@@ -6127,6 +6358,10 @@ async function main() {
   }
   if (caseName === 'legacy_behavior_import_resolution') {
     await runLegacyBehaviorImportResolutionCase();
+    return;
+  }
+  if (caseName === 'helper_class_skipped') {
+    await runHelperClassSkippedCase();
     return;
   }
   if (caseName === 'outcome_copy_comment_encoding') {

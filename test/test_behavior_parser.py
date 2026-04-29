@@ -70,6 +70,31 @@ class DemoBehaviorSM(Behavior):
     }
 
 
+def test_parse_behavior_interface_uses_requested_class_name():
+    """The lightweight parser should honor the manifest-selected behavior class."""
+    code = """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class HelperBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['helper'], input_keys=['helper_in'], output_keys=['helper_out'])
+
+
+class RealBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['done'], input_keys=['request'], output_keys=['result'])
+"""
+
+    result = parse_behavior_interface(code, 'RealBehaviorSM')
+
+    assert result == {
+        'smi_outcomes': ['done'],
+        'smi_input': ['request'],
+        'smi_output': ['result'],
+    }
+
+
 def test_parse_behavior_manifest_xml_extracts_interface_but_omits_full_code(tmp_path):
     """Manifest parsing should populate lightweight interface fields without embedding the source."""
     manifest_path = tmp_path / 'demo_behavior.xml'
@@ -83,6 +108,7 @@ def test_parse_behavior_manifest_xml_extracts_interface_but_omits_full_code(tmp_
     <author>tester</author>
     <date>2026-03-30</date>
     <executable package_path="test_pkg.demo_behavior_sm" class="DemoBehaviorSM" />
+    <contains name="Child Behavior" package="child_pkg" />
 </behavior>
 """.strip(),
         encoding='utf-8',
@@ -108,6 +134,52 @@ class DemoBehaviorSM(Behavior):
     assert behavior.smi_outcomes == ['done']
     assert behavior.smi_input == ['input_key']
     assert behavior.smi_output == ['output_key']
+    assert len(behavior.contains) == 1
+    assert behavior.contains[0].name == 'Child Behavior'
+    assert behavior.contains[0].package == 'child_pkg'
+
+
+def test_parse_behavior_manifest_xml_extracts_manifest_class_interface(tmp_path):
+    """Manifest parsing should extract the executable class, not the first Behavior class in the file."""
+    manifest_path = tmp_path / 'demo_behavior.xml'
+    code_path = tmp_path / 'demo_behavior_sm.py'
+
+    manifest_path.write_text(
+        """
+<behavior name="Demo Behavior">
+    <description>demo</description>
+    <tagstring>tag</tagstring>
+    <author>tester</author>
+    <date>2026-03-30</date>
+    <executable package_path="test_pkg.demo_behavior_sm" class="RealBehaviorSM" />
+</behavior>
+""".strip(),
+        encoding='utf-8',
+    )
+    code_path.write_text(
+        """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class HelperBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['helper'], input_keys=['helper_in'], output_keys=['helper_out'])
+
+
+class RealBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['done'], input_keys=['request'], output_keys=['result'])
+""".strip(),
+        encoding='utf-8',
+    )
+
+    behavior = parse_behavior_manifest_xml(str(manifest_path), str(tmp_path), True, 'utf-8')
+
+    assert behavior is not None
+    assert behavior.class_name == 'RealBehaviorSM'
+    assert behavior.smi_outcomes == ['done']
+    assert behavior.smi_input == ['request']
+    assert behavior.smi_output == ['result']
 
 
 def test_parse_behavior_manifest_xml_preserves_nested_module_paths(tmp_path):
@@ -308,3 +380,43 @@ class InvalidBehaviorSM(Behavior):
     assert len(errors) == 1
     assert "Skipped behavior 'invalid_behavior'" in errors[0]
     assert "missing required 'min'/'max' metadata" in errors[0]
+
+
+def test_parse_behavior_folder_follows_symlinks_without_cycles(tmp_path):
+    """Folder parsing should follow symlink-install paths without recursing forever."""
+    valid_manifest = tmp_path / 'valid_behavior.xml'
+    valid_code = tmp_path / 'valid_behavior_sm.py'
+
+    valid_manifest.write_text(
+        """
+<behavior name="Valid Behavior">
+    <description>demo</description>
+    <tagstring>tag</tagstring>
+    <author>tester</author>
+    <date>2026-04-04</date>
+    <executable package_path="test_pkg.valid_behavior_sm" class="ValidBehaviorSM" />
+</behavior>
+""".strip(),
+        encoding='utf-8',
+    )
+    valid_code.write_text(
+        """
+from flexbe_core import Behavior, OperatableStateMachine
+
+
+class ValidBehaviorSM(Behavior):
+    def create(self):
+        return OperatableStateMachine(outcomes=['done'])
+""".strip(),
+        encoding='utf-8',
+    )
+    try:
+        (tmp_path / 'loop').symlink_to(tmp_path, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f'Symlink creation unavailable: {exc}')
+
+    errors = []
+    behaviors = parse_behavior_folder(str(tmp_path), str(tmp_path), True, 'utf-8', errors=errors)
+
+    assert [behavior.name for behavior in behaviors] == ['Valid Behavior']
+    assert errors == []

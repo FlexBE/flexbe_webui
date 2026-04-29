@@ -104,7 +104,7 @@ RC.Controller = new (function() {
 			document.getElementById("selection_rc_autonomy").removeAttribute("disabled", "disabled");
 		},
 		isActive: false,
-		label: "STATE_STARTING"
+		label: "STATE_EXTERNAL_NO_BEHAVIOR"
 	};
 	var STATE_EXTERNAL = {
 		onEnter: function() {
@@ -121,7 +121,7 @@ RC.Controller = new (function() {
 			document.getElementById("selection_rc_autonomy").removeAttribute("disabled", "disabled");
 		},
 		isActive: false,
-		label: "STATE_STARTING"
+		label: "STATE_EXTERNAL"
 	};
 	var STATE_STARTING = {
 		onEnter: function() {
@@ -262,12 +262,14 @@ RC.Controller = new (function() {
 		hasTransition(STATE_EXTERNAL_NO_BEHAVIOR,	STATE_EXTERNAL);
 	}
 	this.signalDisconnected = function() {
-		hasTransition(STATE_NO_BEHAVIOR,	STATE_NOTHING);
-		hasTransition(STATE_CONFIGURATION,	STATE_OFFLINE);
-		hasTransition(STATE_STARTING,		STATE_OFFLINE);
-		hasTransition(STATE_ACTIVE,			STATE_OFFLINE);
-		hasTransition(STATE_LOCKED,			STATE_OFFLINE);
-		hasTransition(STATE_CHANGED,		STATE_NOTHING);
+		hasTransition(STATE_NO_BEHAVIOR,			STATE_NOTHING);
+		hasTransition(STATE_CONFIGURATION,			STATE_OFFLINE);
+		hasTransition(STATE_STARTING,				STATE_OFFLINE);
+		hasTransition(STATE_ACTIVE,					STATE_OFFLINE);
+		hasTransition(STATE_LOCKED,					STATE_OFFLINE);
+		hasTransition(STATE_CHANGED,				STATE_NOTHING);
+		hasTransition(STATE_EXTERNAL,				STATE_OFFLINE);
+		hasTransition(STATE_EXTERNAL_NO_BEHAVIOR,	STATE_NOTHING);
 	}
 	this.signalConnected = function() {
 		hasTransition(STATE_NOTHING,	STATE_NO_BEHAVIOR);

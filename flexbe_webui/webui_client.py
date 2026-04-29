@@ -22,6 +22,7 @@ import sys
 import time
 from datetime import datetime
 from threading import Thread
+from urllib.parse import quote
 
 from PySide6.QtCore import QTimer, QUrl, Qt, Signal, Slot
 from PySide6.QtGui import QIcon
@@ -94,6 +95,8 @@ class FlexBEMainWindow(QMainWindow):
         self.setCentralWidget(self._browser)
         self.setMinimumSize(args.min_width, args.min_height)
         self.resize(args.width, args.height)
+        if self._api_token:
+            self._shutdown_query_url += f'?token={quote(self._api_token, safe="")}'
 
         # Start WebSocket listener for shutdown command
         self._is_shutting_down = False

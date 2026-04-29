@@ -1,9 +1,11 @@
 IO.BehaviorSaver = new (function() {
 	var that = this;
 
-	var saveSuccessCallback = function() {
+	var saveSuccessCallback = function(keep_terminal_open) {
 		T.logInfo("Save behavior was successful!");
-		UI.Panels.Terminal.hide();
+		if (!keep_terminal_open) {
+			UI.Panels.Terminal.hide();
+		}
 		UI.Settings.updateBehaviorlib();
 		UI.Tools.notifyRosCommand('save');
 	}
@@ -33,6 +35,7 @@ IO.BehaviorSaver = new (function() {
 	this.saveStateMachine = function(options) {
 		if (options == undefined) options = {};
 		let save_as = options.save_as === true;
+		let keep_terminal_open = options.keep_terminal_open === true;
 
 		T.clearLog();
 		UI.Panels.Terminal.show();
@@ -82,7 +85,7 @@ IO.BehaviorSaver = new (function() {
 								console.log(`\x1b[92mSetting behavior file data ${JSON.stringify(result_data)}\x1b[0m`);
 								Behavior.setFiles(result_data.python_file_name, result_data.manifest_file_path)
 							}
-							saveSuccessCallback();
+							saveSuccessCallback(keep_terminal_open);
 
 							// Check attempt to save behavior to development source code folder
 							if (result_data.src_save_success) {

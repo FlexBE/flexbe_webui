@@ -15,10 +15,8 @@
 """Behavior parser."""
 
 import ast
-import importlib.util
 import os
-import sys
-from typing import List, Optional
+from typing import List, Optional, Set
 from xml.etree import ElementTree as ET
 
 from . import BehaviorDefinition, ContainsEntry, ParameterDefinition
@@ -117,8 +115,8 @@ def _resolve_executable_python_path(package_path: str, python_path: str) -> tupl
     return codefile_path, module_name, codefile_relpath
 
 
-def parse_behavior_interface(code: str) -> dict:
-    """Extract outcomes, input_keys, output_keys from a behavior Python file using AST."""
+def parse_behavior_interface(code: str, class_name: Optional[str] = None) -> dict:
+    """Extract outcomes, input_keys, output_keys from a behavior Python class using AST."""
     result = {'smi_outcomes': [], 'smi_input': [], 'smi_output': []}
     try:
         tree = ast.parse(code)
@@ -130,6 +128,8 @@ def parse_behavior_interface(code: str) -> dict:
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
+        if class_name is not None and node.name != class_name:
+            continue
         # Look for class that inherits from Behavior
         if not any(_is_behavior_base(base) for base in node.bases):
             continue
@@ -140,6 +140,15 @@ def parse_behavior_interface(code: str) -> dict:
             bindings = module_bindings.copy()
             bindings.update(_collect_bindings(create_nodes))
 
+            # Collect all return statements that resolve to a container call, then pick
+            # the last one by line number. Guard returns (reconfiguration, early-exit)
+            # appear at the top of create(); the canonical return is always last.
+            # If a behavior ever has its canonical return inside a conditional
+            # branch, this loop should be restructured to iterate item.body
+            # directly, descend only into `with` blocks, and ignore returns
+            # nested inside if/try/for statements.
+            best_result = None
+            best_lineno = -1
             for child in sorted(create_nodes, key=lambda current: getattr(current, 'lineno', -1)):
                 if not isinstance(child, ast.Return) or child.value is None:
                     continue
@@ -150,6 +159,7 @@ def parse_behavior_interface(code: str) -> dict:
                 if not _is_container_call(root_value):
                     continue
 
+                candidate = {'smi_outcomes': [], 'smi_input': [], 'smi_output': []}
                 for kw in root_value.keywords:
                     if kw.arg not in {'outcomes', 'input_keys', 'output_keys'}:
                         continue
@@ -157,28 +167,41 @@ def parse_behavior_interface(code: str) -> dict:
                     if resolved is None:
                         continue
                     if kw.arg == 'outcomes':
-                        result['smi_outcomes'] = resolved
+                        candidate['smi_outcomes'] = resolved
                     elif kw.arg == 'input_keys':
-                        result['smi_input'] = resolved
+                        candidate['smi_input'] = resolved
                     elif kw.arg == 'output_keys':
-                        result['smi_output'] = resolved
-                return result
+                        candidate['smi_output'] = resolved
+                lineno = getattr(child, 'lineno', -1)
+                if lineno > best_lineno:
+                    best_lineno = lineno
+                    best_result = candidate
+            if best_result is not None:
+                return best_result
     return result
 
 
 def parse_behavior_folder(folder: str, base_path: str,
                           editable: bool,
                           encoding: str,
-                          errors: Optional[List[str]] = None) -> List[BehaviorDefinition]:
+                          errors: Optional[List[str]] = None,
+                          _visited: Optional[Set[str]] = None) -> List[BehaviorDefinition]:
     """Parse behavior folder."""
     # print(f'Parsing behavior folder {folder} from {base_path} ...', flush=True)
 
     behavior_defs = []
+    real_folder = os.path.realpath(folder)
+    if _visited is None:
+        _visited = set()
+    if real_folder in _visited:
+        return behavior_defs
+    _visited.add(real_folder)
+
     for file_name in os.listdir(folder):
         file_path = os.path.join(folder, file_name)
         if os.path.isdir(file_path):
             # Recurse into subfolder
-            behavior_defs.extend(parse_behavior_folder(file_path, base_path, editable, encoding, errors))
+            behavior_defs.extend(parse_behavior_folder(file_path, base_path, editable, encoding, errors, _visited))
             continue
 
         try:
@@ -190,11 +213,7 @@ def parse_behavior_folder(folder: str, base_path: str,
                 if name == 'package':
                     continue
 
-                try:
-                    behavior = parse_behavior_manifest_xml(file_path, base_path, editable, encoding)
-                except (OSError, ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
-                    print(f"Exception parsing behavior '{file_name}':\n{exc}", flush=True)
-                    raise ValueError(f"Error in '{file_path}': {exc}") from exc
+                behavior = parse_behavior_manifest_xml(file_path, base_path, editable, encoding)
 
                 if behavior is None:
                     continue
@@ -205,71 +224,6 @@ def parse_behavior_folder(folder: str, base_path: str,
             if errors is not None:
                 errors.append(f"Skipped behavior '{name}' in '{folder}': {exc}")
     return behavior_defs
-
-
-def parse_behavior_manifest_py(file_path: str, python_path: str,
-                               editable: bool, encoding: str) -> Optional[BehaviorDefinition]:
-    """
-    Parse behavior manifest.
-
-    NOTE: Currently unused.
-    Intended for future extension to Python-based manifests.
-    XML-based manifests (parse_behavior_manifest_xml) are used exclusively at this time.
-    """
-    try:
-        _, module_name = os.path.split(file_path)
-        module_name = module_name[:-len('.py')]
-
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        try:
-            spec.loader.exec_module(module)
-        except Exception:  # noqa: B902
-            sys.modules.pop(module_name, None)
-            print(f"\x1b[91mFailed to load module '{module_name}' from '{file_path}' - removed from sys.modules.\x1b[0m",
-                  flush=True)
-            raise
-
-        manifest = module.__dict__.get(module_name[:-len('_manifest')])
-
-        package_path = manifest['executable']['package_path']
-        package_parts = package_path.split('.')
-        rosnode_name = package_parts[0]
-        codefile_path, codefile_name, codefile_relpath = _resolve_executable_python_path(package_path, python_path)
-        class_name = manifest['executable']['class']
-
-        print(f'Parsing behavior python manifest {file_path} ...', flush=True)
-        # print(f"    path='{codefile_path}' file='{codefile_name}' class='{class_name}'", flush=True)
-
-        param_list = []
-        contains_list = []
-
-        code_file = os.path.join(codefile_path, codefile_name + '.py')
-        with open(code_file, 'r', encoding=encoding) as fin:
-            codefile_content = fin.read()
-
-        return BehaviorDefinition(
-            name=manifest['name'],
-            description=manifest.get('description', '').strip(),
-            tags=manifest.get('tagstring', ''),
-            author=manifest.get('description', ''),
-            date=manifest.get('date'),
-            rosnode_name=rosnode_name,
-            codefile_name=codefile_name,
-            codefile_path=codefile_path,
-            codefile_relpath=codefile_relpath,
-            codefile_content=codefile_content,
-            class_name=class_name,
-            manifest_path=file_path,
-            editable=editable,
-            params=param_list,
-            contains=contains_list,
-        )
-    except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
-        print(f"\x1b[91mError parsing '{file_path}' in '{python_path}' - skip!\x1b[0m")
-        print(exc, flush=True)
-        return None
 
 
 def parse_behavior_manifest_xml(manifest_path: str,
@@ -312,12 +266,19 @@ def parse_behavior_manifest_xml(manifest_path: str,
         param_list = parse_manifest_xml_parameters(behavior_xml.findall('params'))
         contains_list = parse_manifest_xml_contains(behavior_xml.findall('contains'))
 
+        # Read the source file now to populate smi_outcomes/smi_input/smi_output so the
+        # frontend behavior library has outcome and key data without a separate round-trip.
+        # A missing or unreadable file produces empty interface data (behavior still listed).
         # code_file = os.path.join(codefile_path.replace('.', '/'), codefile_name + '.py')
         code_file = os.path.join(codefile_path, codefile_name + '.py')
-        with open(code_file, 'r', encoding=encoding) as fin:
-            codefile_content = fin.read()
-
-        ifc = parse_behavior_interface(codefile_content)
+        try:
+            with open(code_file, 'r', encoding=encoding) as fin:
+                codefile_content = fin.read()
+            ifc = parse_behavior_interface(codefile_content, class_name)
+        except OSError:
+            print(f'\x1b[93m  Source file not readable for "{name}" at "{code_file}"'
+                  f' — interface data unavailable\x1b[0m', flush=True)
+            ifc = {'smi_outcomes': [], 'smi_input': [], 'smi_output': []}
 
         return BehaviorDefinition(
             name=name,
@@ -339,7 +300,7 @@ def parse_behavior_manifest_xml(manifest_path: str,
             smi_input=ifc['smi_input'],
             smi_output=ifc['smi_output'],
         )
-    except (OSError, ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
+    except (ValueError, TypeError, KeyError, ET.ParseError, AttributeError) as exc:
         print(f"\x1b[91mError parsing '{manifest_path}' - skip!\x1b[0m")
         print(exc, flush=True)
         raise ValueError(f"Error parsing '{manifest_path}': {exc}") from exc
@@ -376,7 +337,7 @@ def parse_manifest_xml_parameters(params_xml):
                                 f"numeric parameter '{param_name}' has unexpected metadata element '{elem.tag}'"
                             )
                         bound_value = elem.attrib.get('value')
-                        if bound_value is None:
+                        if not bound_value:
                             raise ValueError(
                                 f"numeric parameter '{param_name}' is missing required '{elem.tag}' value"
                             )

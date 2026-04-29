@@ -150,7 +150,7 @@ IO.CodeParser = new (function() {
 			if (init_result != "") {
 				manual[1] = that.leftJustifyTextBlock(init_result);
 			} else {
-				need_manual_inits = true;
+				need_manual_init = true;
 			}
 			code = code.replace(manual_init_pattern_begin + init_split_end[0] + manual_init_pattern_end, "");
 		} else {
@@ -165,7 +165,7 @@ IO.CodeParser = new (function() {
 			if (create_result != "") {
 				manual[2] = that.leftJustifyTextBlock(create_result);
 			} else {
-				need_manual_creates = true;
+				need_manual_create = true;
 			}
 			code = code.replace(manual_create_pattern_begin + create_split_end[0] + manual_create_pattern_end, "");
 		} else {
@@ -357,13 +357,14 @@ IO.CodeParser = new (function() {
 		var root_sm_name_result = code.match(return_sm_pattern);
 		if (root_sm_name_result == null) throw "could not identify root state machine";
 		var root_sm_name = root_sm_name_result[1];
-		code = code.replace(return_sm_pattern, "");
 
-		// Pre-pass: extract # route: comments and associate with the SM variable they precede
+		// Pre-pass: extract # route: comments and associate with the SM variable they precede.
+		// Must run before stripping the return line so inline-return root SMs are visible.
 		var route_map = {};
 		var pending_routes = [];
 		var route_comment_re = /^[ \t]*# route: (.+?) --> (.+?)\s*$/;
 		var sm_var_next_re = /^\s*(\w+)\s*=\s*(?:OperatableStateMachine|ConcurrencyContainer|PriorityContainer)\(/;
+		var inline_return_sm_re = /^\s*return\s+(?:OperatableStateMachine|ConcurrencyContainer|PriorityContainer)\(/;
 		var code_lines = code.split('\n');
 		for (var li = 0; li < code_lines.length; li++) {
 			var route_match = code_lines[li].match(route_comment_re);
@@ -385,6 +386,8 @@ IO.CodeParser = new (function() {
 					var sm_var_match = code_lines[li].match(sm_var_next_re);
 					if (sm_var_match) {
 						route_map[sm_var_match[1]] = pending_routes.slice();
+					} else if (code_lines[li].match(inline_return_sm_re)) {
+						route_map[root_sm_name] = pending_routes.slice();
 					}
 					// Clear pending on any non-comment, non-empty line
 					if (code_lines[li].trim() !== '' && !code_lines[li].match(/^\s*#/)) {
@@ -394,6 +397,7 @@ IO.CodeParser = new (function() {
 			}
 		}
 		code = code_lines.join('\n');
+		code = code.replace(return_sm_pattern, "");
 
 		// get all sm definitions
 		var sm_defs = [];
@@ -721,17 +725,20 @@ IO.CodeParser = new (function() {
 	}
 
 
-	this.parseCode = function(code) {
+	this.parseCode = function(code, expected_class_name) {
 		var extract_result = that.extractManual(code);
 		code = extract_result.new_code;
 
-		// find class definition
-		var class_name_result = code.match(class_def_pattern);
+		// find class definition — use a targeted pattern when the expected class name is known
+		var active_pattern = (expected_class_name && /^\w+$/.test(expected_class_name))
+			? new RegExp('^(\\s*)class\\s+(' + expected_class_name + ')\\s*\\(Behavior\\):$', 'im')
+			: class_def_pattern;
+		var class_name_result = code.match(active_pattern);
 		if (class_name_result == null) throw "behavior class definition could not be found";
 		var class_name = class_name_result[2];
 
 		// parse top section
-		var code_class_split = code.split(class_def_pattern);
+		var code_class_split = code.split(active_pattern);
 		// [0] - before
 		// [1] - capt group indentation
 		// [2] - capt group class name
@@ -814,12 +821,15 @@ IO.CodeParser = new (function() {
 
 	}
 
-	this.parseSMInterface = function(code) {
+	this.parseSMInterface = function(code, expected_class_name) {
 		var extract_result = that.extractManual(code);
 		code = extract_result.new_code;
 
 		// parse top section
-		var code_class_split = code.split(class_def_pattern);
+		var active_pattern = (expected_class_name && /^\w+$/.test(expected_class_name))
+			? new RegExp('^(\\s*)class\\s+(' + expected_class_name + ')\\s*\\(Behavior\\):$', 'im')
+			: class_def_pattern;
+		var code_class_split = code.split(active_pattern);
 		// [0] - before
 		// [1] - capt group indentation
 		// [2] - capt group class name

@@ -20,6 +20,8 @@ With default host/port:
 
 - recent viewer/editor timing entries
 - parse timing entries (`io/behaviors`, `io/states`)
+- full behavior load timing entries (`behavior_full`)
+- auto-layout timing entries (`auto_layout`)
 - per-category summary stats (count/avg/max)
 - success/failure counters
 
@@ -35,4 +37,16 @@ With default host/port:
 - These diagnostics are intended for development/troubleshooting.
 - Data is in-memory and resets when the process restarts.
 - The diagnostics page auto-refreshes every 2 seconds.
+
+## Access restriction
+
+All diagnostics endpoints are restricted to loopback clients (`127.0.0.1` / `::1`).
+Requests from any other address receive HTTP 403, regardless of how the server is bound.
+
+If you need diagnostics from a remote machine, use SSH port-forwarding:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 <robot-host>
+# then open http://127.0.0.1:8000/dev/diagnostics locally
+```
 

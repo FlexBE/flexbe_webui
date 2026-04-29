@@ -51,9 +51,12 @@ WS.BehaviorStateDefinition = function(manifest, outcomes, input_keys, output_key
 		});
 	}
 
-	// Parse SM immediately if content is already available; otherwise defer to ensureBSMReady().
+	// Parse SM if content is already available; otherwise defer to ensureBSMReady().
+	// Use setTimeout so bsm_loaded_callback always fires asynchronously — callers can
+	// safely assign the returned object before the callback runs.
 	if (behavior_manifest.codefile_content) {
-		parseBSMManifest(behavior_manifest, bsm_loaded_callback);
+		bsm_loading = true;
+		setTimeout(function() { parseBSMManifest(behavior_manifest, bsm_loaded_callback); }, 0);
 	}
 
 	var documentation = new WS.Documentation(manifest.description);
@@ -69,29 +72,21 @@ WS.BehaviorStateDefinition = function(manifest, outcomes, input_keys, output_key
 			}
 		}
 	};
-	var buildParameterDescription = function(param, defaultValue) {
-		var descriptionLines = [
-			"Default: " + defaultValue,
-			param.label + ": " + param.hint
-		];
-		if (param.type == "numeric") {
-			descriptionLines.push("");
-			descriptionLines.push("Value range: " + param.additional.min + " - " + param.additional.max);
-		} else if (param.type == "enum") {
-			descriptionLines.push("");
-			descriptionLines.push("Possible values:");
-			(param.additional || []).forEach(opt => {
-				descriptionLines.push("    - " + opt);
-			});
-		}
-		return descriptionLines.join("\n");
-	};
 	manifest.params.forEach(param => {
 		validateParameterMetadata(param);
 		parameters.push(param.name);
 		var defaultValue = (param.type == "text" || param.type == "enum")? '"' + param.default + '"' : param.default;
 		parameterDefaults.push(defaultValue);
-		var desc = buildParameterDescription(param, defaultValue);
+		var desc = {
+			default_value: String(defaultValue),
+			label: String(param.label),
+			hint: String(param.hint),
+		};
+		if (param.type == "numeric") {
+			desc.extra = { kind: "range", min: param.additional.min, max: param.additional.max };
+		} else if (param.type == "enum") {
+			desc.extra = { kind: "enum", options: param.additional.slice() };
+		}
 		documentation.addDescription('--', param.name, param.type, desc);
 	});
 	

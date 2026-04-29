@@ -606,7 +606,7 @@ RC.PubSub = new (function() {
 
 			root_container.removeState(sm_instance);
 			root_container.addState(state_machine);
-			if (is_initial) root_container.setInitialState(sm_instance);
+			if (is_initial) root_container.setInitialState(state_machine);
 			transitions.forEach(function (t) {
 				if (t.getTo() != undefined && t.getTo().getStateName() == state_machine.getStateName()) t.setTo(state_machine);
 				if (t.getFrom().getStateName() == state_machine.getStateName()) t.setFrom(state_machine);
@@ -870,6 +870,10 @@ RC.PubSub = new (function() {
 		version_publisher = undefined;
 
 		synthesis_action_client = undefined;
+
+		last_onboard_heartbeat_time = undefined;
+		last_mirror_heartbeat_time = undefined;
+		last_launcher_heartbeat_time = undefined;
 
 		console.log(`\x1b[91m  ROS pub/sub shutdown complete!\x1b[0m`);
 		T.logInfo(`FlexBE WebUI pub/sub shutdown complete - reconnect to interact with onboard!`);

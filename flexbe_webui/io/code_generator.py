@@ -69,6 +69,40 @@ class CodeGenerator:
         """Encode names for parser round-tripping in comment metadata."""
         return quote(str(name), safe='')
 
+    @staticmethod
+    def _py_str(value):
+        """Return a Python string literal for generated source."""
+        return repr(str(value))
+
+    @classmethod
+    def _py_list(cls, values):
+        """Return a Python list literal for generated string values."""
+        return '[' + ', '.join(cls._py_str(value) for value in values) + ']'
+
+    @classmethod
+    def _py_dict_entry(cls, key, value):
+        """Return a Python dictionary entry for generated string keys."""
+        return cls._py_str(key) + ': ' + value
+
+    @staticmethod
+    def _docstring_text(value):
+        """Escape generated docstring content without changing displayed text."""
+        return (
+            str(value)
+            .replace('\n', ' ')
+            .replace('\r', ' ')
+            .replace('\\', '\\\\')
+            .replace('"""', '\\"\\"\\"')
+        )
+
+    @staticmethod
+    def _state_machine_var_name(state_name, counter):
+        """Return a valid generated variable name for a state machine."""
+        normalized = re.sub(r'\W+', '_', state_name.lower()).strip('_')
+        if normalized == '':
+            normalized = 'container'
+        return f'_sm_{normalized}_{counter}'
+
     def _has_multi_copy_outcomes(self, sm):
         """Return whether a non-concurrent state machine has copied outcome connectors."""
         return not sm.concurrent and any(
@@ -188,7 +222,7 @@ class CodeGenerator:
         code = ''
         code += 'class ' + class_name + '(Behavior):\n'
         code += self.ws + '"""\n'
-        code += self.ws + 'Define ' + behavior_name + '.\n\n'  # pep257 style single line comment
+        code += self.ws + 'Define ' + self._docstring_text(behavior_name) + '.\n\n'  # pep257 style single line comment
         for line in description.split('\n'):
             split_lines = break_long_line(line.rstrip())
             for line2 in split_lines:
@@ -196,7 +230,7 @@ class CodeGenerator:
                 if len(line2) == 0:
                     code += '\n'
                 else:
-                    code += self.ws + line2.rstrip() + '\n'
+                    code += self.ws + self._docstring_text(line2.rstrip()) + '\n'
 
         code += self.ws + '"""\n'
         return code
@@ -326,16 +360,16 @@ class CodeGenerator:
         """Generate the behavior header."""
         code = ''
         code += '"""\n'
-        code += 'Define ' + behavior_name + '.\n'
+        code += 'Define ' + self._docstring_text(behavior_name) + '.\n'
         code += '\n'
 
         for line in desc.split('\n'):
             split_lines = break_long_line(line.rstrip())
             for line2 in split_lines:
-                code += line2.rstrip() + '\n'
+                code += self._docstring_text(line2.rstrip()) + '\n'
 
-        code += '\nCreated on ' + date + '\n'
-        code += '@author: ' + author + '\n'
+        code += '\nCreated on ' + self._docstring_text(date) + '\n'
+        code += '@author: ' + self._docstring_text(author) + '\n'
         code += '"""\n'
         return code
 
@@ -345,7 +379,7 @@ class CodeGenerator:
         # header
         code += self.ws + 'def __init__(self, node):\n'
         code += self.ws + self.ws + 'super().__init__()\n'
-        code += self.ws + self.ws + "self.name = '" + behavior_name + "'\n"
+        code += self.ws + self.ws + 'self.name = ' + self._py_str(behavior_name) + '\n'
         code += '\n'
 
         # parameters
@@ -353,12 +387,13 @@ class CodeGenerator:
         for param in params:
             default_value = ''
             if param['type'] == 'text' or param['type'] == 'enum':
-                default_value = "'" + param['default'] + "'"
+                default_value = self._py_str(param['default'])
             elif param['type'] == 'yaml':
                 default_value = 'dict()'
             else:
                 default_value = param['default']
-            code += self.ws + self.ws + "self.add_parameter('" + param['name'] + "', " + default_value + ')\n'
+            code += (self.ws + self.ws + 'self.add_parameter('
+                     + self._py_str(param['name']) + ', ' + default_value + ')\n')
 
         code += '\n'
         if self.initialize_flexbe_core:
@@ -389,7 +424,7 @@ class CodeGenerator:
         contained_behaviors.sort(key=lambda x: x.state_path)
         for beh in contained_behaviors:
             code += self.ws + self.ws + 'self.add_behavior(' + self._get_state_reference(beh, states) + \
-                ", '" + beh.state_path[1:] + "', node)\n"
+                ', ' + self._py_str(beh.state_path[1:]) + ', node)\n'
         code += '\n'
         # manual
         code += self.ws + self.ws + '# Additional initialization code can be added inside the following tags\n'
@@ -433,19 +468,19 @@ class CodeGenerator:
         for line in self._generate_outcome_comment_lines(root_sm):
             code += self.ws + self.ws + line + '\n'
         code += self.ws + self.ws +\
-            "_state_machine = OperatableStateMachine(outcomes=['" + "', '".join(root_sm.outcomes) + "']"
+            '_state_machine = OperatableStateMachine(outcomes=' + self._py_list(root_sm.outcomes)
         if len(input_keys) > 0:
-            code += ", input_keys=['" + "', '".join(input_keys) + "']"
+            code += ', input_keys=' + self._py_list(input_keys)
 
         if len(output_keys) > 0:
-            code += ", output_keys=['" + "', '".join(output_keys) + "']"
+            code += ', output_keys=' + self._py_list(output_keys)
 
         code += ')\n'
 
         # default userdata
         for udata in user_data:
             code += self.ws + self.ws + \
-                '_state_machine.userdata.' + udata['key'].replace('"', '') + ' = ' + udata['value'].strip() + '\n'
+                'setattr(_state_machine.userdata, ' + self._py_str(udata['key']) + ', ' + udata['value'].strip() + ')\n'
 
         code += '\n'
 
@@ -467,14 +502,14 @@ class CodeGenerator:
         code += self.ws + self.ws + 'return _state_machine\n'
         return code
 
-    def generate_state_machine(self, sm, include_header, states):
+    def generate_state_machine(self, sm, include_header, all_states):
         """Generate the state machine code."""
         code = ''
         sm_name = ''
         if sm.state_name == '':
             sm_name = '_state_machine'
         else:
-            sm_name = '_sm_' + sm.state_name.lower().replace(' ', '_') + '_' + str(self.sm_counter)
+            sm_name = self._state_machine_var_name(sm.state_name, self.sm_counter)
         self.sm_counter += 1
         self.sm_names.append({'sm': sm, 'name': sm_name})
 
@@ -484,13 +519,13 @@ class CodeGenerator:
 
             if sm.concurrent:
                 prefix = self.ws + self.ws + sm_name + ' = ConcurrencyContainer('
-                code += prefix + "outcomes=['" + "', '".join(sm.outcomes) + "']"
+                code += prefix + 'outcomes=' + self._py_list(sm.outcomes)
             elif sm.priority:
                 prefix = self.ws + self.ws + sm_name + ' = PriorityContainer('
-                code += prefix + "outcomes=['" + "', '".join(sm.outcomes) + "']"
+                code += prefix + 'outcomes=' + self._py_list(sm.outcomes)
             else:
                 prefix = self.ws + self.ws + sm_name + ' = OperatableStateMachine('
-                code += prefix + "outcomes=['" + "', '".join(sm.outcomes) + "']"
+                code += prefix + 'outcomes=' + self._py_list(sm.outcomes)
 
             if self.ws == '\t':
                 prefix = 8 * self.ws
@@ -498,9 +533,9 @@ class CodeGenerator:
                 prefix = len(prefix) * ' '
 
             if len(sm.input_keys) > 0:
-                code += ',\n' + prefix + "input_keys=['" + "', '".join(sm.input_keys) + "']"
+                code += ',\n' + prefix + 'input_keys=' + self._py_list(sm.input_keys)
             if len(sm.output_keys) > 0:
-                code += ',\n' + prefix + "output_keys=['" + "', '".join(sm.output_keys) + "']"
+                code += ',\n' + prefix + 'output_keys=' + self._py_list(sm.output_keys)
 
             if sm.concurrent:
                 code += ',\n' + prefix + 'conditions=['
@@ -509,9 +544,10 @@ class CodeGenerator:
                     outcome = value.split('#')[0]
                     transitions_list = []
                     for trans_list in sm.conditions['transitions'][ndx]:
-                        transitions_list.append(f"('{trans_list[0]}', '{trans_list[1]}')")
+                        transitions_list.append('(' + self._py_str(trans_list[0]) + ', '
+                                                + self._py_str(trans_list[1]) + ')')
 
-                    list_entries.append(f"('{outcome}', [{', '.join(transitions_list)}])")
+                    list_entries.append('(' + self._py_str(outcome) + ', [' + ', '.join(transitions_list) + '])')
                 code += list_entries[0]
                 if len(list_entries) > 1:
                     code += f',\n{prefix}{" "*len("conditions=[")}'
@@ -524,23 +560,23 @@ class CodeGenerator:
         code += self.ws + self.ws + 'with ' + sm_name + ':\n'
 
         # state machine needs to start with initial state
-        states = sm.states
-        states.sort(key=lambda x: x.state_name)
+        local_states = sm.states
+        local_states.sort(key=lambda x: x.state_name)
         init_trans = next((x for x in (sm.transitions or []) if x.from_state_name == 'INIT'), None)
         if init_trans is None:
             raise ValueError(f"State machine '{sm.state_name}' has no INIT transition")
-        init_state = next((x for x in states if x.state_name == init_trans.to_state_name), None)
+        init_state = next((x for x in local_states if x.state_name == init_trans.to_state_name), None)
         if init_state is None:
             raise ValueError(f"State machine '{sm.state_name}' INIT transition targets"
                              f" unknown state '{init_trans.to_state_name}'")
 
-        if init_state != states[0]:
-            states.remove(init_state)
-            states.insert(0, init_state)
+        if init_state != local_states[0]:
+            local_states.remove(init_state)
+            local_states.insert(0, init_state)
 
         # add states
-        for state in states:
-            code += self.generate_state(state, sm.transitions, states)
+        for state in local_states:
+            code += self.generate_state(state, sm.transitions, all_states)
 
         return code
 
@@ -549,7 +585,8 @@ class CodeGenerator:
         state_code = ''
 
         # comment section for internal data
-        state_code += self.ws + self.ws + self.ws + '# x:' + str(round(state.position_x)) + ' y:' + str(round(state.position_y))
+        state_code += (self.ws + self.ws + self.ws + '# x:' + str(round(state.position_x))
+                       + ' y:' + str(round(state.position_y)))
         internal_param_list = []
         for ndx, p_k in enumerate(state.parameters):
             if not p_k.startswith('?'):
@@ -562,7 +599,8 @@ class CodeGenerator:
 
         state_code += '\n'
 
-        state_code += self.ws + self.ws + self.ws + f"OperatableStateMachine.add('{state.state_name}',\n"
+        state_code += (self.ws + self.ws + self.ws + 'OperatableStateMachine.add('
+                       + self._py_str(state.state_name) + ',\n')
 
         if self.ws != '\t':
             prepend = ' ' * len(self.ws + self.ws + self.ws + 'OperatableStateMachine.add(')
@@ -584,7 +622,7 @@ class CodeGenerator:
             for ndx, in_key in enumerate(state.input_keys):
                 if state.input_mapping[ndx] is not None:
                     continue
-                be_defkeys_str.append("'" + in_key + "'")
+                be_defkeys_str.append(self._py_str(in_key))
 
             if len(be_defkeys_str) > 0:
                 defkeys_str = 'default_keys=[' + ','.join(be_defkeys_str) + ']'
@@ -595,7 +633,7 @@ class CodeGenerator:
             for ndx, param in enumerate(state.parameters):
                 if state.parameter_values[ndx] is None:
                     continue
-                be_params_str.append("'" + param + "': " + state.parameter_values[ndx])
+                be_params_str.append(self._py_dict_entry(param, state.parameter_values[ndx]))
 
             if len(be_params_str) > 0:
                 params_str = 'parameters={' + ', '.join(be_params_str) + '}'
@@ -605,7 +643,7 @@ class CodeGenerator:
             if self.ws == '\t':
                 prepend_beh = '\t' * ((len(code) - 1) // 4 + 1)
 
-            code += f"{self._get_state_reference(state, states)}, '{state.state_path[1:]}'"
+            code += self._get_state_reference(state, states) + ', ' + self._py_str(state.state_path[1:])
             if defkeys_str != '':
                 code += ',\n' + prepend_beh
                 code += f'\n{prepend_beh}'.join(format_state_code_string(defkeys_str,
@@ -653,7 +691,7 @@ class CodeGenerator:
             if (outcome_transition.x is not None or outcome_transition.beg_x is not None
                     or outcome_transition.end_x is not None):
                 #  Track new Bezier information at end of transition in comment form
-                temp = "'" + out + "': '" + transition_target + "'  # "
+                temp = self._py_dict_entry(out, self._py_str(transition_target)) + '  # '
                 if outcome_transition.x is None:
                     temp = temp + '-1 -1 '
                 else:
@@ -662,7 +700,8 @@ class CodeGenerator:
                 if outcome_transition.beg_x is None:
                     temp = temp + '-1 -1 '
                 else:
-                    temp = temp + str(round(outcome_transition.beg_x)) + ' ' + str(round(outcome_transition.beg_y)) + ' '
+                    temp = (temp + str(round(outcome_transition.beg_x)) + ' '
+                            + str(round(outcome_transition.beg_y)) + ' ')
 
                 if outcome_transition.end_x is None:
                     temp = temp + '-1 -1'
@@ -677,7 +716,7 @@ class CodeGenerator:
 
                 transition_strings.append(temp)
             else:
-                transition_strings.append("'" + out + "': '" + transition_target + "'")
+                transition_strings.append(self._py_dict_entry(out, self._py_str(transition_target)))
 
         transition_code = 'transitions={'
 
@@ -689,7 +728,7 @@ class CodeGenerator:
         aut_code = 'autonomy={'
         autonomy_strings = []
         for ndx, out in enumerate(state.outcomes):
-            autonomy_strings.append("'" + out + "': " + autonomy_mapping(state.autonomy[ndx]))
+            autonomy_strings.append(self._py_dict_entry(out, autonomy_mapping(state.autonomy[ndx])))
 
         aut_code += ', '.join(autonomy_strings) + '}'
         code += format_state_code_string(aut_code, self.target_line_length - len(prepend), self.ws)
@@ -700,11 +739,11 @@ class CodeGenerator:
             for ndx, in_key in enumerate(state.input_keys):
                 if state.input_mapping[ndx] is None:
                     continue
-                remapping_strings.append("'" + in_key + "': '" + state.input_mapping[ndx] + "'")
+                remapping_strings.append(self._py_dict_entry(in_key, self._py_str(state.input_mapping[ndx])))
             for ndx, out_key in enumerate(state.output_keys):
                 if out_key in state.input_keys:
                     continue
-                remapping_strings.append("'" + out_key + "': '" + state.output_mapping[ndx] + "'")
+                remapping_strings.append(self._py_dict_entry(out_key, self._py_str(state.output_mapping[ndx])))
             if len(remapping_strings) > 0:
                 code += ',\n'
                 input_key_code = 'remapping={' + ', '.join(remapping_strings) + '}'

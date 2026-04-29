@@ -2,22 +2,28 @@ UI.Panels.Terminal = new (function() {
 	var that = this;
 	var debug_mode = false;
 	var is_active = false;
+	const MAX_TERMINAL_LINES = 1000;
+
+	var trimTerminalHistory = function(terminal) {
+		if (terminal.children.length <= MAX_TERMINAL_LINES) {
+			return;
+		}
+
+		let linesToRemove = Math.floor(terminal.children.length / 2);
+		console.log(`throwing away the ${linesToRemove} oldest lines from terminal!`);
+		for (let i = 0; i < linesToRemove; i++) {
+			terminal.removeChild(terminal.children[0]);
+		}
+	}
 
 	var logTerminal = function (msg, color) {
 		let terminal = document.getElementById("terminal");
 
-		if (terminal.innerHTML.length > 80000) {
-			// Assuming 80 characters per line
-			// allow 1000 lines of history before reducing to last 500
-			// (calculation based on 1/2 of actual number of lines)
-			let lines = terminal.innerHTML.split("<br>")
-			let linesToRemove = Math.floor(lines.length / 2);
-			console.log(`throwing away the ${linesToRemove} oldest lines from terminal!`);
-			lines = lines.slice(linesToRemove);  // Remove the oldest lines
-			// Rejoin the remaining lines and update the terminal content
-			terminal.innerHTML = lines.join("<br>") + "<br>";
-		}
-		terminal.innerHTML += "<font style='color: " + color + ";'>" + msg + "</font><br>";
+		let entry = document.createElement("div");
+		entry.style.color = color;
+		entry.textContent = String(msg);
+		terminal.appendChild(entry);
+		trimTerminalHistory(terminal);
 		terminal.scrollTop = document.getElementById("terminal").scrollHeight;
 	}
 
@@ -62,7 +68,10 @@ UI.Panels.Terminal = new (function() {
 	}
 
 	this.clearLog = function() {
-		document.getElementById("terminal").innerHTML = "";
+		let terminal = document.getElementById("terminal");
+		while (terminal.children.length > 0) {
+			terminal.removeChild(terminal.children[0]);
+		}
 	}
 
 	this.show = function() {

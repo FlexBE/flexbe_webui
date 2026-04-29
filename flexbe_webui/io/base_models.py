@@ -20,6 +20,25 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, root_validator, validator
 
 _ROS_ACTION_TYPE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$')
+_ROS_TOPIC_RE = re.compile(r'^/(?:[A-Za-z0-9_]+/)*[A-Za-z0-9_]+$')
+
+
+def validate_ros_topic(value):
+    """Validate a WebUI-managed absolute ROS topic name."""
+    if not isinstance(value, str):
+        raise ValueError(f'topic must be a string, got: {value!r}')
+    if len(value) > 256 or not _ROS_TOPIC_RE.match(value):
+        raise ValueError(f'topic must be an absolute ROS topic path, got: {value!r}')
+    return value
+
+
+def validate_indentation(value):
+    """Validate generated-source indentation is whitespace only."""
+    if not isinstance(value, str):
+        raise ValueError(f'ws must be a string, got: {value!r}')
+    if not re.fullmatch(r'[ \t]*', value):
+        raise ValueError('ws must contain only spaces and tabs')
+    return value
 
 
 class State(BaseModel):
@@ -156,6 +175,26 @@ class OpenFileEditorRequest(FileRequest):
     line: Optional[str] = ''
 
 
+class ContainsEntry(BaseModel):
+    """A contained-behavior reference with required name and optional package qualifier."""
+
+    name: str
+    package: Optional[str] = None
+
+
+class ManifestGeneratorRequest(BaseModel):
+    """Request model for standalone manifest generation."""
+
+    ws: str = '    '
+    behavior_names: List[ContainsEntry]
+    behavior: Dict[str, Any]
+
+    @validator('ws')
+    def validate_ws(cls, v):
+        """Validate generated-source indentation."""
+        return validate_indentation(v)
+
+
 class BehaviorCodeGeneratorRequest(BaseModel):
     """Request model for behavior code generation."""
 
@@ -164,8 +203,13 @@ class BehaviorCodeGeneratorRequest(BaseModel):
     file_name: str
     save_as: bool = False
     explicit_package: bool
-    behavior_names: List[Dict[str, Any]]  # list of {name, package?} ContainsEntry dicts
+    behavior_names: List[ContainsEntry]
     behavior: Dict[str, Any]
+
+    @validator('ws')
+    def validate_ws(cls, v):
+        """Validate generated-source indentation."""
+        return validate_indentation(v)
 
 
 class ActionClientRequest(BaseModel):
@@ -173,6 +217,11 @@ class ActionClientRequest(BaseModel):
 
     topic: str
     action_type: str
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
 
     @validator('action_type')
     def validate_action_type(cls, v):
@@ -195,11 +244,99 @@ class ActionSchemaRequest(BaseModel):
         return v
 
 
+class CreatePublisherRequest(BaseModel):
+    """Request model for publisher creation."""
+
+    topic: str
+    msg_type: str
+    latched: bool
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
+
+    @validator('msg_type')
+    def validate_msg_type(cls, v):
+        """Validate msg_type is a safe 'package/MessageName' string."""
+        if not _ROS_ACTION_TYPE_RE.match(v):
+            raise ValueError(f"msg_type must be 'package/MessageName', got: {v!r}")
+        return v
+
+
+class PublishRequest(BaseModel):
+    """Request model for publishing a ROS message."""
+
+    topic: str
+    req: Dict[str, Any]
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
+
+
+class ClosePublisherRequest(BaseModel):
+    """Request model for publisher close operations."""
+
+    topic: str
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
+
+
+class CreateSubscriberRequest(BaseModel):
+    """Request model for subscriber creation."""
+
+    topic: str
+    msg_type: str
+    client_id: Optional[str] = None
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
+
+    @validator('msg_type')
+    def validate_msg_type(cls, v):
+        """Validate msg_type is a safe 'package/MessageName' string."""
+        if not _ROS_ACTION_TYPE_RE.match(v):
+            raise ValueError(f"msg_type must be 'package/MessageName', got: {v!r}")
+        return v
+
+
+class CloseSubscriberRequest(BaseModel):
+    """Request model for subscriber close operations."""
+
+    topic: str
+    client_id: Optional[str] = None
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
+
+
 class SendActionGoalRequest(BaseModel):
     """Request model for action goal submission."""
 
     goal: Dict[str, Any]
     topic: str
+    timeout_sec: Optional[float] = None
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
+
+    @validator('timeout_sec')
+    def validate_timeout_sec(cls, v):
+        """Validate optional action result timeout."""
+        if v is not None and v <= 0:
+            raise ValueError('timeout_sec must be positive when provided')
+        return v
 
 
 class LayoutNode(BaseModel):

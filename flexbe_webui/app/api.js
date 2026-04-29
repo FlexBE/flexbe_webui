@@ -1,17 +1,63 @@
 const API = new (function(version) {
 	var that = this;
 	const REQUEST_TIMEOUT_MS = 15000;
+	const API_TOKEN_STORAGE_KEY = 'flexbe_webui_api_token';
 
 	// API contract:
 	// - success=false means request-level failure; callers must not continue normal processing.
 	// - success=true means the request contract succeeded and any domain outcome is in data.
 	// - command-style mutation endpoints use data.ok for explicit success/failure.
 
-	function fetchWithTimeout(url, options) {
+	function getStoredApiToken() {
+		try {
+			return (localStorage.getItem(API_TOKEN_STORAGE_KEY) || '').trim();
+		} catch (_error) {
+			return '';
+		}
+	}
+
+	function storeApiTokenFromUrl() {
+		try {
+			if (!window.location || !window.location.href || typeof URL === 'undefined') {
+				return;
+			}
+			const url = new URL(window.location.href);
+			const token = (url.searchParams.get('token') || url.searchParams.get('api_token') || '').trim();
+			if (token === '') {
+				return;
+			}
+			localStorage.setItem(API_TOKEN_STORAGE_KEY, token);
+			url.searchParams.delete('token');
+			url.searchParams.delete('api_token');
+			if (window.history && typeof window.history.replaceState === 'function') {
+				window.history.replaceState(null, document.title || '', url.pathname + url.search + url.hash);
+			}
+		} catch (_error) {
+			// Ignore storage or URL failures; unauthenticated browser mode still works.
+		}
+	}
+
+	function withAuthHeaders(headers={}) {
+		const token = getStoredApiToken();
+		if (token === '') {
+			return headers;
+		}
+		return {
+			...headers,
+			Authorization: headers.Authorization || `Bearer ${token}`,
+			'X-API-Token': headers['X-API-Token'] || token
+		};
+	}
+
+	function fetchWithTimeout(url, options, timeoutMs=REQUEST_TIMEOUT_MS) {
 		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+		const timeout = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
 		return fetch(url, {...options, signal: controller.signal})
-			.finally(() => clearTimeout(timeout));
+			.finally(() => {
+				if (timeout !== undefined) {
+					clearTimeout(timeout);
+				}
+			});
 	}
 
 	function extractError(payload, fallback) {
@@ -59,8 +105,7 @@ const API = new (function(version) {
 			} else if (typeof payload.install_success === "boolean") {
 				normalized.success = payload.install_success;
 			} else {
-				// No explicit success field — defaulting to true; log so unexpected shapes are visible.
-				console.warn("normalizeResponse: no success/result/install_success field in response object", payload);
+				// Legacy bare-object responses are successful during the API envelope migration.
 				normalized.success = true;
 			}
 			normalized.data = payload;
@@ -105,10 +150,12 @@ const API = new (function(version) {
 		return result.data !== undefined && result.data !== null;
 	}
 
+	storeApiTokenFromUrl();
+
 	// https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
-	this.post = function(action, content, callback) {
+	this.post = function(action, content, callback, options={}) {
 		Promise.resolve()
-		.then(() => that.post_raw(action, content))
+		.then(() => that.post_raw(action, content, options))
 		.then(response => parseResponse(response))
 		.then(result => callback(result))
 		.catch(error => {
@@ -117,16 +164,16 @@ const API = new (function(version) {
 		});
 	}
 
-	this.post_raw = function(action, content) {
+	this.post_raw = function(action, content, options={}) {
 		return fetchWithTimeout(`api/${version}/${action}`, {
 			method: "POST",
-			headers: {"Content-Type": "application/json"},
+			headers: withAuthHeaders({"Content-Type": "application/json"}),
 			body: JSON.stringify(content)
-		});
+		}, options.timeoutMs === undefined ? REQUEST_TIMEOUT_MS : options.timeoutMs);
 	}
 
-	this.get = function(action, callback) {
-		that.get_raw(action)
+	this.get = function(action, callback, options={}) {
+		that.get_raw(action, options)
 		.then(response => parseResponse(response))
 		.then(result => callback(result))
 		.catch(error => {
@@ -135,8 +182,12 @@ const API = new (function(version) {
 		});
 	}
 
-	this.get_raw = function(action) {
-		return fetchWithTimeout(`api/${version}/${action}`, {method: "GET"});
+	this.get_raw = function(action, options={}) {
+		return fetchWithTimeout(
+			`api/${version}/${action}`,
+			{method: "GET", headers: withAuthHeaders()},
+			options.timeoutMs === undefined ? REQUEST_TIMEOUT_MS : options.timeoutMs
+		);
 	}
 
 	this.get_async = function(action) {
@@ -189,13 +240,13 @@ const API = new (function(version) {
 	this.getData = function(action, onSuccess, onError, options={}) {
 		that.get(action, result => {
 			that.expect(result, onSuccess, onError, {...options, requireData: true});
-		});
+		}, options);
 	};
 
 	this.postData = function(action, content, onSuccess, onError, options={}) {
 		that.post(action, content, result => {
 			that.expect(result, onSuccess, onError, {...options, requireData: true});
-		});
+		}, options);
 	};
 
 	this.getDataAsync = function(action, options={}) {
@@ -223,7 +274,7 @@ const API = new (function(version) {
 				requireData: true,
 				validate: data => data && data.ok === true
 			});
-		});
+		}, options);
 	};
 
 	this.postFlag = function(action, content, onSuccess, onError, options={}) {
@@ -233,7 +284,7 @@ const API = new (function(version) {
 				requireData: true,
 				validate: data => data && data.ok === true
 			});
-		});
+		}, options);
 	};
 	// Examples:
 	// const response = await post("publish", {"msg": "bla"});

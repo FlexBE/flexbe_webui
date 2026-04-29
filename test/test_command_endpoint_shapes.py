@@ -17,12 +17,18 @@
 import argparse
 import asyncio
 import json
+import os
 
 from fastapi.routing import APIRoute
 
-from flexbe_webui.io.base_models import OpenFileEditorRequest
+from flexbe_webui.io.base_models import (ActionClientRequest, BehaviorCodeGeneratorRequest,
+                                         ClosePublisherRequest, CreatePublisherRequest,
+                                         ManifestGeneratorRequest, OpenFileEditorRequest,
+                                         PublishRequest, SendActionGoalRequest)
 from flexbe_webui.ros import PackageData
 from flexbe_webui.webui_server import WebuiServer
+
+from pydantic import ValidationError
 
 import pytest
 
@@ -66,6 +72,62 @@ def _decode_response(result):
     if isinstance(result, Response):
         return json.loads(result.body.decode('utf-8'))
     return result
+
+
+def _valid_behavior_dict(manifest_path=None):
+    """Build a minimal valid behavior payload."""
+    behavior_dict = {
+        'behavior_name': 'Demo Behavior',
+        'behavior_package': 'test_pkg',
+        'behavior_description': 'desc',
+        'tags': '',
+        'author': 'tester',
+        'creation_date': '2026-03-06',
+        'private_variables': [],
+        'default_userdata': [],
+        'private_functions': [],
+        'behavior_parameters': [],
+        'interface_outcomes': [],
+        'interface_input_keys': [],
+        'interface_output_keys': [],
+        'comment_notes': [],
+        'root_sm': {
+            'state_name': 'root',
+            'state_class': ':STATEMACHINE',
+            'state_import': '',
+            'state_pkg': 'test_pkg',
+            'state_path': '',
+            'parameters': [],
+            'parameter_values': [],
+            'outcomes': [],
+            'autonomy': [],
+            'meta_outcomes': [],
+            'outcomes_unc': [],
+            'outcomes_con': [],
+            'input_keys': [],
+            'output_keys': [],
+            'meta_input': [],
+            'meta_output': [],
+            'input_mapping': [],
+            'output_mapping': [],
+            'position_x': 0,
+            'position_y': 0,
+            'behavior_state': False,
+            'state_machine': True,
+            'states': [],
+            'transitions': [],
+            'dataflow': [],
+            'sm_outcomes': [],
+        },
+        'readonly': False,
+        'manual_code_import': [],
+        'manual_code_init': '',
+        'manual_code_create': '',
+        'manual_code_func': '',
+    }
+    if manifest_path is not None:
+        behavior_dict['manifest_path'] = str(manifest_path)
+    return behavior_dict
 
 
 @pytest.fixture
@@ -120,6 +182,27 @@ def test_save_config_settings_returns_data_ok_on_failure(server_with_package):
     assert result['data']['ok'] is False
 
 
+def test_save_config_settings_failed_file_save_preserves_live_settings(server_with_package, tmp_path):
+    """A failed config file save should not mutate the server's active settings."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/save_config_settings', 'POST')
+    original_settings = server_with_package._settings.copy()
+    outside_file = tmp_path.parent / f'{tmp_path.name}_outside.json'
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/save_config_settings'),
+        json_dict={
+            'configuration': {'editor_command': 'vim $FILE'},
+            'folder_path': str(outside_file.parent),
+            'file_name': outside_file.name,
+        },
+    )))
+
+    assert result['success'] is False
+    assert 'outside the config folder' in result['error']
+    assert server_with_package._settings == original_settings
+    assert not outside_file.exists()
+
+
 def test_open_file_editor_returns_data_ok_on_success(server_with_package, monkeypatch):
     """Editor open success should return explicit command success."""
     server_with_package._settings['editor_command'] = 'gedit $FILE'
@@ -166,65 +249,35 @@ def test_open_file_editor_returns_data_ok_on_failure(server_with_package):
 def test_manifest_generator_returns_data_ok_on_success(server_with_package):
     """Manifest generation success should return explicit command success."""
     endpoint = _find_endpoint(server_with_package._app, '/api/v1/behavior/manifest_generator', 'POST')
+    server_with_package._behaviors_cache['test_pkg'] = ['stale']
+
     result = _decode_response(asyncio.run(endpoint(
         request=_build_request('/api/v1/behavior/manifest_generator'),
-        json_manifest_dict={
-            'ws': '    ',
-            'behavior_names': [],
-            'behavior': {
-                'behavior_name': 'Demo Behavior',
-                'behavior_package': 'test_pkg',
-                'behavior_description': 'desc',
-                'tags': '',
-                'author': 'tester',
-                'creation_date': '2026-03-06',
-                'private_variables': [],
-                'default_userdata': [],
-                'private_functions': [],
-                'behavior_parameters': [],
-                'interface_outcomes': [],
-                'interface_input_keys': [],
-                'interface_output_keys': [],
-                'comment_notes': [],
-                'root_sm': {
-                    'state_name': 'root',
-                    'state_class': ':STATEMACHINE',
-                    'state_import': '',
-                    'state_pkg': 'test_pkg',
-                    'state_path': '',
-                    'parameters': [],
-                    'parameter_values': [],
-                    'outcomes': [],
-                    'autonomy': [],
-                    'meta_outcomes': [],
-                    'outcomes_unc': [],
-                    'outcomes_con': [],
-                    'input_keys': [],
-                    'output_keys': [],
-                    'meta_input': [],
-                    'meta_output': [],
-                    'input_mapping': [],
-                    'output_mapping': [],
-                    'position_x': 0,
-                    'position_y': 0,
-                    'behavior_state': False,
-                    'state_machine': True,
-                    'states': [],
-                    'transitions': [],
-                    'dataflow': [],
-                    'sm_outcomes': [],
-                },
-                'readonly': False,
-                'manual_code_import': [],
-                'manual_code_init': '',
-                'manual_code_create': '',
-                'manual_code_func': '',
-            },
-        },
+        json_manifest_dict=ManifestGeneratorRequest(behavior=_valid_behavior_dict(), behavior_names=[]),
     )))
 
     assert result['success'] is True
     assert result['data']['ok'] is True
+    assert 'test_pkg' not in server_with_package._behaviors_cache
+
+
+def test_manifest_generator_rejects_manifest_path_outside_manifest_root(server_with_package, tmp_path):
+    """Manifest generation must not write XML outside accepted manifest roots."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/behavior/manifest_generator', 'POST')
+    outside_manifest = tmp_path / 'outside.xml'
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/behavior/manifest_generator'),
+        json_manifest_dict=ManifestGeneratorRequest(
+            behavior=_valid_behavior_dict(manifest_path=outside_manifest),
+            behavior_names=[],
+        ),
+    )))
+
+    assert result['success'] is False
+    assert result['data']['ok'] is False
+    assert 'outside package manifest path' in result['error']
+    assert not outside_manifest.exists()
 
 
 def test_manifest_generator_returns_data_ok_on_failure(server_with_package):
@@ -232,8 +285,104 @@ def test_manifest_generator_returns_data_ok_on_failure(server_with_package):
     endpoint = _find_endpoint(server_with_package._app, '/api/v1/behavior/manifest_generator', 'POST')
     result = _decode_response(asyncio.run(endpoint(
         request=_build_request('/api/v1/behavior/manifest_generator'),
-        json_manifest_dict={'behavior': {}, 'behavior_names': [], 'ws': '    '},
+        json_manifest_dict=ManifestGeneratorRequest(behavior={}, behavior_names=[]),
     )))
 
     assert result['success'] is False
     assert result['data']['ok'] is False
+
+
+def test_generator_requests_reject_non_whitespace_indentation():
+    """Generated-source indentation should not accept executable content."""
+    with pytest.raises(ValidationError):
+        BehaviorCodeGeneratorRequest(
+            ws="\n__import__('os').system('cmd')\n    ",
+            package_name='test_pkg',
+            file_name='demo_behavior.py',
+            explicit_package=False,
+            behavior_names=[],
+            behavior={},
+        )
+
+    with pytest.raises(ValidationError):
+        ManifestGeneratorRequest(
+            ws='    # injected',
+            behavior_names=[],
+            behavior={},
+        )
+
+
+def test_create_publisher_request_rejects_invalid_topic():
+    """Publisher creation should reject malformed ROS topic strings."""
+    with pytest.raises(ValidationError):
+        CreatePublisherRequest(topic='../demo', msg_type='demo_msgs/Demo', latched=False)
+
+
+def test_ros_command_requests_reject_invalid_topics():
+    """ROS command request models should consistently reject malformed topic strings."""
+    invalid_topic = '../demo'
+    with pytest.raises(ValidationError):
+        PublishRequest(topic=invalid_topic, req={})
+    with pytest.raises(ValidationError):
+        ClosePublisherRequest(topic=invalid_topic)
+    with pytest.raises(ValidationError):
+        ActionClientRequest(topic=invalid_topic, action_type='demo_msgs/Demo')
+    with pytest.raises(ValidationError):
+        SendActionGoalRequest(topic=invalid_topic, goal={})
+
+
+@pytest.mark.skipif(not hasattr(os, 'symlink'), reason='symlink support required')
+def test_config_save_rejects_symlink_escape(server_with_package, tmp_path):
+    """Configuration saves must not follow symlinks outside the config folder."""
+    outside_file = tmp_path.parent / f'{tmp_path.name}_outside.json'
+    symlink_path = tmp_path / 'linked_config.json'
+    symlink_path.symlink_to(outside_file)
+
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/save_config_settings', 'POST')
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/save_config_settings'),
+        json_dict={
+            'configuration': server_with_package._settings.copy(),
+            'folder_path': str(tmp_path),
+            'file_name': symlink_path.name,
+        },
+    )))
+
+    assert result['success'] is False
+    assert 'outside the config folder' in result['error']
+    assert not outside_file.exists()
+
+
+@pytest.mark.skipif(not hasattr(os, 'symlink'), reason='symlink support required')
+def test_python_write_resolver_rejects_symlink_escape(server_with_package, tmp_path):
+    """Behavior code writes must not follow package-root symlinks outside the package."""
+    outside_file = tmp_path.parent / f'{tmp_path.name}_outside.py'
+    symlink_path = tmp_path / 'pkg' / 'linked_behavior.py'
+    symlink_path.symlink_to(outside_file)
+
+    with pytest.raises(ValueError, match='outside package Python path'):
+        server_with_package._resolve_package_python_write_file(
+            'test_pkg',
+            server_with_package.packages['test_pkg'],
+            'linked_behavior.py',
+        )
+
+    assert not outside_file.exists()
+
+
+@pytest.mark.skipif(not hasattr(os, 'symlink'), reason='symlink support required')
+def test_manifest_write_resolver_rejects_symlink_escape(server_with_package, tmp_path):
+    """Manifest writes must not follow manifest-root symlinks outside the package."""
+    outside_file = tmp_path.parent / f'{tmp_path.name}_outside.xml'
+    manifest_dir = tmp_path / 'lib' / 'test_pkg' / 'manifest'
+    symlink_path = manifest_dir / 'linked_manifest.xml'
+    symlink_path.symlink_to(outside_file)
+
+    with pytest.raises(ValueError, match='outside package manifest path'):
+        server_with_package._resolve_package_manifest_write_file(
+            'test_pkg',
+            server_with_package.packages['test_pkg'],
+            'linked_manifest.xml',
+        )
+
+    assert not outside_file.exists()

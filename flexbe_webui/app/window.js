@@ -29,6 +29,11 @@ window.onload = async () => {
 		console.log(`${JSON.stringify(ready_payload)}`);
 		const online_mode = ready_payload.online_mode;
 		console.log(`\x1b[92mFlexBE WebUI Server is ready (online=${online_mode})!\x1b[0m`);
+		API.postFlag("ui_connected", {}, () => {
+			console.log("Registered active UI session with server.");
+		}, error => {
+			console.log(`Failed to register active UI session: ${error}`);
+		});
 
 		// Initialize runtime control if not in offline (standalone) mode
 		if (online_mode) {

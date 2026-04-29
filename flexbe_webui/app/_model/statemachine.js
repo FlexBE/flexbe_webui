@@ -218,7 +218,7 @@ const Statemachine = function(sm_name, sm_definition) {
 		]);
 		var y_step = Math.max(gridsize, Math.round(size.height + margin / 2));
 		var y_candidates = getUniqueCandidateValues([preferred_y, fallback_y]);
-		var max_steps = Math.max(4, Math.ceil(Math.max(1, max_y - min_y) / y_step) + 1);
+		var max_steps = Math.min(8, Math.max(4, Math.ceil(Math.max(1, max_y - min_y) / y_step) + 1));
 		for (var i = 1; i <= max_steps; ++i) {
 			y_candidates.push(clamp(preferred_y + i * y_step, min_y, max_y));
 			y_candidates.push(clamp(preferred_y - i * y_step, min_y, max_y));
@@ -838,7 +838,7 @@ const Statemachine = function(sm_name, sm_definition) {
 				});
 			} else {
 				let o_label = sm_outcomes.findElement(function(oc) {
-					return oc.getStateName().startsWith(o + '#');
+					return oc.getStateName() === o || oc.getStateName().startsWith(o + '#');
 				});
 				t.forEach(function(so) {
 					that.addTransition(new Transition(that.getStateByName(so[0]), o_label, so[1], 0));

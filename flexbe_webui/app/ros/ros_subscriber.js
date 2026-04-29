@@ -3,16 +3,28 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 
 	var msg_type = msg_typeIn;
 	var topic = topicIn;
+	const client_id = (window.crypto && window.crypto.randomUUID)
+		? window.crypto.randomUUID()
+		: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 	const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const wsHost = window.location.host;
-	const ws = new WebSocket(`${wsProto}//${wsHost}/ws/${topic.replaceAll('/', '-')}`);
+	const apiToken = (() => {
+		try {
+			return localStorage.getItem('flexbe_webui_api_token') || '';
+		} catch (_err) {
+			return '';
+		}
+	})();
+	const tokenQuery = apiToken === '' ? '' : `?token=${encodeURIComponent(apiToken)}`;
+	const ws = new WebSocket(`${wsProto}//${wsHost}/ws/${topic.replaceAll('/', '-')}/${client_id}${tokenQuery}`);
 
 	ws.onopen = (event) => {
 		// console.log("On open for " + topic + "(" + msg_type + ") ...");
 		var dict = {};
 		dict['topic'] = topic;
 		dict['msg_type'] = msg_type;
+		dict['client_id'] = client_id;
 		API.postFlag('create_subscriber', dict, () => {
 				T.logInfo("Created subscriber for '" + topic +"' (" + msg_type + ") at " + wsProto + "//" + wsHost);
 			}, error => {
@@ -57,7 +69,7 @@ ROS.Subscriber = function(topicIn, msg_typeIn, callback) {
 	that.close = function() {
 		console.log(`\x1b[91mOn close for subscription to '${topic}' (${msg_type}) ...\x1b[0m`);
 		ws.close();
-		API.postFlag('close_subscriber', topic, () => {
+		API.postFlag('close_subscriber', {topic: topic, client_id: client_id}, () => {
 				console.log(`\x1b[91mClosed subscriber for '${topic}' \x1b[0m`);
 			}, error => {
 				T.logError("Failed to close subscriber for '" + topic + "' ( " + msg_type + ") ");

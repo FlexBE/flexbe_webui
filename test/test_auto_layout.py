@@ -92,3 +92,70 @@ def test_compute_auto_layout_orders_outcomes_by_predecessor_flow():
     outcomes = {entry['state_name']: entry for entry in result['outcomes']}
 
     assert outcomes['finished']['position_y'] < outcomes['failed']['position_y']
+
+
+def test_initial_state_placed_at_top_of_its_rank():
+    """Initial state must be topmost within its rank regardless of prior y-position."""
+    request = AutoLayoutRequest(
+        container_name='root',
+        initial_state_name='Start',
+        states=[
+            LayoutNode(state_name='Start', state_class='StartState', position_x=0, position_y=500),
+            LayoutNode(state_name='Other', state_class='OtherState', position_x=0, position_y=0),
+        ],
+        outcomes=[],
+        transitions=[],
+    )
+
+    result = compute_auto_layout(request)
+    states = {entry['state_name']: entry for entry in result['states']}
+
+    assert states['Start']['position_y'] < states['Other']['position_y']
+
+
+def test_initial_state_topmost_when_disconnected_peers_at_same_rank():
+    """Initial state stays topmost even when non-initial states also have no predecessors."""
+    request = AutoLayoutRequest(
+        container_name='root',
+        initial_state_name='Entry',
+        states=[
+            LayoutNode(state_name='Entry', state_class='EntryState', position_x=0, position_y=200),
+            LayoutNode(state_name='AlphaIsland', state_class='AlphaState', position_x=0, position_y=0),
+            LayoutNode(state_name='BetaIsland', state_class='BetaState', position_x=0, position_y=100),
+        ],
+        outcomes=[
+            LayoutNode(state_name='done', state_class=':OUTCOME', position_x=200, position_y=0),
+        ],
+        transitions=[
+            LayoutTransition(from_state_name='Entry', to_state_name='done', outcome='ok'),
+        ],
+    )
+
+    result = compute_auto_layout(request)
+    states = {entry['state_name']: entry for entry in result['states']}
+
+    assert states['Entry']['position_y'] < states['AlphaIsland']['position_y']
+    assert states['Entry']['position_y'] < states['BetaIsland']['position_y']
+
+
+def test_tarjan_scc_does_not_overflow_on_deep_chain():
+    """Iterative SCC must not raise RecursionError on a chain longer than Python's stack."""
+    n = 1500
+    states = [
+        LayoutNode(state_name=f'S{i}', state_class='SomeState', position_x=0, position_y=i * 10)
+        for i in range(n)
+    ]
+    transitions = [
+        LayoutTransition(from_state_name=f'S{i}', to_state_name=f'S{i + 1}', outcome='next')
+        for i in range(n - 1)
+    ]
+    request = AutoLayoutRequest(
+        container_name='root',
+        initial_state_name='S0',
+        states=states,
+        outcomes=[],
+        transitions=transitions,
+    )
+
+    result = compute_auto_layout(request)
+    assert len(result['states']) == n

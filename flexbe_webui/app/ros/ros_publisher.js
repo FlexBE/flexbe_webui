@@ -30,7 +30,7 @@ ROS.Publisher = function(topicIn, msg_typeIn, latched=false) {
 
 	that.close = function() {
 		console.log(`\x1b[91mRequest close for publisher to '${topic}' (${msg_type}) ...\x1b[0m`);
-		API.postFlag('close_publisher', topic, () => {
+			API.postFlag('close_publisher', {topic: topic}, () => {
 				console.log(`\x1b[91mClosed publisher for '${topic}' \x1b[0m`);
 			}, error => {
 				T.logError("Failed to create publisher for '" + topic + "' ( " + msg_type + ") ");

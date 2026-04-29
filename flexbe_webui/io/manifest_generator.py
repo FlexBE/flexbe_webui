@@ -15,8 +15,19 @@
 """Manifest generator."""
 
 import re
+from xml.sax.saxutils import escape
 
 from flexbe_webui.tools import break_long_line
+
+
+def xml_attr(value):
+    """Escape a value for use in a double-quoted XML attribute."""
+    return escape('' if value is None else str(value), {'"': '&quot;', "'": '&apos;'})
+
+
+def xml_text(value):
+    """Escape a value for use as XML text."""
+    return escape('' if value is None else str(value))
 
 
 class ManifestGenerator:
@@ -38,38 +49,30 @@ class ManifestGenerator:
         file_name = re.sub(r'[\\/]+', '.', file_name)
         class_name = re.sub(r'[^\w]', '', behavior_name) + 'SM'
 
-        content += self.ws + '<executable package_path="' + rosnode_name + '.'
-        content += file_name + '" class="' + class_name + '" />\n'
-        content += self.ws + '<tagstring>' + tags + '</tagstring>\n'
-        content += self.ws + '<author>' + author + '</author>\n'
-        content += self.ws + '<date>' + date + '</date>\n'
+        content += self.ws + '<executable package_path="' + xml_attr(rosnode_name + '.' + file_name)
+        content += '" class="' + xml_attr(class_name) + '" />\n'
+        content += self.ws + '<tagstring>' + xml_text(tags) + '</tagstring>\n'
+        content += self.ws + '<author>' + xml_text(author) + '</author>\n'
+        content += self.ws + '<date>' + xml_text(date) + '</date>\n'
         content += self.ws + '<description>\n'
         for line in desc.split('\n'):
             split_lines = break_long_line(line.rstrip())
             for line2 in split_lines:
-                content += self.ws + self.ws + line2.rstrip() + '\n'
+                content += self.ws + self.ws + xml_text(line2.rstrip()) + '\n'
         content += self.ws + '</description>\n'
         content += '\n'
 
         return content
 
     def generate_manifest_contains(self, behavior_names):
-        """Generate manifest contains; each entry is a dict or ContainsEntry-like object with name and optional package."""
+        """Generate manifest contains from a list of ContainsEntry objects."""
         content = self.ws + '<!-- Contained Behaviors -->\n'
 
         for entry in behavior_names:
-            # Accept both dict and object (ContainsEntry / Pydantic model)
-            if isinstance(entry, dict):
-                be_name = entry.get('name', '')
-                be_pkg = entry.get('package') or None
+            if entry.package:
+                content += self.ws + f'<contains name="{xml_attr(entry.name)}" package="{xml_attr(entry.package)}" />\n'
             else:
-                be_name = getattr(entry, 'name', str(entry))
-                be_pkg = getattr(entry, 'package', None) or None
-
-            if be_pkg:
-                content += self.ws + f'<contains name="{be_name}" package="{be_pkg}" />\n'
-            else:
-                content += self.ws + f'<contains name="{be_name}" />\n'
+                content += self.ws + f'<contains name="{xml_attr(entry.name)}" />\n'
 
         return content
 
@@ -85,25 +88,25 @@ class ManifestGenerator:
             content += '\n'
             # print(param)
             # print(param['type'])
-            content += self.ws + self.ws + '<param type="' + param['type']
-            content += '" name="' + param['name']
-            content += '" default="' + param['default']
-            content += '" label="' + param['label']
-            content += '" hint="' + param['hint']
+            content += self.ws + self.ws + '<param type="' + xml_attr(param['type'])
+            content += '" name="' + xml_attr(param['name'])
+            content += '" default="' + xml_attr(param['default'])
+            content += '" label="' + xml_attr(param['label'])
+            content += '" hint="' + xml_attr(param['hint'])
             content += '"'
             if param['type'] == 'enum' and param['additional']:
                 content += '>\n'
                 for add_param in param['additional']:
-                    content += self.ws + self.ws + self.ws + '<option value="' + add_param + '" />\n'
+                    content += self.ws + self.ws + self.ws + '<option value="' + xml_attr(add_param) + '" />\n'
                 content += self.ws + self.ws + '</param>\n'
             elif param['type'] == 'numeric' and param['additional']:
                 content += '>\n'
-                content += self.ws + self.ws + self.ws + '<min value="' + str(param['additional']['min']) + '" />\n'
-                content += self.ws + self.ws + self.ws + '<max value="' + str(param['additional']['max']) + '" />\n'
+                content += self.ws + self.ws + self.ws + '<min value="' + xml_attr(param['additional']['min']) + '" />\n'
+                content += self.ws + self.ws + self.ws + '<max value="' + xml_attr(param['additional']['max']) + '" />\n'
                 content += self.ws + self.ws + '</param>\n'
             elif param['type'] == 'yaml' and param['additional']:
                 content += '>\n'
-                content += self.ws + self.ws + self.ws + '<key name="' + param['additional']['key'] + '" />\n'
+                content += self.ws + self.ws + self.ws + '<key name="' + xml_attr(param['additional']['key']) + '" />\n'
                 content += self.ws + self.ws + '</param>\n'
             else:
                 content += ' />\n'

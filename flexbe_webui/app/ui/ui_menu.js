@@ -484,8 +484,9 @@ UI.Menu = new (function() {
 		let current_behavior_name = Behavior.getBehaviorName();
 		if (behavior_file_name != undefined && current_behavior_name != undefined && current_behavior_name.trim() != '') {
 			let current_file_base = behavior_file_name.replace(/\.py$/i, '');
+			let current_file_identity = current_file_base.split(/[\\/]/).pop();
 			let desired_file_base = current_behavior_name.toLowerCase().replace(/[^\w]/g, "_") + '_sm';
-			if (current_file_base != desired_file_base) {
+			if (current_file_identity != desired_file_base) {
 				let old_target = current_file_base;
 				let new_target = desired_file_base;
 				let choice = await UI.Tools.customSaveWithRenameDecision(
@@ -505,10 +506,16 @@ UI.Menu = new (function() {
 			}
 		}
 
-		IO.BehaviorSaver.saveStateMachine({save_as: save_as});
+		IO.BehaviorSaver.saveStateMachine({
+			save_as: save_as,
+			keep_terminal_open: validation_report.warnings.length > 0,
+		});
 
 		if (validation_report.warnings.length > 0) {
 			T.logWarn(`Saving with ${validation_report.warnings.length} non-fatal validation warning(s).`);
+			validation_report.warnings.forEach(function(warning) {
+				T.logWarn(warning);
+			});
 		}
 		ActivityTracer.addSave();
 	}

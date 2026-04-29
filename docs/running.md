@@ -44,11 +44,20 @@ If token auth is enabled on server (`FLEXBE_WEBUI_API_TOKEN`), clients must send
 - `Authorization: Bearer <token>` or
 - `X-API-Token: <token>`
 
-`webui_client` forwards these automatically if `FLEXBE_WEBUI_API_TOKEN` is set in the client environment.
+Websocket endpoints accept the same token as a `token` or `api_token` query
+parameter because browsers cannot set custom websocket headers.
+
+`webui_client` forwards HTTP headers and websocket query tokens automatically if
+`FLEXBE_WEBUI_API_TOKEN` is set in the client environment. If you open the UI in a
+normal browser while token auth is enabled, protected API calls that need local
+configuration, package metadata, behavior metadata, source reads, or shutdown
+control must still receive a token through an authenticated proxy, custom
+development tooling, or a one-time `?token=<token>` / `?api_token=<token>` URL.
+The browser client stores that token in local storage and removes it from the
+visible URL.
 
 ## Diagnostics URLs
 
 - HTML page: `http://127.0.0.1:8000/dev/diagnostics`
 - Server JSON: `http://127.0.0.1:8000/api/v1/dev/diagnostics`
 - Node bridge JSON: `http://127.0.0.1:8000/api/v1/dev/diagnostics/node`
-

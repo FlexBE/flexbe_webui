@@ -32,17 +32,41 @@ def get_packages() -> Dict[str, PackageData]:
     print(f'\x1b[94mParsing {len(ros_packages)} ROS packages looking for FlexBE states and behaviors ...\x1b[0m', flush=True)
     for name, path in ros_packages.items():
         # print(f'--> {name} ({path}) ...', flush=True)
+        try:
+            package_info = parse_package(name)
+        except (OSError, ValueError, ET.ParseError, AttributeError) as exc:
+            print(f'  get_packages: ERROR for {name} ({path}) :'
+                  f' {exc}', flush=True)
+            continue
+
+        if not package_info.has_behaviors and not package_info.has_states:
+            continue
+
         editable = os.access(path, os.W_OK)
         python_path = None
         try:
-            python_path = importlib.import_module(name).__path__[-1]
-        except (ImportError, ModuleNotFoundError, AttributeError, IndexError):
+            spec = importlib.util.find_spec(name)
+            if spec is not None and spec.submodule_search_locations:
+                python_path = list(spec.submodule_search_locations)[-1]
+            else:
+                editable = False
+        except (ImportError, ModuleNotFoundError, AttributeError, IndexError, ValueError):
+            editable = False
+        except Exception as exc:  # noqa: B902
+            # Broad catch for broken import hooks or package metadata. Log and
+            # continue rather than letting one package abort the entire scan.
+            print(f'  \x1b[93mget_packages: unable to resolve Python path for {name}: {exc}\x1b[0m', flush=True)
             editable = False
         try:
-            pkg_data = PackageData(name=name, path=path, python_path=python_path, editable=editable)
-            if has_behaviors(pkg_data) or has_states(pkg_data):
-                print(f'--> {name} ({path}) is a FlexBE package!', flush=True)
-                packages[name] = pkg_data
+            pkg_data = PackageData(
+                name=name,
+                path=path,
+                python_path=python_path,
+                editable=editable,
+                package_info=package_info,
+            )
+            print(f'--> {name} ({path}) is a FlexBE package!', flush=True)
+            packages[name] = pkg_data
         except (OSError, ValueError, ET.ParseError, AttributeError) as exc:
             print(f'  get_packages: ERROR for {name} ({path}) :'
                   f' {exc}', flush=True)

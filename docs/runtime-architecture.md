@@ -123,6 +123,20 @@ The most subtle runtime regressions in this codebase have come from mixing these
 
 Keeping these boundaries explicit makes those failures much easier to prevent and debug.
 
+## UI Lifecycle
+
+The server readiness endpoint is intentionally read-only:
+
+- `GET /api/v1/ready` reports that the WebUI server is serving requests.
+- The browser UI then posts `POST /api/v1/ui_connected` to mark that an
+  operator session is active and shutdown should require confirmation.
+- When the UI is allowed to exit, it posts `POST /api/v1/confirm_shutdown`.
+- `webui_client` listens on `/ws/check_shutdown` so the server can deliver the
+  final shutdown decision back to the desktop window.
+
+When token auth is enabled, the lifecycle mutation endpoints and shutdown
+websocket require the same API token as other protected control paths.
+
 ## API Contract
 
 The HTTP API uses a normalized response envelope:

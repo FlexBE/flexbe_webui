@@ -119,7 +119,7 @@ IO.BehaviorLoader = new (function() {
 			return {};
 		}
 		try {
-			return buildLegacyContainsPackageHints(IO.CodeParser.parseCode(manifest.codefile_content));
+			return buildLegacyContainsPackageHints(IO.CodeParser.parseCode(manifest.codefile_content, manifest.class_name));
 		} catch (err) {
 			T.logWarn(context_label + ": unable to infer Python source package hints for '" + manifest.name + "': " + err);
 			return {};
@@ -166,7 +166,7 @@ IO.BehaviorLoader = new (function() {
 				};
 			}
 			T.logWarn(context_label + ": sub-behavior '" + be_name + "' was not found in same package '"
-				+ container_pkg + "'; checking Python source hints and unique-name fallback.");
+				+ container_pkg + "'; checking unique-name fallback.");
 		}
 
 		var lib_entry = findUniqueBehaviorByName(be_name);
@@ -346,7 +346,7 @@ IO.BehaviorLoader = new (function() {
 			T.logInfo("Parsing source code...");
 			var parsingResult;
 			try {
-				parsingResult = IO.CodeParser.parseCode(full_manifest.codefile_content);
+				parsingResult = IO.CodeParser.parseCode(full_manifest.codefile_content, full_manifest.class_name);
 				T.logInfo("Code parsing completed.");
 			} catch (err) {
 				var parse_error_string = "Code parsing failed: " + err;
@@ -391,12 +391,11 @@ IO.BehaviorLoader = new (function() {
 
 	this.loadBehaviorInterface = function(behavior_data, callback) {
 		try {
-			var parsingResult = IO.CodeParser.parseSMInterface(behavior_data.codefile_content);
-			callback(parsingResult);
+			var parsingResult = IO.CodeParser.parseSMInterface(behavior_data.codefile_content, behavior_data.class_name);
+			deferCallback(callback, parsingResult);
 		} catch (err) {
 			T.logError("Failed to parse behavior interface of " + behavior_data.name + ": " + err);
 			deferCallback(callback, undefined);
-			return;
 		}
 	}
 
@@ -435,7 +434,7 @@ IO.BehaviorLoader = new (function() {
 		console.log(`\x1b[92mPreparing sourcecode of behavior '${manifest.name}'\x1b[0m`);
 		let parsingResult;
 		try {
-			parsingResult = IO.CodeParser.parseCode(manifest.codefile_content);
+			parsingResult = IO.CodeParser.parseCode(manifest.codefile_content, manifest.class_name);
 		} catch (err) {
 			console.log(`\x1b[91mCode parsing failed: ${err}\x1b[0m`);
 			deferCallback(callback, undefined);
@@ -451,12 +450,13 @@ IO.BehaviorLoader = new (function() {
 	}
 
 	this.loadBehaviorDependencies = function(manifest, ignore_list, legacy_package_hints) {
+		if (!manifest || !manifest.contains) return ignore_list;
 		var current_hints = legacy_package_hints || inferLegacyContainsPackageHints(manifest, "loadBehaviorDependencies");
 		manifest.contains.forEach(function(entry) {
 			var resolved = resolveContainedBehaviorReference(manifest, entry, "loadBehaviorDependencies", current_hints);
 			var be_key = resolved.be_key;
 
-			if (!ignore_list.contains(be_key)) {
+			if (ignore_list.indexOf(be_key) === -1) {
 				ignore_list.push(be_key);
 				var lib_entry = resolved.lib_entry;
 				if (lib_entry == undefined) {

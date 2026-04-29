@@ -55,8 +55,38 @@ UI.Panels.StateProperties = new (function() {
 				tt.appendChild(typeRow);
 			}
 			let desc = document.createElement("div");
-			desc.style.whiteSpace = "pre-wrap";
-			desc.textContent = sanitizeTooltipText(doc.desc);
+			if (doc.desc !== null && typeof doc.desc === 'object') {
+				let defaultRow = document.createElement("div");
+				defaultRow.style.marginBottom = "0.5em";
+				defaultRow.textContent = "Default: ";
+				let defaultVal = document.createElement("i");
+				defaultVal.textContent = sanitizeTooltipText(doc.desc.default_value);
+				defaultRow.appendChild(defaultVal);
+				desc.appendChild(defaultRow);
+				let labelHint = document.createElement("div");
+				labelHint.textContent = sanitizeTooltipText(doc.desc.label) + ": " + sanitizeTooltipText(doc.desc.hint);
+				desc.appendChild(labelHint);
+				if (doc.desc.extra) {
+					let extraRow = document.createElement("div");
+					extraRow.style.marginTop = "0.5em";
+					if (doc.desc.extra.kind === "range") {
+						extraRow.textContent = "Value range: " + sanitizeTooltipText(doc.desc.extra.min)
+							+ " - " + sanitizeTooltipText(doc.desc.extra.max);
+					} else if (doc.desc.extra.kind === "enum") {
+						extraRow.textContent = "Possible values:";
+						doc.desc.extra.options.forEach(function(opt) {
+							let optRow = document.createElement("div");
+							optRow.style.paddingLeft = "1em";
+							optRow.textContent = "- " + sanitizeTooltipText(opt);
+							extraRow.appendChild(optRow);
+						});
+					}
+					desc.appendChild(extraRow);
+				}
+			} else {
+				desc.style.whiteSpace = "pre-wrap";
+				desc.textContent = sanitizeTooltipText(doc.desc);
+			}
 			tt.appendChild(desc);
 			document.getElementsByTagName("body")[0].appendChild(tt);
 		}

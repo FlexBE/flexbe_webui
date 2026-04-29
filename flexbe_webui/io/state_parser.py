@@ -14,22 +14,35 @@
 
 """State parser."""
 
+import contextlib
 import importlib
 import inspect
 import os
 import sys
-from typing import List, Optional
+import threading
+from typing import List, Optional, Set
 
 from flexbe_core import EventState
 
 from . import StateDefinition
 
 
-def parse_state_folder(folder: str, import_path_prefix: str = None, errors: Optional[List[str]] = None) -> List[StateDefinition]:
+_EVENT_STATE_INIT_LOCK = threading.Lock()
+
+
+def parse_state_folder(folder: str, import_path_prefix: str = None, errors: Optional[List[str]] = None,
+                       _visited: Optional[Set[str]] = None) -> List[StateDefinition]:
     """Parse the state folder."""
     state_defs = []
     if folder is None or folder == '':
         return state_defs
+
+    real_folder = os.path.realpath(folder)
+    if _visited is None:
+        _visited = set()
+    if real_folder in _visited:
+        return state_defs
+    _visited.add(real_folder)
 
     if os.path.exists(os.path.join(folder, '__init__.py')) and import_path_prefix is None:
         import_path_prefix = os.path.dirname(folder)
@@ -38,7 +51,7 @@ def parse_state_folder(folder: str, import_path_prefix: str = None, errors: Opti
             continue
         file_path = os.path.join(folder, file_name)
         if os.path.isdir(file_path):
-            state_defs.extend(parse_state_folder(file_path, import_path_prefix, errors))
+            state_defs.extend(parse_state_folder(file_path, import_path_prefix, errors, _visited))
         elif import_path_prefix is not None and os.path.splitext(file_name)[-1] == '.py':
             import_path = file_path[:-3].replace(import_path_prefix + '/', '')
             import_path = import_path.replace('/', '.')
@@ -82,20 +95,20 @@ def parse_state(import_path: str, file_path: str) -> List[StateDefinition]:
                 state_data['state_output'] = kwargs.get('output_keys', [])
                 raise NotImplementedError()  # expected - used to prevent further instantiation to avoid side-effects
 
-            original_event_init = EventState.__init__
-            EventState.__init__ = __event_init
+            with _EVENT_STATE_INIT_LOCK:
+                original_event_init = EventState.__init__
+                EventState.__init__ = __event_init
 
-            try:
-                cls(*args)  # pass variable names for resolving symbols later
-            except NotImplementedError:  # this error type is expected
-                pass  # we do nothing because state_def has been updated already
-            except (TypeError, ValueError, AttributeError, RuntimeError) as exc:  # any other error is passed onwards
-                raise RuntimeError(
-                    f"Cannot instantiate state '{cls.__name__}' to determine interface, "
-                    "consider removing any code before 'super' in '__init__'. "
-                    f'Error: {str(exc)}') from exc
-            finally:
-                EventState.__init__ = original_event_init
+                try:
+                    with contextlib.suppress(NotImplementedError):
+                        cls(*args)  # pass variable names for resolving symbols later
+                except (TypeError, ValueError, AttributeError, RuntimeError) as exc:
+                    raise RuntimeError(
+                        f"Cannot instantiate state '{cls.__name__}' to determine interface, "
+                        "consider removing any code before 'super' in '__init__'. "
+                        f'Error: {str(exc)}') from exc
+                finally:
+                    EventState.__init__ = original_event_init
             class_vars = [
                 n for n, t in cls.__dict__.items()
                 if not inspect.isfunction(t) and not n.startswith('__')
