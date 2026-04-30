@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import json
 import os
+from pathlib import Path
 
 from fastapi.routing import APIRoute
 
@@ -261,6 +262,24 @@ def test_manifest_generator_returns_data_ok_on_success(server_with_package):
     assert 'test_pkg' not in server_with_package._behaviors_cache
 
 
+def test_manifest_generator_uses_existing_manifest_root_for_new_manifest(server_with_package):
+    """Manifest generation should choose an existing share manifest root for new manifests."""
+    endpoint = _find_endpoint(server_with_package._app, '/api/v1/behavior/manifest_generator', 'POST')
+    lib_manifest_dir = Path(server_with_package.packages['test_pkg'].path) / 'lib' / 'test_pkg' / 'manifest'
+    share_manifest_dir = Path(server_with_package.packages['test_pkg'].path) / 'share' / 'test_pkg' / 'manifest'
+    lib_manifest_dir.rmdir()
+    share_manifest_dir.mkdir(parents=True)
+
+    result = _decode_response(asyncio.run(endpoint(
+        request=_build_request('/api/v1/behavior/manifest_generator'),
+        json_manifest_dict=ManifestGeneratorRequest(behavior=_valid_behavior_dict(), behavior_names=[]),
+    )))
+
+    assert result['success'] is True
+    assert result['data']['ok'] is True
+    assert (share_manifest_dir / 'demo_behavior.xml').exists()
+
+
 def test_manifest_generator_rejects_manifest_path_outside_manifest_root(server_with_package, tmp_path):
     """Manifest generation must not write XML outside accepted manifest roots."""
     endpoint = _find_endpoint(server_with_package._app, '/api/v1/behavior/manifest_generator', 'POST')
@@ -359,6 +378,7 @@ def test_python_write_resolver_rejects_symlink_escape(server_with_package, tmp_p
     outside_file = tmp_path.parent / f'{tmp_path.name}_outside.py'
     symlink_path = tmp_path / 'pkg' / 'linked_behavior.py'
     symlink_path.symlink_to(outside_file)
+    server_with_package.packages['test_pkg'].editable = False
 
     with pytest.raises(ValueError, match='outside package Python path'):
         server_with_package._resolve_package_python_write_file(
@@ -370,6 +390,70 @@ def test_python_write_resolver_rejects_symlink_escape(server_with_package, tmp_p
     assert not outside_file.exists()
 
 
+def test_python_write_resolver_allows_new_file_inside_python_root(server_with_package):
+    """Behavior code writes should allow creating a new file directly under the package root."""
+    file_path, relative_name = server_with_package._resolve_package_python_write_file(
+        'test_pkg',
+        server_with_package.packages['test_pkg'],
+        'new_behavior.py',
+    )
+
+    assert file_path.endswith(os.path.join('pkg', 'new_behavior.py'))
+    assert relative_name == 'new_behavior.py'
+
+
+@pytest.mark.skipif(not hasattr(os, 'symlink'), reason='symlink support required')
+def test_python_write_resolver_allows_editable_existing_symlink_install_file(server_with_package, tmp_path):
+    """Editable package writes may overwrite files exposed through symlink-install."""
+    source_file = tmp_path / 'source_behavior.py'
+    source_file.write_text('print("source")\n', encoding='utf-8')
+    symlink_path = tmp_path / 'pkg' / 'linked_behavior.py'
+    symlink_path.symlink_to(source_file)
+
+    file_path, relative_name = server_with_package._resolve_package_python_write_file(
+        'test_pkg',
+        server_with_package.packages['test_pkg'],
+        'linked_behavior.py',
+    )
+
+    assert file_path == str(symlink_path)
+    assert relative_name == 'linked_behavior.py'
+
+
+@pytest.mark.skipif(not hasattr(os, 'symlink'), reason='symlink support required')
+def test_python_write_resolver_rejects_new_file_under_symlink_escape(server_with_package, tmp_path):
+    """Behavior code writes must not create new files through package-root symlinked folders."""
+    outside_dir = tmp_path.parent / f'{tmp_path.name}_outside_dir'
+    outside_dir.mkdir()
+    symlink_dir = tmp_path / 'pkg' / 'linked_folder'
+    symlink_dir.symlink_to(outside_dir, target_is_directory=True)
+
+    with pytest.raises(ValueError, match='outside package Python path'):
+        server_with_package._resolve_package_python_write_file(
+            'test_pkg',
+            server_with_package.packages['test_pkg'],
+            'linked_folder/new_behavior.py',
+        )
+
+    assert not (outside_dir / 'new_behavior.py').exists()
+
+
+def test_manifest_write_resolver_uses_existing_manifest_root_for_new_file(server_with_package):
+    """Save As manifest writes should use an existing accepted manifest root."""
+    lib_manifest_dir = Path(server_with_package.packages['test_pkg'].path) / 'lib' / 'test_pkg' / 'manifest'
+    share_manifest_dir = Path(server_with_package.packages['test_pkg'].path) / 'share' / 'test_pkg' / 'manifest'
+    lib_manifest_dir.rmdir()
+    share_manifest_dir.mkdir(parents=True)
+
+    manifest_path = server_with_package._resolve_package_manifest_write_file(
+        'test_pkg',
+        server_with_package.packages['test_pkg'],
+        'new_behavior.xml',
+    )
+
+    assert manifest_path == str(share_manifest_dir / 'new_behavior.xml')
+
+
 @pytest.mark.skipif(not hasattr(os, 'symlink'), reason='symlink support required')
 def test_manifest_write_resolver_rejects_symlink_escape(server_with_package, tmp_path):
     """Manifest writes must not follow manifest-root symlinks outside the package."""
@@ -377,6 +461,7 @@ def test_manifest_write_resolver_rejects_symlink_escape(server_with_package, tmp
     manifest_dir = tmp_path / 'lib' / 'test_pkg' / 'manifest'
     symlink_path = manifest_dir / 'linked_manifest.xml'
     symlink_path.symlink_to(outside_file)
+    server_with_package.packages['test_pkg'].editable = False
 
     with pytest.raises(ValueError, match='outside package manifest path'):
         server_with_package._resolve_package_manifest_write_file(

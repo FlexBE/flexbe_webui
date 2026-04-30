@@ -245,6 +245,33 @@ class WebuiServer:
             return False
 
     @staticmethod
+    def _is_lexically_within_root(root: str, path: str) -> bool:
+        """Return true when path textually stays inside root without following symlinks."""
+        try:
+            root_abs = os.path.abspath(root)
+            path_abs = os.path.abspath(path)
+            return os.path.commonpath([root_abs, path_abs]) == root_abs
+        except ValueError:
+            return False
+
+    @classmethod
+    def _is_safe_write_target(cls, root: str, path: str, allow_existing_lexical: bool = False) -> bool:
+        """Return true when path can be safely created or overwritten under root."""
+        try:
+            if not cls._is_within_root(root, path):
+                return False
+            if os.path.lexists(path):
+                return (
+                    cls._is_resolved_within_root(root, path)
+                    or (allow_existing_lexical and cls._is_lexically_within_root(root, path))
+                )
+
+            parent = os.path.dirname(os.path.abspath(path))
+            return os.path.isdir(parent) and cls._is_resolved_within_root(root, parent)
+        except (OSError, ValueError):
+            return False
+
+    @staticmethod
     def _relative_path_within_root(root: str, path: str) -> Optional[str]:
         """Return a package-relative path when path is contained in root."""
         try:
@@ -383,7 +410,7 @@ class WebuiServer:
 
         root = roots[0]
         candidate = os.path.abspath(requested if os.path.isabs(requested) else os.path.join(root, requested))
-        if not self._is_resolved_within_root(root, candidate):
+        if not self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable):
             raise ValueError(f"Path '{file_name}' is outside package Python path")
 
         relative_name = os.path.relpath(candidate, root)
@@ -416,9 +443,12 @@ class WebuiServer:
             raise ValueError(f"Manifest path '{manifest_path}' must end with .xml")
 
         manifest_roots = self._get_package_manifest_roots(package_name, package)
-        default_root = manifest_roots[0]
+        default_root = next((root for root in manifest_roots if os.path.isdir(root)), manifest_roots[0])
         candidate = os.path.abspath(requested if os.path.isabs(requested) else os.path.join(default_root, requested))
-        if any(self._is_resolved_within_root(root, candidate) for root in manifest_roots):
+        if any(
+            self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable)
+            for root in manifest_roots
+        ):
             return candidate
 
         raise ValueError(f"Manifest path '{manifest_path}' is outside package manifest path")
@@ -1090,10 +1120,9 @@ class WebuiServer:
 
                 manifest_path = ''
                 if save_as or behavior.manifest_path is None:
-                    folder_path = os.path.join(package.path, 'lib', behavior.behavior_package, 'manifest')
                     manifest_name = generate_manifest_name(behavior.behavior_name)
-                    manifest_path = os.path.join(folder_path, manifest_name)
-                    print(f"Built manifest path='{manifest_path}' from '{folder_path}' and '{manifest_name}'"
+                    manifest_path = manifest_name
+                    print(f"Built manifest name='{manifest_path}'"
                           f" given behavior='{behavior.behavior_name}'", flush=True)
                 else:
                     manifest_path = behavior.manifest_path
@@ -1238,8 +1267,6 @@ class WebuiServer:
                 package = self.packages.get(behavior.behavior_package)
                 if package is None:
                     raise ValueError(f"Invalid package '{behavior.behavior_package}' for manifest generation")
-                package_path = package.path
-
                 file_name = ''
                 if behavior.file_name is None:
                     file_name = generate_file_name(behavior.behavior_name)
@@ -1248,9 +1275,8 @@ class WebuiServer:
 
                 manifest_path = ''
                 if behavior.manifest_path is None:
-                    folder_path = os.path.join(package_path, 'lib', behavior.behavior_package, 'manifest')
                     manifest_name = generate_manifest_name(behavior.behavior_name)
-                    manifest_path = os.path.join(folder_path, manifest_name)
+                    manifest_path = manifest_name
                 else:
                     manifest_path = behavior.manifest_path
                 manifest_path = self._resolve_package_manifest_write_file(

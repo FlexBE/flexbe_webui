@@ -28,6 +28,7 @@ from fastapi.routing import APIRoute
 from flexbe_webui.io.base_models import BehaviorCodeGeneratorRequest, ContainsEntry
 from flexbe_webui.io.code_generator import CodeGenerator
 from flexbe_webui.ros import PackageData
+from flexbe_webui.tools import validate_path_consistency
 from flexbe_webui.webui_server import WebuiServer
 
 import pytest
@@ -196,7 +197,6 @@ def test_behavior_code_generator_reports_install_and_source_success(
     server_with_package._settings['source_code_root'] = str(source_root)
 
     monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
-    monkeypatch.setattr('flexbe_webui.webui_server.validate_path_consistency', lambda *_args: True)
 
     result = _decode_response(asyncio.run(code_generator_endpoint(
         request=_build_request('/api/v1/behavior/code_generator'),
@@ -221,7 +221,6 @@ def test_behavior_code_generator_reports_source_save_failure_after_install_succe
     server_with_package._settings['source_code_root'] = str(source_root)
 
     monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
-    monkeypatch.setattr('flexbe_webui.webui_server.validate_path_consistency', lambda *_args: True)
 
     result = _decode_response(asyncio.run(code_generator_endpoint(
         request=_build_request('/api/v1/behavior/code_generator'),
@@ -241,7 +240,6 @@ def test_behavior_code_generator_reports_install_only_when_source_save_disabled(
     server_with_package._settings['save_in_source'] = False
 
     monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
-    monkeypatch.setattr('flexbe_webui.webui_server.validate_path_consistency', lambda *_args: True)
 
     result = _decode_response(asyncio.run(code_generator_endpoint(
         request=_build_request('/api/v1/behavior/code_generator'),
@@ -252,6 +250,78 @@ def test_behavior_code_generator_reports_install_only_when_source_save_disabled(
     assert result['data']['install_success'] is True
     assert result['data']['src_save_success'] is False
     assert result['data']['src_error_msg'] == ''
+
+
+def test_behavior_code_generator_save_as_writes_new_file_in_target_package(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
+):
+    """Save As should create behavior files in the selected target package."""
+    target_package_root = tmp_path / 'target_install'
+    target_python_root = target_package_root / 'lib' / 'python3.12' / 'site-packages' / 'target_pkg'
+    target_manifest_root = target_package_root / 'share' / 'target_pkg' / 'manifest'
+    target_python_root.mkdir(parents=True)
+    target_manifest_root.mkdir(parents=True)
+
+    server_with_package.packages['target_pkg'] = PackageData(
+        name='target_pkg',
+        path=str(target_package_root),
+        python_path=str(target_python_root),
+        editable=True,
+    )
+
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.package_name = 'target_pkg'
+    request_payload.file_name = 'stale_source_behavior.py'
+    request_payload.save_as = True
+    request_payload.behavior.update({
+        'behavior_name': 'Saved In Target',
+        'behavior_package': 'target_pkg',
+        'file_name': 'stale_source_behavior.py',
+        'manifest_path': str(
+            Path(server_with_package.packages['test_pkg'].path)
+            / 'lib'
+            / 'test_pkg'
+            / 'manifest'
+            / 'stale_source_behavior.xml'
+        ),
+    })
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is True
+    assert result['data']['error_msg'] == ''
+    assert result['data']['python_file_name'] == 'saved_in_target_sm'
+    assert (target_python_root / 'saved_in_target_sm.py').exists()
+    assert (target_manifest_root / 'saved_in_target.xml').exists()
+
+
+def test_validate_path_consistency_accepts_install_and_source_layouts(tmp_path):
+    """Path consistency should accept regular install, symlink-install, and source layouts."""
+    install_prefix = tmp_path / 'install' / 'demo_pkg'
+    package_name = 'demo_pkg'
+
+    assert validate_path_consistency(
+        install_prefix / 'lib' / 'python3.12' / 'site-packages' / package_name,
+        install_prefix / 'share' / package_name / 'manifest' / 'demo.xml',
+    )
+    assert validate_path_consistency(
+        install_prefix / 'lib' / package_name,
+        install_prefix / 'share' / package_name / 'manifest' / 'demo.xml',
+    )
+    assert validate_path_consistency(
+        tmp_path / 'src' / package_name / package_name,
+        tmp_path / 'src' / package_name / 'manifest' / 'demo.xml',
+    )
+    assert validate_path_consistency(
+        tmp_path / 'install' / package_name / 'pkg',
+        tmp_path / 'install' / package_name / 'lib' / package_name / 'manifest' / 'demo.xml',
+    )
 
 
 def test_behavior_code_generator_reports_behavior_extraction_failure(
