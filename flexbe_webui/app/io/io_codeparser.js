@@ -439,7 +439,7 @@ IO.CodeParser = new (function() {
 		var ud_defs = [];
 		code = code.replace(userdata_definition_pattern, function(s, key, value) {
 			// according to Behavior class
-			ud_defs.push({key: key, value: value});
+			ud_defs.push({key: key, value: value.trim()});
 			return "";
 		});
 

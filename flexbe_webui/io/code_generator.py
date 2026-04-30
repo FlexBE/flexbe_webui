@@ -480,7 +480,7 @@ class CodeGenerator:
         # default userdata
         for udata in user_data:
             code += self.ws + self.ws + \
-                'setattr(_state_machine.userdata, ' + self._py_str(udata['key']) + ', ' + udata['value'].strip() + ')\n'
+                '_state_machine.userdata.' + udata['key'] + ' = ' + udata['value'].strip() + '\n'
 
         code += '\n'
 
