@@ -1977,9 +1977,9 @@ async function runSynthesisPayloadCase() {
       system: 'coffee_maker',
       system_name: 'coffee_maker',
       goal: 'br_c',
-      goals: 'br_c',
+      goals: ['br_c'],
       initial_condition: 'bd_a',
-      initial_conditions: 'bd_a',
+      initial_conditions: ['bd_a'],
       sm_outcomes: ['finished', 'failed'],
       specification_file_name: '',
     },
@@ -2003,8 +2003,8 @@ async function runSynthesisFormCase() {
       fields: [
         { name: 'spec_name', kind: 'string', type: 'string' },
         { name: 'system_name', kind: 'string', type: 'string' },
-        { name: 'goals', kind: 'string', type: 'string' },
-        { name: 'initial_conditions', kind: 'string', type: 'string' },
+        { name: 'goals', kind: 'sequence', type: 'sequence<string>', element_kind: 'string' },
+        { name: 'initial_conditions', kind: 'sequence', type: 'sequence<string>', element_kind: 'string' },
         { name: 'sm_outcomes', kind: 'sequence', type: 'sequence<string>', element_kind: 'string' },
         { name: 'specification_file_name', kind: 'string', type: 'string' },
       ],
@@ -2031,8 +2031,8 @@ async function runSynthesisFormCase() {
     'finished, failed'
   );
 
-  document.getElementById('input_prop_synthesis_request__goals').value = 'br_c';
-  document.getElementById('input_prop_synthesis_request__initial_conditions').value = 'bd_a';
+  document.getElementById('input_prop_synthesis_request__goals').value = 'br_c, br_d';
+  document.getElementById('input_prop_synthesis_request__initial_conditions').value = 'bd_a, bd_b';
   document.getElementById('input_prop_synthesis_request__specification_file_name').value = 'spec.yaml';
   document.getElementById('input_prop_synthesis_synthesis_options').value = 'fast';
 
@@ -2041,8 +2041,8 @@ async function runSynthesisFormCase() {
     request: {
       spec_name: '/Container',
       system_name: 'coffee_maker',
-      goals: 'br_c',
-      initial_conditions: 'bd_a',
+      goals: ['br_c', 'br_d'],
+      initial_conditions: ['bd_a', 'bd_b'],
       sm_outcomes: ['finished', 'failed'],
       specification_file_name: 'spec.yaml',
     },

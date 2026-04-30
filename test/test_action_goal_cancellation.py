@@ -203,8 +203,8 @@ class _ModernRequestWithSpec:
     def __init__(self):
         self.spec_name = ''
         self.system_name = ''
-        self.goals = ''
-        self.initial_conditions = ''
+        self.goals = []
+        self.initial_conditions = []
         self.sm_outcomes = []
         self.specification_file_name = ''
 
@@ -214,8 +214,8 @@ class _ModernRequestWithSpec:
         return {
             'spec_name': 'string',
             'system_name': 'string',
-            'goals': 'string',
-            'initial_conditions': 'string',
+            'goals': 'sequence<string>',
+            'initial_conditions': 'sequence<string>',
             'sm_outcomes': 'sequence<string>',
             'specification_file_name': 'string',
         }
@@ -1043,8 +1043,20 @@ def test_build_message_schema_recurses_nested_goal_fields():
             'fields': [
                 {'name': 'spec_name', 'type': 'string', 'kind': 'string'},
                 {'name': 'system_name', 'type': 'string', 'kind': 'string'},
-                {'name': 'goals', 'type': 'string', 'kind': 'string'},
-                {'name': 'initial_conditions', 'type': 'string', 'kind': 'string'},
+                {
+                    'name': 'goals',
+                    'type': 'sequence<string>',
+                    'kind': 'sequence',
+                    'element_kind': 'string',
+                    'element_type': 'string',
+                },
+                {
+                    'name': 'initial_conditions',
+                    'type': 'sequence<string>',
+                    'kind': 'sequence',
+                    'element_kind': 'string',
+                    'element_type': 'string',
+                },
                 {
                     'name': 'sm_outcomes',
                     'type': 'sequence<string>',

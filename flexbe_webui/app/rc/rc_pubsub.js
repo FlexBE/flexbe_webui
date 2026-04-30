@@ -1071,6 +1071,8 @@ RC.PubSub = new (function() {
 	}
 
 	this.requestBehaviorSynthesis = function(root, system, goal, initial_condition, outcomes, result_cb, feedback_cb, timeout_cb) {
+		let goals = Array.isArray(goal) ? goal : [goal];
+		let initial_conditions = Array.isArray(initial_condition) ? initial_condition : [initial_condition];
 		var goal_msg = {
 			request: {
 				name: root,
@@ -1078,9 +1080,9 @@ RC.PubSub = new (function() {
 				system: system,
 				system_name: system,
 				goal: goal,
-				goals: goal,
+				goals: goals,
 				initial_condition: initial_condition,
-				initial_conditions: initial_condition,
+				initial_conditions: initial_conditions,
 				sm_outcomes: outcomes,
 				specification_file_name: ""
 			},
