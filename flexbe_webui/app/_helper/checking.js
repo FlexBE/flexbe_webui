@@ -59,7 +59,8 @@ const Checking = new (function() {
 
 		const numericPattern = /^-?[0-9]+(\.[0-9]+)?$/;
 		const stringPattern = /^(?:'(?:[^'\\]|\\.)*')$/;
-		return items.every(item => item !== "" && (numericPattern.test(item) || stringPattern.test(item)));
+		const boolNonePattern = /^(True|False|None)$/;
+		return items.every(item => item !== "" && (numericPattern.test(item) || stringPattern.test(item) || boolNonePattern.test(item)));
 	};
 
 	const normalizeDocType = function(typeName) {

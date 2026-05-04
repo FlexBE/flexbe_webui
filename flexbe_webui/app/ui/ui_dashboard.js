@@ -221,11 +221,12 @@ UI.Dashboard = new (function() {
 		}
 		let numericPattern = /^-?[0-9]+(\.[0-9]+)?$/;
 		let stringPattern = /^(?:'(?:[^'\\]|\\.)*')$/;
+		let boolNonePattern = /^(True|False|None)$/;
 		return items.every(function(item) {
 			if (item === "") {
 				return false;
 			}
-			return numericPattern.test(item) || stringPattern.test(item);
+			return numericPattern.test(item) || stringPattern.test(item) || boolNonePattern.test(item);
 		});
 	}
 
@@ -252,6 +253,20 @@ UI.Dashboard = new (function() {
 
 	var getParameterDefaultInputType = function(parameterType) {
 		return parameterType == "numeric" ? "number" : "text";
+	}
+
+	var getParameterTypeTooltip = function(type) {
+		switch (type) {
+			case "text":    return "Free-form text. Quotes are stripped on save.";
+			case "enum":    return "Select one of the defined options.";
+			case "numeric": return "A number within the configured min/max range.";
+			case "boolean": return "true or false.";
+			case "tuple":   return "Items in parentheses separated by commas.\n"
+								 + "Valid items: numbers (1, 3.14), quoted strings ('a' or \"b\"), True, False, None.\n"
+								 + "Example: (1, 'hello', True)";
+			case "yaml":    return "A YAML-formatted value.";
+			default:        return "";
+		}
 	}
 
 	var populateSelectOptions = function(select, values) {
@@ -1997,6 +2012,7 @@ UI.Dashboard = new (function() {
 				default:
 					value_input_field.style.backgroundColor = "#FFEBCD"; // blanched almond for primitives
 			}
+			value_input_field.setAttribute("title", getParameterTypeTooltip(type));
 
 				// update input fields
 					let default_field = getParameterDefaultField();
@@ -2122,6 +2138,7 @@ UI.Dashboard = new (function() {
 		value_input_field.setAttribute("name", param_name);
 		value_input_field.setAttribute("class", "inline_text_edit");
 		value_input_field.setAttribute("type", getParameterDefaultInputType(param.type));
+		value_input_field.setAttribute("title", getParameterTypeTooltip(param.type));
 			switch (param.type){
 				case "text":
 					value_input_field.style.backgroundColor = "#7CFC00"; // lawn green for text

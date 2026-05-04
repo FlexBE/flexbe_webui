@@ -866,6 +866,22 @@ async function runTupleParameterCase() {
   Checking.variables = new Set();
   assert.strictEqual(Checking.checkDashboard(), undefined);
 
+  tupleParameter.default = '(False, True, False)';
+
+  assert.strictEqual(
+    Checking.checkDashboard(),
+    undefined,
+    'boolean tuple default should be valid'
+  );
+
+  tupleParameter.default = "(False, 'alpha', None, 1)";
+
+  assert.strictEqual(
+    Checking.checkDashboard(),
+    undefined,
+    'mixed boolean/string/None/numeric tuple default should be valid'
+  );
+
   tupleParameter.default = '(alpha, 2)';
 
   assert.strictEqual(

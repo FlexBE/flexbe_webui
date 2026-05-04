@@ -403,6 +403,7 @@ UI.RuntimeControl = new (function() {
 				let select = document.createElement("select");
 				select.setAttribute("id", params[i].name);
 				select.setAttribute("name", params[i].name);
+				select.setAttribute("title", "Select one of the defined options.");
 				params[i].additional.forEach(function(opt) {
 					let option = document.createElement("option");
 					option.setAttribute("value", opt);
@@ -421,6 +422,7 @@ UI.RuntimeControl = new (function() {
 					input.setAttribute("value", params[i].default);
 					input.setAttribute("min", params[i].additional.min);
 					input.setAttribute("max", params[i].additional.max);
+					input.setAttribute("title", "A number within the configured min/max range.");
 					const defaultValue = String(params[i].default);
 					const minValue = String(params[i].additional.min);
 					const maxValue = String(params[i].additional.max);
@@ -439,6 +441,7 @@ UI.RuntimeControl = new (function() {
 				input.setAttribute("id", params[i].name);
 				input.setAttribute("name", params[i].name);
 				input.setAttribute("type", "checkbox");
+				input.setAttribute("title", "true or false.");
 				if (params[i].default == "True") {
 					input.setAttribute("checked", "checked");
 				}
@@ -449,6 +452,7 @@ UI.RuntimeControl = new (function() {
 				input.setAttribute("name", params[i].name);
 				input.setAttribute("type", "text");
 				input.setAttribute("value", params[i].default);
+				input.setAttribute("title", "Free-form text.");
 				value_td.appendChild(input);
 			} else if (params[i].type == "tuple") {
 				let input = document.createElement("input");
@@ -456,7 +460,10 @@ UI.RuntimeControl = new (function() {
 				input.setAttribute("name", params[i].name);
 				input.setAttribute("type", "text");
 				input.setAttribute("value", params[i].default);
-				input.setAttribute("placeholder", "('a', 'b') or (1, 2)");
+				input.setAttribute("placeholder", "(1, 'hello', True)");
+				input.setAttribute("title", "Items in parentheses separated by commas.\n"
+					+ "Valid items: numbers (1, 3.14), quoted strings ('a' or \"b\"), True, False, None.\n"
+					+ "Example: (1, 'hello', True)");
 				value_td.appendChild(input);
 				} else if (params[i].type == "yaml") {
 					let file_input = document.createElement("input");
@@ -464,6 +471,7 @@ UI.RuntimeControl = new (function() {
 					file_input.setAttribute("value", params[i].default);
 					file_input.setAttribute("key", params[i].additional.key);
 					file_input.setAttribute("style", "width: 300px");
+					file_input.setAttribute("title", "A YAML-formatted value.");
 
 					let file_td = document.createElement("td");
 					file_td.appendChild(file_input);
