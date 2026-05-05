@@ -458,11 +458,10 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 
 		if(target.drawing[1][0] == undefined)
 			return;
-		var dx = target.drawing[1][0].attr('x')-remove.drawing[1][0].attr('x');
-		var dy = target.drawing[1][0].attr('y')-remove.drawing[1][0].attr('y');
-
-		remove.drawing[1].translate(dx,dy);
 		if (UI.Statemachine.justConnected() != undefined){
+			var dx = target.drawing[1][0].attr('x')-remove.drawing[1][0].attr('x');
+			var dy = target.drawing[1][0].attr('y')-remove.drawing[1][0].attr('y');
+			remove.drawing[1].translate(dx,dy);
 			remove.obj.setX(remove.drawing[1][0].attr('x')+dx);
 			remove.obj.setY(remove.drawing[1][0].attr('y')+dy);
 			remove.obj.setBeginning(target.obj.getBeginning());
