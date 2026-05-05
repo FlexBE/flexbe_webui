@@ -1637,6 +1637,17 @@ UI.Panels.StateProperties = new (function() {
 	}
 
 	this.flushPendingEdits = function() {
+		if (current_prop_state instanceof BehaviorState) {
+			// BehaviorState fields save on blur (not Apply). Do NOT call applyPropertiesClicked:
+			// it reads from the wrong panel (regular-state DOM IDs) and would call
+			// setParameterValues([]) / setInputMapping([]), wiping all values.
+			// Instead, trigger blur on any focused field to fire its save handler now.
+			let active = document.activeElement;
+			if (active && active.closest && active.closest('#panel_properties_behavior')) {
+				active.blur();
+			}
+			return;
+		}
 		if (current_prop_state != undefined) that.applyPropertiesClicked();
 	}
 
