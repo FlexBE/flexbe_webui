@@ -465,6 +465,7 @@ UI.Menu = new (function() {
 	}
 
 	this.saveBehaviorClicked = async function() {
+		UI.Panels.StateProperties.flushPendingEdits();
 		let validation_report = {fatal_errors: [], warnings: []};
 		let check_error_string = undefined;
 		if (Behavior.isReadonly()) {

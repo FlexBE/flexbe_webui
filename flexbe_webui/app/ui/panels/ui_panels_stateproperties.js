@@ -1636,6 +1636,10 @@ UI.Panels.StateProperties = new (function() {
 		that.hide();
 	}
 
+	this.flushPendingEdits = function() {
+		if (current_prop_state != undefined) that.applyPropertiesClicked();
+	}
+
 	this.applyPropertiesClicked = function() {
 		that.removeHover();
 		if (RC.Controller.isReadonly()
