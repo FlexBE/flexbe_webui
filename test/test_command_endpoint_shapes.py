@@ -159,6 +159,17 @@ def server_with_package(tmp_path, monkeypatch):
     return server
 
 
+def test_save_package_cache_supports_pydantic_v1_models(server_with_package, tmp_path):
+    """Package cache saving should support the Pydantic v1 model API used by ROS distros."""
+    server_with_package.save_package_cache()
+
+    cache_path = tmp_path / 'flexbe_packages.cache'
+    cached_packages = json.loads(cache_path.read_text(encoding='utf-8'))
+
+    assert cached_packages['test_pkg']['name'] == 'test_pkg'
+    assert cached_packages['test_pkg']['python_path'] == str(tmp_path / 'pkg')
+
+
 def test_save_config_settings_returns_data_ok_on_success(server_with_package):
     """Saving configuration should return explicit command success."""
     endpoint = _find_endpoint(server_with_package._app, '/api/v1/save_config_settings', 'POST')

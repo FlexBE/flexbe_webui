@@ -467,12 +467,20 @@ class WebuiServer:
         file_path = os.path.join(self._config_file_folder, 'flexbe_packages.cache')
         try:
             with open(file_path, 'wt', encoding=self._settings['text_encoding']) as fout:
-                json.dump({name: pkg.model_dump() for name, pkg in self.packages.items()}, fout, indent=4)
+                json.dump({name: self._model_to_dict(pkg) for name, pkg in self.packages.items()}, fout, indent=4)
             print(f"\x1b[93mSaved data for {len(self.packages)} packages to cache in '{file_path}' ...\x1b[0m", flush=True)
 
         except (OSError, TypeError, ValueError) as exc:
             print(f"\x1b[91mFailed to save package data to configuration file '{file_path}'\x1b[0m", flush=True)
             print(exc)
+
+    @staticmethod
+    def _model_to_dict(model):
+        """Return a dictionary for Pydantic v1 or v2 models."""
+        dump = getattr(model, 'model_dump', None)
+        if dump is not None:
+            return dump()
+        return model.dict()
 
     def register(self, app: FastAPI):
         """Register the webserver resources."""
