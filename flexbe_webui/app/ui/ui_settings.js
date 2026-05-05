@@ -881,9 +881,13 @@ UI.Settings = new (function() {
 			el.value = val;
 			return;
 		}
+		let old_size = statemachine_text_size;
 		statemachine_text_size = val;
 		el.value = val;
 		applyStatemachineTextSize();
+		if (UI.Statemachine && UI.Statemachine.rescaleAllPositions) {
+			UI.Statemachine.rescaleAllPositions(val / old_size);
+		}
 		refreshStateRenderViews();
 		storeSettings();
 	}

@@ -720,6 +720,55 @@ UI.Statemachine = new (function() {
 		});
 	}
 
+	var captureTreeSnapshot = function(sm) {
+		return {
+			snapshot: captureLayoutSnapshot(sm),
+			children: sm.getStates()
+				.filter(function(s) { return typeof s.getStates === 'function'; })
+				.map(function(s) { return {name: s.getStateName(), tree: captureTreeSnapshot(s)}; })
+		};
+	}
+
+	var applyTreeSnapshot = function(sm, tree) {
+		applyLayoutSnapshot(sm, tree.snapshot);
+		tree.children.forEach(function(child) {
+			let state = sm.getStateByName(child.name);
+			if (state != undefined) applyTreeSnapshot(state, child.tree);
+		});
+	}
+
+	var rescaleSMPositions = function(sm, ratio) {
+		sm.getStates().forEach(function(state) {
+			let pos = state.getPosition();
+			state.setPosition({x: Math.round(pos.x * ratio), y: Math.round(pos.y * ratio)});
+			if (typeof state.getStates === 'function') rescaleSMPositions(state, ratio);
+		});
+		sm.getSMOutcomes().forEach(function(outcome) {
+			let pos = outcome.getPosition();
+			outcome.setPosition({x: Math.round(pos.x * ratio), y: Math.round(pos.y * ratio)});
+		});
+		sm.getTransitions().forEach(function(transition) {
+			if (transition.getX() != undefined) transition.setX(Math.round(transition.getX() * ratio));
+			if (transition.getY() != undefined) transition.setY(Math.round(transition.getY() * ratio));
+			transition.setBeginning(undefined);
+			transition.setEnd(undefined);
+		});
+	}
+
+	this.rescaleAllPositions = function(ratio) {
+		if (!isFinite(ratio) || ratio <= 0 || ratio === 1) return;
+		let root = Behavior.getStatemachine ? Behavior.getStatemachine() : undefined;
+		if (root == undefined) return;
+		let previous = captureTreeSnapshot(root);
+		rescaleSMPositions(root, ratio);
+		let next = captureTreeSnapshot(root);
+		ActivityTracer.addActivity(ActivityTracer.ACT_COMPLEX_OPERATION,
+			"Rescaled layout positions for text size change",
+			function() { applyTreeSnapshot(root, previous); UI.Statemachine.refreshView(); },
+			function() { applyTreeSnapshot(root, next); UI.Statemachine.refreshView(); }
+		);
+	}
+
 	var snapshotsEqual = function(left, right) {
 		return JSON.stringify(left) == JSON.stringify(right);
 	}
