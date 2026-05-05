@@ -787,7 +787,9 @@ class WebuiServer:
                 with open(code_file, 'r', encoding=self._settings['text_encoding']) as fin:
                     codefile_content = fin.read()
 
-                full_def = match.copy(update={'codefile_content': codefile_content})
+                # model_copy is the Pydantic v2 API; fall back to copy for v1
+                copy_fn = getattr(match, 'model_copy', None) or match.copy
+                full_def = copy_fn(update={'codefile_content': codefile_content})
                 elapsed = datetime.now().timestamp() - start_clock
                 self._record_timing('behavior_full', endpoint, elapsed, True,
                                     package=package_name, behavior=codefile_name)
