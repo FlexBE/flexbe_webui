@@ -6207,6 +6207,87 @@ async function runStateGeneratedKeysCase() {
   assert.deepStrictEqual(state.getOutputMapping(), ['result_a'], 'setOutputKeys: mapping in sync');
 }
 
+async function runStateUndoRedoAutonomyConsistencyCase() {
+  // Regression: undo then redo of a properties-Apply that added meta-outcomes (e.g.
+  // OperatorDecisionState) doubled the autonomy array.  The redo lambda was calling
+  // setAutonomy BEFORE setParameterValues; updateGeneratedOutcomes then pushed onto an
+  // already-populated autonomy array.  Fix: setParameterValues first in both undo and redo.
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/_helper/varsolver.js');
+
+  const stateDefOpDec = {
+    getStateClass() { return 'OperatorDecisionState'; },
+    getStatePath() { return 'flexbe_states/OperatorDecisionState'; },
+    getStatePackage() { return 'flexbe_states'; },
+    getParameters() { return ['outcomes']; },
+    getDefaultParameterValues() { return ["[]"]; },
+    getOutcomes() { return ['$outcomes']; },
+    getDefaultAutonomy() { return []; },
+    getInputKeys() { return []; },
+    getOutputKeys() { return []; },
+  };
+
+  global.WS = { Statelib: { getFromLib() { return stateDefOpDec; } } };
+  global.UI = {
+    Statemachine: {
+      getDrawnState() { return undefined; },
+      getPanShift() { return { x: 0, y: 0 }; },
+    },
+  };
+
+  loadScript('flexbe_webui/app/_model/state.js');
+
+  const state = new State('OpDec1', stateDefOpDec);
+
+  assert.deepStrictEqual(state.getOutcomes(), [], 'initial: no outcomes');
+  assert.deepStrictEqual(state.getAutonomy(), [], 'initial: no autonomy');
+
+  // Simulate first Apply: parameter changes from "[]" to "['enie', 'menie', 'miniy']"
+  const parameters_old = ["[]"];
+  const autonomy_old = [];
+
+  state.setParameterValues(["['enie', 'menie', 'miniy']"]);
+  assert.deepStrictEqual(state.getOutcomes(), ['enie', 'menie', 'miniy'], 'after first apply: 3 outcomes');
+  assert.strictEqual(state.getAutonomy().length, 3, 'after first apply: autonomy has 3 entries');
+
+  // Simulate user setting autonomy via selects (in-place, as applyPropertiesClicked does)
+  state.getAutonomy()[0] = 3;
+  state.getAutonomy()[1] = 2;
+  state.getAutonomy()[2] = 0;
+  const autonomy_new = state.getAutonomy().slice();
+  const parameters_new = state.getParameterValues().slice();
+
+  // Undo (fixed order: setParameterValues before setAutonomy)
+  state.setParameterValues(parameters_old);
+  state.setAutonomy(autonomy_old.slice());
+  assert.deepStrictEqual(state.getOutcomes(), [], 'after undo: outcomes cleared');
+  assert.deepStrictEqual(state.getAutonomy(), [], 'after undo: autonomy cleared');
+
+  // Redo (fixed order: setParameterValues before setAutonomy)
+  state.setParameterValues(parameters_new);
+  state.setAutonomy(autonomy_new.slice());
+  assert.deepStrictEqual(state.getOutcomes(), ['enie', 'menie', 'miniy'], 'after redo: 3 outcomes restored');
+  assert.deepStrictEqual(state.getAutonomy(), [3, 2, 0], 'after redo: autonomy values correct, not doubled');
+  assert.strictEqual(
+    state.getAutonomy().length,
+    state.getOutcomes().length,
+    'after redo: autonomy and outcomes lengths match'
+  );
+
+  // Second undo/redo cycle (idempotent)
+  state.setParameterValues(parameters_old);
+  state.setAutonomy(autonomy_old.slice());
+  state.setParameterValues(parameters_new);
+  state.setAutonomy(autonomy_new.slice());
+  assert.strictEqual(
+    state.getAutonomy().length,
+    state.getOutcomes().length,
+    'second redo cycle: lengths still match'
+  );
+  assert.deepStrictEqual(state.getAutonomy(), [3, 2, 0], 'second redo cycle: autonomy still correct');
+}
+
 async function main() {
   if (caseName === 'behavior_saver') {
     await runBehaviorSaverCase();
@@ -6454,6 +6535,10 @@ async function main() {
   }
   if (caseName === 'state_generated_keys') {
     await runStateGeneratedKeysCase();
+    return;
+  }
+  if (caseName === 'state_undo_redo_autonomy_consistency') {
+    await runStateUndoRedoAutonomyConsistencyCase();
     return;
   }
   if (caseName === 'outcome_copy_rename_with_copies') {

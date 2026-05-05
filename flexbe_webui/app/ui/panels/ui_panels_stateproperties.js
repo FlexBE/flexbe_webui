@@ -445,6 +445,7 @@ UI.Panels.StateProperties = new (function() {
 				listeners_to_cleanup.push({'element': input_field, 'listener_type': 'change', 'handler': highlightApplyButton});
 			}
 		} else {
+			document.getElementById("panel_prop_parameters_content").innerHTML = "";
 			document.getElementById("panel_prop_parameters").style.display = "none";
 		}
 
@@ -485,6 +486,7 @@ UI.Panels.StateProperties = new (function() {
 				that.addHoverDocumentation(tr, "outcome", outcome_list_complete[i], state.getStateType());
 			}
 		} else {
+			document.getElementById("panel_prop_autonomy_content").innerHTML = "";
 			document.getElementById("panel_prop_autonomy").style.display = "none";
 		}
 
@@ -1665,7 +1667,11 @@ UI.Panels.StateProperties = new (function() {
 
 		// save autonomy
 		let autonomy_input = document.getElementById("panel_prop_autonomy_content").getElementsByTagName("select");
-		for (let i=0; i<autonomy_input.length; ++i) {
+		let expected_autonomy_count = current_prop_state.getOutcomes().length;
+		if (autonomy_input.length !== expected_autonomy_count) {
+			T.logWarn(`applyPropertiesClicked: autonomy select count (${autonomy_input.length}) != outcome count (${expected_autonomy_count}) — stale display`);
+		}
+		for (let i=0; i < Math.min(autonomy_input.length, expected_autonomy_count); ++i) {
 			current_prop_state.getAutonomy()[i] = parseInt(autonomy_input[i].value);
 			let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
 				return element.getFrom().getStateName() == current_prop_state.getStateName() && element.getOutcome() == current_prop_state.getOutcomes()[i];
@@ -1676,18 +1682,30 @@ UI.Panels.StateProperties = new (function() {
 
 		// save userdata
 		let input_input = document.getElementById("panel_prop_input_keys_content").getElementsByTagName("input");
-		for (let i=0; i<input_input.length; ++i) {
+		let expected_input_count = current_prop_state.getInputKeys().length;
+		if (input_input.length !== expected_input_count) {
+			T.logWarn(`applyPropertiesClicked: input mapping count (${input_input.length}) != input key count (${expected_input_count}) — stale display`);
+		}
+		for (let i=0; i < Math.min(input_input.length, expected_input_count); ++i) {
 			current_prop_state.getInputMapping()[i] = input_input[i].value;
 		}
 		let output_input = document.getElementById("panel_prop_output_keys_content").getElementsByTagName("input");
-		for (let i=0; i<output_input.length; ++i) {
+		let expected_output_count = current_prop_state.getOutputKeys().length;
+		if (output_input.length !== expected_output_count) {
+			T.logWarn(`applyPropertiesClicked: output mapping count (${output_input.length}) != output key count (${expected_output_count}) — stale display`);
+		}
+		for (let i=0; i < Math.min(output_input.length, expected_output_count); ++i) {
 			current_prop_state.getOutputMapping()[i] = output_input[i].value;
 		}
 
 		// save parameters (after everything else to avoid troubles with generation)
 		let parameter_input = document.getElementById("panel_prop_parameters_content").getElementsByTagName("input");
+		let expected_param_count = current_prop_state.getParameters().length;
+		if (parameter_input.length !== expected_param_count) {
+			T.logWarn(`applyPropertiesClicked: parameter input count (${parameter_input.length}) != parameter count (${expected_param_count}) — stale display`);
+		}
 		let new_parameter_values = [];
-		for (let i = 0; i < parameter_input.length; ++i) {
+		for (let i = 0; i < Math.min(parameter_input.length, expected_param_count); ++i) {
 			let input = parameter_input[i];
 			let val = input.value;
 			let valid_var_type = Checking.determineType(val);
@@ -1726,10 +1744,10 @@ UI.Panels.StateProperties = new (function() {
 			"Changed properties of state " + current_prop_state.getStateName(),
 			function() {
 				let state = Behavior.getStatemachine().getStateByPath(state_path);
+				state.setParameterValues(parameters_old);
 				state.setAutonomy(autonomy_old);
 				state.setInputMapping(input_old);
 				state.setOutputMapping(output_old);
-				state.setParameterValues(parameters_old);
 				for (let i=0; i<autonomy_old.length; ++i) {
 					let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
 						return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
@@ -1744,10 +1762,10 @@ UI.Panels.StateProperties = new (function() {
 			},
 			function() {
 				let state = Behavior.getStatemachine().getStateByPath(state_path);
+				state.setParameterValues(parameters_new);
 				state.setAutonomy(autonomy_new);
 				state.setInputMapping(input_new);
 				state.setOutputMapping(output_new);
-				state.setParameterValues(parameters_new);
 				for (let i=0; i<autonomy_new.length; ++i) {
 					let transition_obj = UI.Statemachine.getDisplayedSM().getTransitions().findElement(function(element) {
 						return element.getFrom().getStateName() == state.getStateName() && element.getOutcome() == state.getOutcomes()[i];
