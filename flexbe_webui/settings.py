@@ -125,6 +125,10 @@ class WebuiSettings(BaseModel):
     statemachine_text_size: float = 86.5
     statemachine_text_bold: bool = True
     statemachine_text_extra_bold: bool = False
+    sidepanel_width: int = 350
+    feed_panel_width: int = 270
+    terminal_height: int = 30
+    rc_right_panel_width: int = 34
     transition_line_width_normal: float = 2.0
     transition_line_width_bold: float = 3.0
     transition_line_width_extra_bold: float = 4.0
@@ -181,6 +185,42 @@ class WebuiSettings(BaseModel):
         if size > 150.0:
             return 150.0
         return size
+
+    @validator('sidepanel_width', pre=True)
+    def _normalize_sidepanel_width(cls, value: Any) -> int:
+        """Keep properties panel width in a reasonable range."""
+        try:
+            width = int(value)
+        except (TypeError, ValueError):
+            width = 350
+        return max(200, min(700, width))
+
+    @validator('feed_panel_width', pre=True)
+    def _normalize_feed_panel_width(cls, value: Any) -> int:
+        """Keep notification feed width in a reasonable range."""
+        try:
+            width = int(value)
+        except (TypeError, ValueError):
+            width = 270
+        return max(150, min(500, width))
+
+    @validator('terminal_height', pre=True)
+    def _normalize_terminal_height(cls, value: Any) -> int:
+        """Keep terminal panel height percentage in a reasonable range."""
+        try:
+            height = int(value)
+        except (TypeError, ValueError):
+            height = 30
+        return max(15, min(70, height))
+
+    @validator('rc_right_panel_width', pre=True)
+    def _normalize_rc_right_panel_width(cls, value: Any) -> int:
+        """Keep runtime control right panel percentage in a reasonable range."""
+        try:
+            width = int(value)
+        except (TypeError, ValueError):
+            width = 34
+        return max(20, min(60, width))
 
     @validator('server_timeout', pre=True)
     def _normalize_server_timeout(cls, value: Any) -> float:

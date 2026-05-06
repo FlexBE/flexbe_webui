@@ -16,6 +16,10 @@ UI.Settings = new (function() {
 	var statemachine_text_size = 86.5;
 	var statemachine_text_bold = true;
 	var statemachine_text_extra_bold = false;
+	var sidepanel_width = 350;
+	var feed_panel_width = 270;
+	var terminal_height = 30;
+	var rc_right_panel_width = 34;
 	var transition_line_width_normal = 2.0;
 	var transition_line_width_bold = 3.0;
 	var transition_line_width_extra_bold = 4.0;
@@ -64,6 +68,10 @@ UI.Settings = new (function() {
 			'statemachine_text_size': statemachine_text_size,
 			'statemachine_text_bold': statemachine_text_bold,
 			'statemachine_text_extra_bold': statemachine_text_extra_bold,
+			'sidepanel_width': sidepanel_width,
+			'feed_panel_width': feed_panel_width,
+			'terminal_height': terminal_height,
+			'rc_right_panel_width': rc_right_panel_width,
 			'transition_line_width_normal': transition_line_width_normal,
 			'transition_line_width_bold': transition_line_width_bold,
 			'transition_line_width_extra_bold': transition_line_width_extra_bold,
@@ -103,6 +111,10 @@ UI.Settings = new (function() {
 			'statemachine_text_size': statemachine_text_size,
 			'statemachine_text_bold': statemachine_text_bold,
 			'statemachine_text_extra_bold': statemachine_text_extra_bold,
+			'sidepanel_width': sidepanel_width,
+			'feed_panel_width': feed_panel_width,
+			'terminal_height': terminal_height,
+			'rc_right_panel_width': rc_right_panel_width,
 			'transition_line_width_normal': transition_line_width_normal,
 			'transition_line_width_bold': transition_line_width_bold,
 			'transition_line_width_extra_bold': transition_line_width_extra_bold,
@@ -179,6 +191,10 @@ UI.Settings = new (function() {
 			statemachine_text_size = (items.statemachine_text_size !== undefined) ? items.statemachine_text_size : 86.5;
 			statemachine_text_bold = (items.statemachine_text_bold !== undefined) ? items.statemachine_text_bold : true;
 			statemachine_text_extra_bold = (items.statemachine_text_extra_bold !== undefined) ? items.statemachine_text_extra_bold : false;
+			sidepanel_width = (items.sidepanel_width !== undefined) ? items.sidepanel_width : 350;
+			feed_panel_width = (items.feed_panel_width !== undefined) ? items.feed_panel_width : 270;
+			terminal_height = (items.terminal_height !== undefined) ? items.terminal_height : 30;
+			rc_right_panel_width = (items.rc_right_panel_width !== undefined) ? items.rc_right_panel_width : 34;
 			transition_line_width_normal = (items.transition_line_width_normal !== undefined) ? items.transition_line_width_normal : 2.0;
 			transition_line_width_bold = (items.transition_line_width_bold !== undefined) ? items.transition_line_width_bold : 3.0;
 			transition_line_width_extra_bold = (items.transition_line_width_extra_bold !== undefined) ? items.transition_line_width_extra_bold : 4.0;
@@ -188,11 +204,17 @@ UI.Settings = new (function() {
 			document.getElementById("input_statemachine_text_size").value = statemachine_text_size;
 			document.getElementById("cb_statemachine_text_bold").checked = statemachine_text_bold;
 			document.getElementById("cb_statemachine_text_extra_bold").checked = statemachine_text_extra_bold;
+			document.getElementById("input_sidepanel_width").value = sidepanel_width;
+			document.getElementById("input_feed_panel_width").value = feed_panel_width;
+			document.getElementById("input_terminal_height").value = terminal_height;
+			document.getElementById("input_rc_right_panel_width").value = rc_right_panel_width;
 			updateTransitionLineWidthInputs();
 			applyDashboardTextSize();
 			applyDashboardTextBold();
 			applyStatemachineTextSize();
 			applyStatemachineTextBold();
+			applyTerminalHeight();
+			applyRcRightPanelWidth();
 
 			allow_editors = (items.allow_editors || []);
 			document.getElementById("input_allow_editors").value = allow_editors.join(', ');
@@ -749,6 +771,63 @@ UI.Settings = new (function() {
 		return statemachine_text_extra_bold;
 	}
 
+	this.getAppliedSidepanelWidth = function() {
+		let w = Math.round(sidepanel_width * (dashboard_text_size / 86.5));
+		return Math.min(Math.max(w, 200), 700);
+	}
+
+	this.sidepanelWidthChanged = function() {
+		let el = document.getElementById('input_sidepanel_width');
+		let val = normalizePanelWidth(el.value);
+		if (sidepanel_width === val) {
+			el.value = val;
+			return;
+		}
+		sidepanel_width = val;
+		el.value = val;
+		applySidepanelWidth();
+		storeSettings();
+	}
+
+	this.feedPanelWidthChanged = function() {
+		let el = document.getElementById('input_feed_panel_width');
+		let val = normalizeFeedWidth(el.value);
+		if (feed_panel_width === val) {
+			el.value = val;
+			return;
+		}
+		feed_panel_width = val;
+		el.value = val;
+		applyFeedPanelWidth();
+		storeSettings();
+	}
+
+	this.terminalHeightChanged = function() {
+		let el = document.getElementById('input_terminal_height');
+		let val = normalizeTerminalHeight(el.value);
+		if (terminal_height === val) {
+			el.value = val;
+			return;
+		}
+		terminal_height = val;
+		el.value = val;
+		applyTerminalHeight();
+		storeSettings();
+	}
+
+	this.rcRightPanelWidthChanged = function() {
+		let el = document.getElementById('input_rc_right_panel_width');
+		let val = normalizeRcRightPanelWidth(el.value);
+		if (rc_right_panel_width === val) {
+			el.value = val;
+			return;
+		}
+		rc_right_panel_width = val;
+		el.value = val;
+		applyRcRightPanelWidth();
+		storeSettings();
+	}
+
 	this.getTransitionLineWidthNormal = function() {
 		return transition_line_width_normal;
 	}
@@ -767,6 +846,50 @@ UI.Settings = new (function() {
 			size = 86.5;
 		}
 		return Math.min(Math.max(size, 50.0), 150.0);
+	}
+
+	var normalizePanelWidth = function(value) {
+		let width = parseInt(value);
+		if (isNaN(width)) width = 350;
+		return Math.min(Math.max(width, 200), 700);
+	}
+
+	var normalizeFeedWidth = function(value) {
+		let width = parseInt(value);
+		if (isNaN(width)) width = 270;
+		return Math.min(Math.max(width, 150), 500);
+	}
+
+	var normalizeTerminalHeight = function(value) {
+		let height = parseInt(value);
+		if (isNaN(height)) height = 30;
+		return Math.min(Math.max(height, 15), 70);
+	}
+
+	var normalizeRcRightPanelWidth = function(value) {
+		let width = parseInt(value);
+		if (isNaN(width)) width = 34;
+		return Math.min(Math.max(width, 20), 60);
+	}
+
+	var applySidepanelWidth = function() {
+		let w = Math.round(sidepanel_width * (dashboard_text_size / 86.5));
+		w = Math.min(Math.max(w, 200), 700);
+		document.documentElement.style.setProperty('--sidepanel-width', `${w}px`);
+	}
+
+	var applyFeedPanelWidth = function() {
+		let w = Math.round(feed_panel_width * (dashboard_text_size / 86.5));
+		w = Math.min(Math.max(w, 150), 500);
+		document.documentElement.style.setProperty('--feed-width', `${w}px`);
+	}
+
+	var applyTerminalHeight = function() {
+		document.documentElement.style.setProperty('--terminal-height', `${terminal_height}%`);
+	}
+
+	var applyRcRightPanelWidth = function() {
+		document.documentElement.style.setProperty('--rc-right-width', `${rc_right_panel_width}%`);
 	}
 
 	var normalizeTransitionLineWidth = function(value, fallback_value) {
@@ -831,6 +954,8 @@ UI.Settings = new (function() {
 		let toolbarHeight = Math.round(80 * (dashboard_text_size / 86.5));
 		toolbarHeight = Math.min(Math.max(toolbarHeight, 72), 140);
 		document.documentElement.style.setProperty('--toolbar-height', `${toolbarHeight}px`);
+		applySidepanelWidth();
+		applyFeedPanelWidth();
 	}
 
 	var applyDashboardTextBold = function() {

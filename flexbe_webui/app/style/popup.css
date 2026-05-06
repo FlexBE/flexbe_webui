@@ -1,8 +1,8 @@
 .sidepanel {
 	position: absolute;
 	top: var(--toolbar-height);
-	right: -360px;
-	width: 350px;
+	right: calc(-1 * (var(--sidepanel-width) + 10px));
+	width: var(--sidepanel-width);
 	height: calc(100% - (var(--toolbar-height) + 10px));
 	background-color: white;
 	border-left: 1px solid black;
@@ -35,7 +35,7 @@
 	padding: 2px;
 	margin: 0px 3px;
 	font-weight: bold;
-	width: 335px;
+	width: calc(var(--sidepanel-width) - 15px);
 	font-size: 13pt;
 }
 .inline_title_text_edit:hover, .inline_title_text_edit:focus {
@@ -97,7 +97,7 @@
 }
 
 #panel_class_select {
-	width: 345px;
+	width: calc(var(--sidepanel-width) - 5px);
 	height: calc(100% - 205px);
 	padding: 0;
 	margin: 0;
@@ -105,7 +105,7 @@
 	overflow: auto;
 }
 .panel_class_select_class {
-	width: 315px;
+	width: calc(var(--sidepanel-width) - 35px);
 	padding: 5px;
 	margin: 0;
 	margin-bottom: 3px;
@@ -120,7 +120,7 @@
 
 #panel_select_behavior_selection {
 	position: relative;
-	width: 345px;
+	width: calc(var(--sidepanel-width) - 5px);
 	height: calc(100% - 130px);
 	padding: 0;
 	margin: 0;
@@ -128,7 +128,7 @@
 	overflow: auto;
 }
 .panel_select_behavior_selection_behavior {
-	width: 315px;
+	width: calc(var(--sidepanel-width) - 35px);
 	padding: 5px;
 	margin: 0;
 	margin-bottom: 3px;

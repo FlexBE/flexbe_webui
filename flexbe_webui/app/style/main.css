@@ -3,6 +3,10 @@
 	--dashboard-text-size: 86.5%;
 	--statemachine-text-size: 86.5%;
 	--toolbar-height: 80px;
+	--sidepanel-width: 350px;
+	--feed-width: 270px;
+	--rc-right-width: 34%;
+	--terminal-height: 30%;
 }
 
 body, html {
@@ -258,13 +262,13 @@ body.dashboard-text-bold font {
 	position: absolute;
 	top: var(--toolbar-height);
 	right: 0px;
-	width: 270px;
+	width: var(--feed-width);
 	padding: 0px;
 	z-index: 99;
 	color: #888;
 }
 .feed_message {
-	width: 250px;
+	width: calc(var(--feed-width) - 20px);
 	padding: 4px;
 	margin: 5px;
 	border: 1px solid black;

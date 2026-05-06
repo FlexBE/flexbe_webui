@@ -11,7 +11,7 @@
 .widebox {
 	display: inline-block;
 	background-color: #fff;
-	width: calc(66% - 25px);
+	width: calc(100% - var(--rc-right-width) - 25px);
 	margin: 10px;
 	/*border: 1px solid black;*/
 	box-shadow: 2px 2px 15px #333;
@@ -22,7 +22,7 @@
 .drawbox {
 	display: inline-block;
 	background-color: #fff;
-	width: calc(66% - 15px);
+	width: calc(100% - var(--rc-right-width) - 15px);
 	height: calc(66% - 20px);
 	margin: 10px;
 	/*border: 1px solid black;*/
@@ -111,7 +111,7 @@
 .runtimebox_text {
 	position: absolute;
 	display: none;
-	width: calc(66% - 25px);
+	width: calc(100% - var(--rc-right-width) - 25px);
 	padding: 5px;
 	vertical-align: top;
 	line-height: 1.4em;

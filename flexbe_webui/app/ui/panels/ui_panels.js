@@ -14,7 +14,7 @@ UI.Panels = new (function() {
 
 	this.hideAddState = function() {
 		let panel = document.getElementById("panel_add_state");
-		panel.style.right = "-360px";
+		panel.style.right = "";
 		panel.style.padding = "5px 0px";
 		panel.removeEventListener('keydown', that.handleKeyDown); // Remove the event listener
 		tab_targets.length = 0;
@@ -29,7 +29,7 @@ UI.Panels = new (function() {
 
 	this.hideSelectBehavior = function() {
 		let panel = document.getElementById("panel_select_behavior");
-		panel.style.right = "-360px";
+		panel.style.right = "";
 		panel.style.padding = "5px 0px";
 		panel.removeEventListener('keydown', that.handleKeyDown); // Remove the event listener
 		tab_targets.length = 0;
@@ -44,7 +44,7 @@ UI.Panels = new (function() {
 
 	this.hideProperties = function() {
 		let panel = document.getElementById("panel_properties");
-		panel.style.right = "-360px";
+		panel.style.right = "";
 		panel.style.padding = "5px 0px";
 		panel.removeEventListener('keydown', that.handleKeyDown); // Remove the event listener
 		tab_targets.length = 0;
@@ -52,7 +52,7 @@ UI.Panels = new (function() {
 
 	this.displayTerminal = function() {
 		let panel = document.getElementById("terminal");
-		panel.style.height = "calc(30% - 30px)";
+		panel.style.height = "calc(var(--terminal-height) - 30px)";
 		panel.style.padding = "5px";
 		panel.style.width = "calc(100% - 10px)";
 	}

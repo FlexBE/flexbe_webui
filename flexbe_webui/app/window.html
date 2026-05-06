@@ -611,7 +611,31 @@
 						&nbsp;&nbsp;<input id="cb_statemachine_text_extra_bold" type="checkbox" /><label for="cb_statemachine_text_extra_bold">Extra Bold</label>
 					</td>
 				</tr>
-				<tr title="Transition line thickness in state-machine drawing (normal, bold, extra bold).">
+				<tr title="Base width of the properties side panel in pixels at default text size; scales proportionally with dashboard text size.">
+						<td width="150">Properties panel width: </td>
+						<td>
+							<input id="input_sidepanel_width" type="number" value="350" min="200" max="700" step="10" /> px
+						</td>
+					</tr>
+					<tr title="Base width of the notification feed panel in pixels at default text size; scales proportionally with dashboard text size.">
+						<td width="150">Feed panel width: </td>
+						<td>
+							<input id="input_feed_panel_width" type="number" value="270" min="150" max="500" step="10" /> px
+						</td>
+					</tr>
+					<tr title="Height of the terminal panel as a percentage of the viewport height.">
+						<td width="150">Terminal height: </td>
+						<td>
+							<input id="input_terminal_height" type="number" value="30" min="15" max="70" step="5" /> %
+						</td>
+					</tr>
+					<tr title="Width of the right sidebar in the Runtime Control view as a percentage; the drawing canvas takes the remaining width.">
+						<td width="150">RC right panel: </td>
+						<td>
+							<input id="input_rc_right_panel_width" type="number" value="34" min="20" max="60" step="1" /> %
+						</td>
+					</tr>
+					<tr title="Transition line thickness in state-machine drawing (normal, bold, extra bold).">
 					<td width="150">Transition width: </td>
 					<td>
 						<table style="border-collapse: collapse;">

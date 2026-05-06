@@ -282,6 +282,14 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('input_dashboard_text_size').addEventListener('keydown', onEnterInput(UI.Settings.dashboardTextSizeChanged));
 	document.getElementById('input_statemachine_text_size').addEventListener('change', UI.Settings.statemachineTextSizeChanged);
 	document.getElementById('input_statemachine_text_size').addEventListener('keydown', onEnterInput(UI.Settings.statemachineTextSizeChanged));
+	document.getElementById('input_sidepanel_width').addEventListener('change', UI.Settings.sidepanelWidthChanged);
+	document.getElementById('input_sidepanel_width').addEventListener('keydown', onEnterInput(UI.Settings.sidepanelWidthChanged));
+	document.getElementById('input_feed_panel_width').addEventListener('change', UI.Settings.feedPanelWidthChanged);
+	document.getElementById('input_feed_panel_width').addEventListener('keydown', onEnterInput(UI.Settings.feedPanelWidthChanged));
+	document.getElementById('input_terminal_height').addEventListener('change', UI.Settings.terminalHeightChanged);
+	document.getElementById('input_terminal_height').addEventListener('keydown', onEnterInput(UI.Settings.terminalHeightChanged));
+	document.getElementById('input_rc_right_panel_width').addEventListener('change', UI.Settings.rcRightPanelWidthChanged);
+	document.getElementById('input_rc_right_panel_width').addEventListener('keydown', onEnterInput(UI.Settings.rcRightPanelWidthChanged));
 	document.getElementById('cb_dashboard_text_bold').addEventListener('change', UI.Settings.dashboardTextBoldClicked);
 	document.getElementById('cb_dashboard_text_bold').addEventListener('keydown', onCheckboxChange);
 	document.getElementById('cb_statemachine_text_bold').addEventListener('change', UI.Settings.statemachineTextBoldClicked);
