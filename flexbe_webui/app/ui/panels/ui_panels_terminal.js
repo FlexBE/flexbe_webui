@@ -2,6 +2,7 @@ UI.Panels.Terminal = new (function() {
 	var that = this;
 	var debug_mode = false;
 	var is_active = false;
+	var had_error = false;
 	const MAX_TERMINAL_LINES = 1000;
 
 	var trimTerminalHistory = function(terminal) {
@@ -41,6 +42,7 @@ UI.Panels.Terminal = new (function() {
 	this.logError = function(msg) {
 		logTerminal(msg, "red");
 		console.log("[ERROR] " + msg);
+		had_error = true;
 		that.show();
 	}
 
@@ -72,6 +74,11 @@ UI.Panels.Terminal = new (function() {
 		while (terminal.children.length > 0) {
 			terminal.removeChild(terminal.children[0]);
 		}
+		had_error = false;
+	}
+
+	this.hideIfClean = function() {
+		if (!had_error) that.hide();
 	}
 
 	this.show = function() {

@@ -88,11 +88,11 @@ UI.Menu = new (function() {
 		],
 		[
 			["Hide Comments", "note", function() { UI.Statemachine.toggleComments(); }, "ctrl+h", false],
-			["Write Comment", "note_add", function() { UI.Menu.addCommentClicked(); }, "ctrl+4", false]
+			["Write Comment", "note_add", function() { UI.Menu.addCommentClicked(); }, "ctrl+4", false],
+			["Fade Outcomes", "outcome", function() { UI.Statemachine.toggleOutcomes(); }, "ctrl+f", false]
 		],
 		[
-			["Fade Outcomes", "outcome", function() { UI.Statemachine.toggleOutcomes(); }, "ctrl+f", false],
-			["Auto Layout", "group_selection", function() { UI.Menu.autoLayoutClicked(); }, undefined, false],
+			["Auto Layout", "auto_layout", function() { UI.Menu.autoLayoutClicked(); }, undefined, false],
 			["Auto-Connect", "autoconnect", function(event) { Tools.autoconnect(); }, "ctrl+a", false],
 			["Group Selection", "group_selection", function(event) { Tools.groupSelection(); }, "ctrl+g", false]
 		]
