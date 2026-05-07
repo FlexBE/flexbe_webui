@@ -66,8 +66,8 @@ These shortcuts are specific to the State Machine drawing area.
 | --- | --- |
 | `Shift` | Temporarily enable panning mode and show the grid while held |
 | `Shift+Space` | Pan back to the home position |
-| `Shift+Home` | Pan back to the home position |
-| `Shift+End` | Pan to the current canvas extents |
+| `Home` / `Ctrl+Home` / `Shift+Home` | Pan back to the home position |
+| `End` / `Ctrl+End` / `Shift+End` | Pan to the current canvas extents |
 | `Shift+Left` | Pan left by one grid step |
 | `Shift+Right` | Pan right by one grid step |
 | `Shift+Up` | Pan up by one grid step |

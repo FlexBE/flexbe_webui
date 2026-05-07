@@ -118,27 +118,49 @@ UI.Statemachine = new (function() {
 		panning = false;
 	}, 'keyup');
 
+	var statemachineShortcutsActive = function() {
+		try {
+			return UI.Menu == undefined
+				|| UI.Menu.isPageStatemachine == undefined
+				|| UI.Menu.isPageStatemachine();
+		} catch (err) {
+			return true;
+		}
+	}
+
+	var runStatemachineShortcut = function(callback) {
+		if (!statemachineShortcutsActive()) {
+			return;
+		}
+		callback();
+	}
+
 	Mousetrap.bind("shift+space", function() {
-		// console.log(`shift+space - Go to Home position ...`)
-		panShift(-pan_shift.x, -pan_shift.y);
+		runStatemachineShortcut(that.panToHome);
+	});
+
+	Mousetrap.bind("home", function() {
+		runStatemachineShortcut(that.panToHome);
+	});
+
+	Mousetrap.bind("ctrl+home", function() {
+		runStatemachineShortcut(that.panToHome);
 	});
 
 	Mousetrap.bind("shift+home", function() {
-		// console.log(`shift+home - Go to Home position ...`)
-		panShift(-pan_shift.x, -pan_shift.y);
+		runStatemachineShortcut(that.panToHome);
+	});
+
+	Mousetrap.bind("end", function() {
+		runStatemachineShortcut(that.panToCanvasExtents);
+	});
+
+	Mousetrap.bind("ctrl+end", function() {
+		runStatemachineShortcut(that.panToCanvasExtents);
 	});
 
 	Mousetrap.bind("shift+end", function() {
-		// Move to zero starting position
-		// console.log(`shift+end - pan to canvas extents ...`);
-		if (sm_extents == undefined) {
-			return;
-		}
-		let xc = sm_extents.x - R.width;
-		let yc = sm_extents.y - R.height;
-		if (xc < 0) xc = 0;
-		if (yc < 0) yc = 0;
-		panShift(-pan_shift.x - xc, -pan_shift.y - yc);
+		runStatemachineShortcut(that.panToCanvasExtents);
 	});
 
 	Mousetrap.bind("shift+left", function() {
@@ -158,8 +180,9 @@ UI.Statemachine = new (function() {
 		panShift(0, -that.getGridSize());
 	});
 
-	var panShift = function(dx, dy) {
-		if (!allow_panning) {
+	var panShift = function(dx, dy, force) {
+		let show_pan_feedback = allow_panning || panning;
+		if (!allow_panning && !force) {
 			T.logInfo(`    Panning is not allowed in this configuration!`);
 			return;
 		}
@@ -183,7 +206,22 @@ UI.Statemachine = new (function() {
 		});
 		// console.log(`Pan shifted: dx, dy=(${dx}, ${dy})  pan shift=(${pan_shift.x}, ${pan_shift.y}).`)
 
-		if (!panning) displayGrid();
+		if (!panning && show_pan_feedback) displayGrid();
+	}
+
+	this.panToHome = function() {
+		panShift(-pan_shift.x, -pan_shift.y, true);
+	}
+
+	this.panToCanvasExtents = function() {
+		if (sm_extents == undefined || R == undefined) {
+			return;
+		}
+		let xc = sm_extents.x - R.width;
+		let yc = sm_extents.y - R.height;
+		if (xc < 0) xc = 0;
+		if (yc < 0) yc = 0;
+		panShift(-pan_shift.x - xc, -pan_shift.y - yc, true);
 	}
 
 	var updateMousePos = function(event) {

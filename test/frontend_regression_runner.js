@@ -3269,6 +3269,152 @@ async function runStatemachineConnectThrottleCase() {
   assert.strictEqual(refreshCalls, 1);
 }
 
+async function runStatemachineHomeEndPanCase() {
+  setupGlobals();
+
+  const bindings = new Map();
+  global.Mousetrap = {
+    bind(key, handler) {
+      bindings.set(key, handler);
+    },
+  };
+
+  function makeShape(initialAttrs = {}) {
+    const attrs = Object.assign({}, initialAttrs);
+    return {
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      data() { return this; },
+      drag() { return this; },
+      mousemove() { return this; },
+      click() { return this; },
+      toBack() { return this; },
+      toFront() { return this; },
+      translate(dx, dy) {
+        attrs.translateX = (attrs.translateX || 0) + dx;
+        attrs.translateY = (attrs.translateY || 0) + dy;
+        return this;
+      },
+      transform() { return ''; },
+      hide() { return this; },
+      show() { return this; },
+      remove() {},
+    };
+  }
+
+  global.Raphael = function() {
+    return {
+      width: 400,
+      height: 300,
+      rect() {
+        return makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+      },
+      circle() {
+        return makeShape({ cx: 0, cy: 0, opacity: 0 });
+      },
+      path() {
+        return makeShape();
+      },
+      remove() {},
+    };
+  };
+
+  global.State = function(name) {
+    this.name = name;
+    this.position = { x: 0, y: 0 };
+    this.getStateName = function() { return this.name; };
+    this.getPosition = function() { return this.position; };
+    this.setPosition = function(position) { this.position = position; };
+    this.getStateClass = function() { return 'Simple'; };
+    this.getStatePath = function() { return this.name; };
+  };
+
+  const near = new State('Near');
+  near.setPosition({ x: 50, y: 60 });
+  const far = new State('Far');
+  far.setPosition({ x: 650, y: 450 });
+
+  Behavior.getStatemachine = function() {
+    return {
+      getStates() { return [near, far]; },
+      getSMOutcomes() { return []; },
+      getTransitions() { return []; },
+      getDataflow() { return []; },
+      getStatePath() { return ''; },
+      updateDataflow() {},
+      isInsideDifferentBehavior() { return false; },
+    };
+  };
+  Behavior.getCommentNotes = function() {
+    return [];
+  };
+  Behavior.isReadonly = function() {
+    return false;
+  };
+  RC.Controller.isRunning = function() {
+    return false;
+  };
+  RC.Controller.isCurrentState = function() {
+    return false;
+  };
+  RC.Controller.isLocked = function() {
+    return false;
+  };
+  RC.Controller.isOnLockedPath = function() {
+    return false;
+  };
+  RC.Controller.isReadonly = function() {
+    return false;
+  };
+  UI.Menu.isPageStatemachine = function() {
+    return true;
+  };
+
+  global.Drawable = {
+    Transition: function() {},
+    Outcome: function() {},
+    ContainerPath: function() {
+      this.obj = {};
+      this.drawing = makeShape();
+    },
+    State: function(state) {
+      this.obj = state;
+      this.drawing = makeShape();
+    },
+    BehaviorState: function() {},
+    Statemachine: function() {},
+  };
+  global.Drawable.State.Mode = {
+    OUTCOME: 'outcome',
+  };
+  global.Drawable.Transition.PATH_CURVE = 'curve';
+  global.Drawable.Helper = {
+    endPointClick() {},
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+  UI.Statemachine.initialize();
+  UI.Statemachine.refreshView();
+
+  assert(bindings.has('home'), 'Expected Home pan binding');
+  assert(bindings.has('ctrl+home'), 'Expected Ctrl+Home pan binding');
+  assert(bindings.has('end'), 'Expected End pan binding');
+  assert(bindings.has('ctrl+end'), 'Expected Ctrl+End pan binding');
+  assert(bindings.has('shift+home'), 'Expected Shift+Home pan binding');
+  assert(bindings.has('shift+end'), 'Expected Shift+End pan binding');
+
+  bindings.get('ctrl+end')();
+  assert.deepStrictEqual(UI.Statemachine.getPanShift(), { x: -350, y: -250 });
+
+  bindings.get('ctrl+home')();
+  assert.deepStrictEqual(UI.Statemachine.getPanShift(), { x: 0, y: 0 });
+}
+
 async function runValidationReportCase() {
   const { logs } = setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -6415,6 +6561,10 @@ async function main() {
   }
   if (caseName === 'statemachine_connect_throttle') {
     await runStatemachineConnectThrottleCase();
+    return;
+  }
+  if (caseName === 'statemachine_home_end_pan') {
+    await runStatemachineHomeEndPanCase();
     return;
   }
   if (caseName === 'validation_report') {

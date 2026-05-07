@@ -58,6 +58,7 @@ pytestmark = pytest.mark.skipif(
     'library_hover_panels_safe_text',
     'api_client',
     'helper_flows',
+    'statemachine_home_end_pan',
     'validation_report',
     'terminal_safe_text',
     'remaining_html_sinks_safe_text',
