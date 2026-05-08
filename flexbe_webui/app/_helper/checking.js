@@ -2,6 +2,7 @@ const Checking = new (function() {
 	var that = this;
 	var flagWarning = false;
 	var validationWarnings = [];
+	var validationInfo = [];
 
 	const python_varname_pattern = /^[a-z_][a-z0-9_]*$/i;
 
@@ -129,6 +130,12 @@ const Checking = new (function() {
 		}
 	};
 
+	const addValidationInfo = function(message) {
+		if (!validationInfo.contains(message)) {
+			validationInfo.push(message);
+		}
+	};
+
 	this.checkBehaviorReport = function() {
 		let report = {
 			fatal_errors: [],
@@ -149,6 +156,7 @@ const Checking = new (function() {
 			that.variables.add('Logger.REPORT_ERROR');
 			flagWarning = false;
 			validationWarnings = [];
+			validationInfo = [];
 
 			var error = that.checkDashboard();
 			if (error != undefined) {
@@ -205,6 +213,7 @@ const Checking = new (function() {
 			addValidationWarning(message);
 		});
 		report.warnings = validationWarnings.clone();
+		report.info = validationInfo.clone();
 		return report;
 	}
 
@@ -399,8 +408,7 @@ const Checking = new (function() {
 			const initialCapitalsRegex = /^[A-Z][a-z0-9]*([A-Z][a-z0-9]*)*$/;
 			if (!initialCapitalsRegex.test(stateName)) {
 				let message = `State '${stateName}' does not follow suggested InitialCapitals style naming`;
-				T.logInfo(message);
-				addValidationWarning(message);
+				addValidationInfo(message);
 			}
 	}
 
