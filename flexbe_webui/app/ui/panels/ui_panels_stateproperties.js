@@ -109,9 +109,20 @@ UI.Panels.StateProperties = new (function() {
 		return document.getElementById('panel_prop_synthesis_fields');
 	}
 
+	var refreshStateMachineTabTargets = function() {
+		if (UI.Panels == undefined
+			|| UI.Panels.updatePanelTabTargets == undefined
+			|| UI.Panels.isActivePanel == undefined
+			|| !UI.Panels.isActivePanel(UI.Panels.STATE_PROPERTIES_PANEL)) {
+			return;
+		}
+		UI.Panels.updatePanelTabTargets(UI.Panels.STATE_PROPERTIES_PANEL, 'statemachine');
+	}
+
 	var clearSynthesisFields = function() {
 		let container = getSynthesisFieldsContainer();
 		container.innerHTML = "";
+		refreshStateMachineTabTargets();
 	}
 
 	var getSynthesisFieldDefault = function(field_path) {
@@ -229,6 +240,7 @@ UI.Panels.StateProperties = new (function() {
 		schema_fields.forEach((field) => {
 			renderSynthesisSchemaField(field, container);
 		});
+		refreshStateMachineTabTargets();
 	}
 
 	var buildSynthesisPayloadField = function(schema, path_prefix='') {

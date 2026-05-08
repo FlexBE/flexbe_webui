@@ -112,6 +112,15 @@ UI.Panels = new (function() {
 		activePanel = that.NO_PANEL;
 	}
 
+	this.closeActiveStateProperties = function() {
+		if (activePanel != that.STATE_PROPERTIES_PANEL) return false;
+		if (that.StateProperties != undefined && that.StateProperties.closePropertiesClicked != undefined) {
+			that.StateProperties.closePropertiesClicked();
+			return true;
+		}
+		return false;
+	}
+
 	this.hidePanelIfActive = function(panel) {
 		if (panel != activePanel) return;
 
@@ -243,7 +252,9 @@ UI.Panels = new (function() {
 		} else if (event.key === 'Escape') {
 			event.preventDefault(); // Prevent the default action
 			event.stopPropagation(); // Stop the event from propagating to other handlers
-			that.hideAllPanels();
+			if (!that.closeActiveStateProperties()) {
+				that.hideAllPanels();
+			}
 		}
 	}
 

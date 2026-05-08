@@ -369,6 +369,7 @@ const Statemachine = function(sm_name, sm_definition) {
 		if (child instanceof BehaviorState) {
 			child = child.getBehaviorStatemachine();
 		}
+		if (child == undefined) return undefined;
 		return child.getStateByPath(path.slice(that.getStateName().length + 1));
 	}
 

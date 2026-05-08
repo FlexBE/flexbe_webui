@@ -7,6 +7,16 @@ RC.Controller = new (function() {
 
 	var sync_timer = undefined;
 
+	var showExternalBehaviorPrompt = function(prompt) {
+		if (typeof T.keepOpen == 'function') {
+			T.keepOpen();
+		}
+		T.logWarn('Running behavior detected.');
+		T.logWarn(prompt);
+		T.logWarn('Click this terminal panel to close this notice.');
+		T.show();
+	}
+
 	var STATE_NOTHING = {
 		onEnter: function() {
 			UI.Menu.displayRuntimeStatus('offline');
@@ -95,10 +105,7 @@ RC.Controller = new (function() {
 			document.getElementById("selection_rc_autonomy").setAttribute("disabled", "disabled");
 			UI.RuntimeControl.displayExternalBehavior();
 			document.getElementById("button_behavior_attach_external").disabled = true;
-			T.clearLog();
-			T.logInfo('Running behavior detected!');
-			T.logInfo('Load the matching behavior in the UI first, then Attach to monitor execution.');
-			T.show();
+			showExternalBehaviorPrompt('Load the matching behavior, then use Attach in the Runtime Control tab to monitor execution.');
 		},
 		onExit: function() {
 			document.getElementById("selection_rc_autonomy").removeAttribute("disabled", "disabled");
@@ -111,10 +118,7 @@ RC.Controller = new (function() {
 			document.getElementById("selection_rc_autonomy").setAttribute("disabled", "disabled");
 			UI.RuntimeControl.displayExternalBehavior();
 			document.getElementById("button_behavior_attach_external").disabled = false;
-			T.clearLog();
-			T.logInfo('Running behavior detected!');
-			T.logInfo('Click Attach to connect this UI to the running behavior.');
-			T.show();
+			showExternalBehaviorPrompt('Use Attach in the Runtime Control tab to connect this UI to the running behavior.');
 		},
 		onExit: function() {
 			if (RC.Sync.hasProcess("Attach")) RC.Sync.remove("Attach");

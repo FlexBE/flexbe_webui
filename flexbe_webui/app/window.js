@@ -60,8 +60,8 @@ window.onload = async () => {
 	UI.Settings.retrievePackageData();
 	UI.Feed.initialize();
 
-	// Auto-close the terminal after startup; messages remain and Ctrl+T reopens
-	setTimeout(() => T.hide(), 5000);
+	// Auto-close the terminal after startup unless a later prompt pins it open.
+	setTimeout(() => T.hideIfClean(), 5000);
 
 	// Initialize dashboard tab handling after set up is complete
 	UI.Dashboard.setupTabHandling();

@@ -17,6 +17,7 @@
 import argparse
 import asyncio
 import threading
+from collections import deque
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -269,6 +270,8 @@ def node_stub(monkeypatch, tmp_path):
     node._pub_data = {}
     node._sub_data = {}
     node._sub_lock = threading.Lock()
+    node._destroy_subscription_queue = deque()
+    node._destroy_subscription_lock = threading.Lock()
     node._running = True
     node._ws_bridge = None
     node._server = None
@@ -288,6 +291,15 @@ def test_get_server_timeout_falls_back_when_server_settings_missing(node_stub):
     node_stub._server = None
 
     assert node_stub._get_server_timeout() == 0.25
+
+
+def test_expected_shutdown_exception_matches_destroy_requested_invalid_handle():
+    """Destroy-requested rclpy handles are normal during executor shutdown."""
+    exc = webui_node.rclpy._rclpy_pybind11.InvalidHandle(
+        'cannot use Destroyable because destruction was requested'
+    )
+
+    assert webui_node._is_expected_shutdown_exception(exc) is True
 
 
 def test_cancel_active_goal_clears_state_on_success(node_stub):
@@ -497,8 +509,12 @@ def test_ros_subscriber_lifecycle_refcounts_shared_topic(node_stub, monkeypatch)
 
     assert removed is True
     assert remaining == 0
-    assert destroyed == [created[0]]
     assert '/demo' not in node_stub._sub_data
+    assert destroyed == []
+
+    node_stub._destroy_queued_subscriptions()
+
+    assert destroyed == [created[0]]
 
 
 def test_ros_status_subscriber_uses_transient_local_qos(node_stub, monkeypatch):
@@ -626,6 +642,10 @@ def test_ros_subscriber_lifecycle_is_idempotent_per_client(node_stub, monkeypatc
 
     assert removed is True
     assert remaining == 0
+    assert destroyed == []
+
+    node_stub._destroy_queued_subscriptions()
+
     assert destroyed == [created[0]]
 
 

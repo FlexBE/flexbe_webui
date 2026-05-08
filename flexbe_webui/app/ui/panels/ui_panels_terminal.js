@@ -3,6 +3,7 @@ UI.Panels.Terminal = new (function() {
 	var debug_mode = false;
 	var is_active = false;
 	var had_error = false;
+	var keep_open = false;
 	const MAX_TERMINAL_LINES = 1000;
 
 	var trimTerminalHistory = function(terminal) {
@@ -75,10 +76,15 @@ UI.Panels.Terminal = new (function() {
 			terminal.removeChild(terminal.children[0]);
 		}
 		had_error = false;
+		keep_open = false;
 	}
 
 	this.hideIfClean = function() {
-		if (!had_error) that.hide();
+		if (!had_error && !keep_open) that.hide();
+	}
+
+	this.keepOpen = function() {
+		keep_open = true;
 	}
 
 	this.show = function() {
@@ -89,6 +95,7 @@ UI.Panels.Terminal = new (function() {
 	this.hide = function() {
 		UI.Panels.hidePanelIfActive(UI.Panels.TERMINAL_PANEL);
 		is_active = false;
+		keep_open = false;
 	}
 
 	this.toggle = function() {

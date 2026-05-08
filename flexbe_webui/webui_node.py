@@ -31,6 +31,7 @@ from fastapi import Body, FastAPI, Request, WebSocket, WebSocketDisconnect
 import rclpy
 import rclpy._rclpy_pybind11
 from rclpy.action import ActionClient
+from rclpy.executors import ExternalShutdownException, ShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 
@@ -48,6 +49,16 @@ from .webui_server import WebuiServer, parse_args
 _WEBSOCKET_CLIENT_ID_RE = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
 _WEBSOCKET_TOPIC_RE = re.compile(r'^-?(?:[A-Za-z0-9_]+-)*[A-Za-z0-9_]+$')
 _DEFAULT_ROS_FUTURE_TIMEOUT_SEC = 10.0
+
+
+def _is_expected_shutdown_exception(exc: BaseException) -> bool:
+    """Return true for rclpy exceptions that can happen during normal shutdown."""
+    if isinstance(exc, (KeyboardInterrupt, ExternalShutdownException, ShutdownException)):
+        return True
+    return (
+        isinstance(exc, rclpy._rclpy_pybind11.InvalidHandle)
+        and 'destruction was requested' in str(exc)
+    )
 
 
 class _RosWebsocketBridge:
@@ -229,6 +240,9 @@ class WebuiNode(Node):
         self._action_clients = {}
         self._sub_data = {}
         self._sub_lock = threading.Lock()
+        self._destroy_subscription_queue = deque()
+        self._destroy_subscription_lock = threading.Lock()
+        self._destroy_subscription_timer = self.create_timer(0.05, self._destroy_queued_subscriptions)
         self._ws_bridge = _RosWebsocketBridge()
         self.register(self._server._app)
         self._running = True
@@ -304,6 +318,29 @@ class WebuiNode(Node):
             }
             return subscription, 1, True
 
+    def _queue_destroy_subscription(self, subscription):
+        """Queue subscription destruction so the ROS executor owns entity teardown."""
+        if not hasattr(self, '_destroy_subscription_queue'):
+            self.destroy_subscription(subscription)
+            return
+        with self._destroy_subscription_lock:
+            self._destroy_subscription_queue.append(subscription)
+
+    def _destroy_queued_subscriptions(self):
+        """Destroy queued subscriptions from the ROS executor thread."""
+        while True:
+            with self._destroy_subscription_lock:
+                if len(self._destroy_subscription_queue) == 0:
+                    return
+                subscription = self._destroy_subscription_queue.popleft()
+            try:
+                self.destroy_subscription(subscription)
+            except rclpy._rclpy_pybind11.InvalidHandle as exc:
+                if not _is_expected_shutdown_exception(exc):
+                    print(f'\x1b[91mFailed queued subscriber destruction - {exc}\x1b[0m', flush=True)
+            except rclpy._rclpy_pybind11.RCLError as exc:
+                print(f'\x1b[91mFailed queued subscriber destruction - {exc}\x1b[0m', flush=True)
+
     def _close_subscriber(self, topic: str, client_id: str = None):
         """Release a UI topic client and destroy the ROS subscription at zero users."""
         with self._sub_lock:
@@ -326,7 +363,7 @@ class WebuiNode(Node):
                 existing['ref_count'] = ref_count
                 return ref_count, False
 
-            self.destroy_subscription(existing['subscription'])
+            self._queue_destroy_subscription(existing['subscription'])
             self._sub_data.pop(topic)
             return 0, True
 
@@ -920,6 +957,10 @@ def main(args: List[str] = None):
         rclpy.spin(webui_node)
     except KeyboardInterrupt:
         print(f'Keyboard interrupt request  at {datetime.now()} - ! Shut the flexbe_webui node down!', flush=True)
+    except (ExternalShutdownException, ShutdownException, rclpy._rclpy_pybind11.InvalidHandle) as exc:
+        if not _is_expected_shutdown_exception(exc):
+            raise
+        print(f'ROS executor shutdown      at {datetime.now()} - {exc}', flush=True)
     except (RuntimeError, OSError, TypeError, ValueError) as exc:
         print(f'Exception in executor       at {datetime.now()} - ! {type(exc)}\n  {exc}', flush=True)
         import traceback

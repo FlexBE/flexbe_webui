@@ -407,6 +407,13 @@ function setupGlobals() {
     return files[0] || null;
   };
 
+  global.API = {
+    post(_action, _content, callback) { if (callback) callback({ success: true, data: null }); },
+    get(_action, callback) { if (callback) callback({ success: false, data: null }); },
+    getData(_action, _callback) {},
+    postData(_action, _content, _onSuccess) {},
+  };
+
   const originalConsoleLog = console.log;
   console.log = function(...args) {
     consoleMessages.push(args.map(value => String(value)).join(' '));
@@ -1753,6 +1760,18 @@ async function runModelGeneratorInterfaceValidationCase() {
     { type: 'input', value: 'goal', skipHistory: true },
     { type: 'output', value: 'result', skipHistory: true },
   ]);
+
+  addedValues.length = 0;
+  const manifestWithoutParams = Object.assign({}, manifest);
+  delete manifestWithoutParams.params;
+  assert.doesNotThrow(function() {
+    IO.ModelGenerator.generateBehaviorAttributes(baseData, manifestWithoutParams);
+  });
+  assert.deepStrictEqual(addedValues, [
+    { type: 'outcome', value: 'done', skipHistory: true },
+    { type: 'input', value: 'goal', skipHistory: true },
+    { type: 'output', value: 'result', skipHistory: true },
+  ]);
 }
 
 async function runBehaviorStructureOutcomeCopyCase() {
@@ -1959,6 +1978,543 @@ async function runRuntimeFlowsCase() {
   }
 }
 
+function setupRuntimeDisplayFixture(paths) {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/ui/ui_runtimecontrol.js');
+
+  const emptyContainer = {
+    getTransitions() { return []; },
+  };
+  function makeRuntimeState(pathValue, index) {
+    const name = pathValue.split('/').pop();
+    return {
+      getStatePath() { return pathValue; },
+      getStateId() { return (index + 1) << 8; },
+      getStateName() { return name; },
+      getContainer() { return emptyContainer; },
+      getStateClass() { return 'Simple'; },
+      getStateType() { return 'Simple'; },
+      getOutcomes() { return ['done']; },
+      isInsideDifferentBehavior() { return false; },
+    };
+  }
+
+  const stateMap = new Map(paths.map((pathValue, index) => [pathValue, makeRuntimeState(pathValue, index)]));
+  const idMap = new Map(Array.from(stateMap.values()).map(state => [
+    state.getStateId(),
+    { path: state.getStatePath(), state },
+  ]));
+  const statusNodes = [];
+  function makePaperNode(extra = {}) {
+    return Object.assign({
+      removed: false,
+      attr() { return this; },
+      toBack() { return this; },
+      remove() { this.removed = true; },
+    }, extra);
+  }
+
+  global.Raphael = function() {
+    return {
+      width: 800,
+      height: 600,
+      rect() { return makePaperNode(); },
+      text(x, y, text) {
+        const node = makePaperNode({ x, y, text });
+        statusNodes.push(node);
+        return node;
+      },
+      remove() {},
+    };
+  };
+
+  const rootSm = {
+    getStateByPath(pathValue) {
+      return stateMap.get(pathValue);
+    },
+  };
+  const documentedPaths = [];
+
+  global.ActivityTracer.setUpdateCallback = function() {};
+  global.Behavior.getStatemachine = function() {
+    return rootSm;
+  };
+  global.Behavior.getStateMap = function() {
+    return idMap;
+  };
+  global.RC.Controller = {
+    isLocked() { return false; },
+    setCurrentStatePath(pathValue) {
+      UI.RuntimeControl.displayState(pathValue);
+    },
+    getCurrentState() {
+      return stateMap.get(documentedPaths[documentedPaths.length - 1]);
+    },
+  };
+  global.UI.Menu.isPageStatemachine = function() { return false; };
+  global.UI.Statemachine = {
+    refreshView() {},
+  };
+  UI.RuntimeControl.displayLockBehavior = function() {};
+  UI.RuntimeControl.updateDrawing = function() {};
+  UI.RuntimeControl.setDocumentation = function(state) {
+    documentedPaths.push(state ? state.getStatePath() : undefined);
+  };
+
+  return { documentedPaths, idMap, stateMap, statusNodes };
+}
+
+async function runRuntimeDeepestStateCase() {
+  const { documentedPaths } = setupRuntimeDisplayFixture([
+    '/Container',
+    '/Container/Leaf',
+  ]);
+
+  UI.RuntimeControl.displayState('/Container');
+  UI.RuntimeControl.displayState('/Container/Leaf');
+
+  assert.strictEqual(documentedPaths[documentedPaths.length - 2], '/Container');
+  assert.strictEqual(documentedPaths[documentedPaths.length - 1], '/Container/Leaf');
+}
+
+async function runRuntimePinnedLevelCase() {
+  const { documentedPaths } = setupRuntimeDisplayFixture([
+    '/Container',
+    '/Container/Nested',
+    '/Container/Nested/Leaf',
+    '/Container/Nested/Leaf2',
+  ]);
+
+  UI.RuntimeControl.displayState('/Container/Nested/Leaf');
+  UI.RuntimeControl.updateStateDisplayDepth('/Container/Nested');
+  assert.strictEqual(documentedPaths[documentedPaths.length - 1], '/Container/Nested');
+
+  UI.RuntimeControl.displayState('/Container/Nested/Leaf2');
+  assert.strictEqual(
+    documentedPaths[documentedPaths.length - 1],
+    '/Container/Nested',
+    'manual container level should stay pinned across sibling leaf updates'
+  );
+
+  UI.RuntimeControl.displayState('/Container');
+  UI.RuntimeControl.displayState('/Container/Nested/Leaf');
+  assert.strictEqual(
+    documentedPaths[documentedPaths.length - 1],
+    '/Container/Nested',
+    'manual container level should survive a transient shallow path when fallback is cancelled'
+  );
+
+  UI.RuntimeControl.displayState('/Container');
+  await new Promise(resolve => setTimeout(resolve, 180));
+  assert.strictEqual(documentedPaths[documentedPaths.length - 1], '/Container');
+
+  UI.RuntimeControl.displayState('/Container/Nested/Leaf2');
+  assert.strictEqual(
+    documentedPaths[documentedPaths.length - 1],
+    '/Container/Nested/Leaf2',
+    'manual pin should clear after execution exits above the pinned level'
+  );
+}
+
+async function runRuntimePinnedStatusCleanupCase() {
+  const { documentedPaths, statusNodes } = setupRuntimeDisplayFixture([
+    '/Container',
+    '/Container/Nested',
+    '/Container/Nested/Leaf',
+    '/Container/Nested/Leaf2',
+  ]);
+
+  UI.RuntimeControl.displayState('/Container/Nested/Leaf');
+  UI.RuntimeControl.updateStateDisplayDepth('/Container/Nested');
+  UI.RuntimeControl.drawStatusLabel('stale outcome request');
+  const staleLabel = statusNodes[0];
+  assert.strictEqual(staleLabel.removed, false);
+
+  UI.RuntimeControl.displayState('/Container/Nested/Leaf2');
+
+  assert.strictEqual(documentedPaths[documentedPaths.length - 1], '/Container/Nested');
+  assert.strictEqual(
+    staleLabel.removed,
+    true,
+    'pinned display updates should clear status labels that no longer match the displayed state'
+  );
+}
+
+async function runRuntimeOutcomeRequestFocusCase() {
+  const { documentedPaths, stateMap } = setupRuntimeDisplayFixture([
+    '/Container',
+    '/Container/Nested',
+    '/Container/Nested/Leaf',
+  ]);
+
+  UI.RuntimeControl.displayState('/Container/Nested/Leaf');
+  UI.RuntimeControl.updateStateDisplayDepth('/Container');
+  assert.strictEqual(documentedPaths[documentedPaths.length - 1], '/Container');
+
+  UI.RuntimeControl.displayOutcomeRequest(0, stateMap.get('/Container/Nested/Leaf'));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  assert.strictEqual(
+    documentedPaths[documentedPaths.length - 1],
+    '/Container/Nested/Leaf',
+    'operator outcome requests should jump from an upper container view to the blocked state'
+  );
+}
+
+async function runControllerExternalPromptPreservesTerminalCase() {
+  const { logs } = setupGlobals();
+
+  let clearLogCalls = 0;
+  let showCalls = 0;
+  let keepOpenCalls = 0;
+  T.clearLog = function() { clearLogCalls += 1; };
+  T.show = function() { showCalls += 1; };
+  T.keepOpen = function() { keepOpenCalls += 1; };
+
+  global.RC.Sync = {
+    STATUS_ERROR: 'error',
+    STATUS_OK: 'ok',
+    hasProcess() { return false; },
+    setStatus() {},
+    setProgress() {},
+    register() {},
+    remove() {},
+  };
+  UI.Menu.displayRuntimeStatus = function() {};
+  UI.Menu.isPageStatemachine = function() { return false; };
+  UI.RuntimeControl.displayEngineOffline = function() {};
+  UI.RuntimeControl.displayNoBehavior = function() {};
+  UI.RuntimeControl.displayExternalBehavior = function() {};
+  UI.Dashboard.unsetReadonly = function() {};
+
+  loadScript('flexbe_webui/app/rc/rc_controller.js');
+
+  RC.Controller.initialize();
+  RC.Controller.signalConnected();
+  logs.length = 0;
+
+  RC.Controller.signalExternal();
+
+  assert.strictEqual(clearLogCalls, 0);
+  assert.strictEqual(keepOpenCalls, 1);
+  assert.strictEqual(showCalls, 1);
+  assert.deepStrictEqual(logs.slice(-3), [
+    { level: 'warn', message: 'Running behavior detected.' },
+    { level: 'warn', message: 'Load the matching behavior, then use Attach in the Runtime Control tab to monitor execution.' },
+    { level: 'warn', message: 'Click this terminal panel to close this notice.' },
+  ]);
+  assert.strictEqual(document.getElementById('button_behavior_attach_external').disabled, true);
+
+  logs.length = 0;
+  RC.Controller.signalBehavior();
+
+  assert.strictEqual(clearLogCalls, 0);
+  assert.strictEqual(keepOpenCalls, 2);
+  assert.strictEqual(showCalls, 2);
+  assert.deepStrictEqual(logs.slice(-3), [
+    { level: 'warn', message: 'Running behavior detected.' },
+    { level: 'warn', message: 'Use Attach in the Runtime Control tab to connect this UI to the running behavior.' },
+    { level: 'warn', message: 'Click this terminal panel to close this notice.' },
+  ]);
+  assert.strictEqual(document.getElementById('button_behavior_attach_external').disabled, false);
+}
+
+async function runPubSubInactiveStateMapCase() {
+  const { logs, consoleMessages, restoreConsole } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const subscribers = {};
+  global.ROS = {
+    Subscriber: function(topic, _type, callback) {
+      subscribers[topic] = callback;
+      this.close = function() {};
+    },
+    Publisher: function() {
+      this.publish = function() {};
+      this.close = function() {};
+    },
+  };
+
+  const stateMap = new Map([[0, { path: '', state: undefined }]]);
+  let behaviorId = undefined;
+  global.Behavior.getStateMap = function() { return stateMap; };
+  global.Behavior.getStatemachine = function() {
+    return {
+      getStateByPath() { return undefined; },
+    };
+  };
+  global.Behavior.getBehaviorId = function() { return behaviorId; };
+  global.Behavior.setBehaviorId = function(value) { behaviorId = value; };
+  global.Behavior.getBehaviorName = function() { return ''; };
+  global.Behavior.getManifestPath = function() { return '/tmp/loaded.xml'; };
+  global.UI.Settings.isSynthesisEnabled = function() { return false; };
+  global.UI.Settings.getVersion = function() { return 'test'; };
+
+  global.RC.Controller = {
+    isRunning() { return false; },
+    isExternal() { return false; },
+    isReadonly() { return false; },
+  };
+
+  try {
+    loadScript('flexbe_webui/app/rc/rc_pubsub.js');
+    RC.PubSub.initialize('/');
+
+    subscribers['/flexbe/mirror/state_map']({
+      behavior_id: 123,
+      state_ids: [655688960],
+      state_paths: ['/RiverCrossing'],
+    });
+
+    assert.strictEqual(behaviorId, undefined);
+    assert.strictEqual(stateMap.size, 1);
+    assert.strictEqual(logs.some(entry => entry.level === 'error'), false);
+    assert(
+      consoleMessages.some(message => message.includes('state_map_callback: ignoring inactive state map for behavior_id=123')),
+      `Expected inactive state-map console message, got ${JSON.stringify(consoleMessages)}`
+    );
+  } finally {
+    restoreConsole();
+  }
+}
+
+async function runPubSubOutcomeRequestBeforeStateMapCase() {
+  const { consoleMessages, restoreConsole } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const subscribers = {};
+  global.ROS = {
+    Subscriber: function(topic, _type, callback) {
+      subscribers[topic] = callback;
+      this.close = function() {};
+    },
+    Publisher: function() {
+      this.publish = function() {};
+      this.close = function() {};
+    },
+  };
+
+  const stateMap = new Map([[0, { path: '', state: undefined }]]);
+  let behaviorId = undefined;
+  const targetState = {
+    stateId: undefined,
+    getStateId() { return this.stateId; },
+    setStateId(value) { this.stateId = value; },
+    getStatePath() { return '/Demo/Wait'; },
+  };
+  const rootStateMachine = {
+    getStatePath() { return ''; },
+    getStateByPath(statePath) {
+      return statePath === '/Demo/Wait' ? targetState : undefined;
+    },
+  };
+  let outcomeDisplayCalls = 0;
+  let displayedOutcome = undefined;
+  let displayedState = undefined;
+  global.Behavior.getStateMap = function() { return stateMap; };
+  global.Behavior.getStatemachine = function() { return rootStateMachine; };
+  global.Behavior.getBehaviorId = function() { return behaviorId; };
+  global.Behavior.setBehaviorId = function(value) { behaviorId = value; };
+  global.Behavior.getBehaviorName = function() { return 'Demo'; };
+  global.Behavior.getManifestPath = function() { return '/tmp/demo.xml'; };
+  global.UI.RuntimeControl.displayOutcomeRequest = function(outcome, state) {
+    outcomeDisplayCalls += 1;
+    displayedOutcome = outcome;
+    displayedState = state;
+  };
+  global.UI.RuntimeControl.updateCurrentState = function() {};
+  global.RC.Controller = {
+    isRunning() { return true; },
+    isExternal() { return false; },
+    isReadonly() { return false; },
+  };
+  global.UI.Settings.isSynthesisEnabled = function() { return false; };
+  global.UI.Settings.getVersion = function() { return 'test'; };
+
+  try {
+    loadScript('flexbe_webui/app/rc/rc_pubsub.js');
+    RC.PubSub.initialize('/');
+
+    subscribers['/flexbe/outcome_request']({
+      target: 205916672,
+      outcome: 0,
+    });
+
+    assert.strictEqual(outcomeDisplayCalls, 0);
+    assert(
+      consoleMessages.some(message => message.includes('Outcome request arrived before state map is ready')),
+      `Expected state-map-not-ready console message, got ${JSON.stringify(consoleMessages)}`
+    );
+    assert.strictEqual(
+      consoleMessages.some(message => message.includes('Error : cannot find state')),
+      false
+    );
+
+    subscribers['/flexbe/mirror/state_map']({
+      behavior_id: 154,
+      state_ids: [0, 205916672],
+      state_paths: ['', '/Demo/Wait'],
+    });
+
+    assert.strictEqual(outcomeDisplayCalls, 1);
+    assert.strictEqual(displayedOutcome, 0);
+    assert.strictEqual(displayedState, targetState);
+
+    stateMap.clear();
+    stateMap.set(0, { path: '', state: rootStateMachine });
+    behaviorId = 154;
+    outcomeDisplayCalls = 0;
+    subscribers['/flexbe/outcome_request']({
+      target: 205916672,
+      outcome: 0,
+    });
+
+    subscribers['/flexbe/mirror/state_map']({
+      behavior_id: 155,
+      state_ids: [0, 205916672],
+      state_paths: ['', '/Demo/Wait'],
+    });
+
+    assert.strictEqual(
+      outcomeDisplayCalls,
+      0,
+      'stale pending outcome request from prior behavior id should not replay after behavior switch'
+    );
+  } finally {
+    restoreConsole();
+  }
+}
+
+async function runPubSubRejectsEmptyBehaviorStartCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const published = {};
+  global.ROS = {
+    Subscriber: function() {
+      this.close = function() {};
+    },
+    Publisher: function(topic) {
+      this.publish = function(msg) {
+        if (!published[topic]) published[topic] = [];
+        published[topic].push(msg);
+      };
+      this.close = function() {};
+    },
+  };
+
+  global.UI.Settings.isSynthesisEnabled = function() { return false; };
+  global.UI.Settings.getVersion = function() { return 'test'; };
+  global.Behavior.createNames = function() {
+    return {
+      rosnode_name: 'flexbe_turtlesim_demo_flexbe_behaviors',
+      behavior_name: '',
+    };
+  };
+  global.Behavior.createStructureInfo = function() {
+    throw new Error('createStructureInfo should not be called for invalid behavior name');
+  };
+  global.RC.Controller = {
+    signalStarted() {
+      throw new Error('signalStarted should not be called for invalid behavior name');
+    },
+  };
+
+  loadScript('flexbe_webui/app/rc/rc_pubsub.js');
+  RC.PubSub.initialize('/');
+
+  const startButton = document.getElementById('button_behavior_start');
+  startButton.disabled = true;
+  RC.PubSub.sendBehaviorStart([], [], 0);
+
+  assert.strictEqual(startButton.disabled, false);
+  assert.deepStrictEqual(published['/flexbe/request_behavior'] || [], []);
+  assertLog(logs, 'error', 'Cannot start behavior: behavior package or name is not set.');
+}
+
+async function runPubSubClearsFailedSessionRestoreCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  global.setTimeout = function() { return 1; };
+  global.clearTimeout = function() {};
+
+  const subscribers = {};
+  global.ROS = {
+    Subscriber: function(topic, _type, callback) {
+      subscribers[topic] = callback;
+      this.close = function() {};
+    },
+    Publisher: function() {
+      this.publish = function() {};
+      this.close = function() {};
+    },
+  };
+
+  const apiPosts = [];
+  global.API.get = function(action, callback) {
+    assert.strictEqual(action, 'session/loaded_behavior');
+    callback({
+      success: true,
+      data: {
+        package: 'demo_pkg',
+        behavior_name: 'DemoBehavior',
+        manifest_path: '/tmp/demo.xml',
+        codefile_name: 'demo_sm.py',
+        editable: true,
+      },
+    });
+  };
+  global.API.post = function(action, content, callback) {
+    apiPosts.push({ action, content });
+    if (callback) callback({ success: true, data: null });
+  };
+  global.IO.BehaviorLoader.loadBehavior = function(manifest, callback, options) {
+    assert.deepStrictEqual(manifest, {
+      rosnode_name: 'demo_pkg',
+      name: 'DemoBehavior',
+      manifest_path: '/tmp/demo.xml',
+      codefile_name: 'demo_sm.py',
+      editable: true,
+    });
+    assert.deepStrictEqual(options, { clear_session: false, clear_terminal: false });
+    callback('Failed to load behavior source');
+  };
+
+  global.UI.Settings.isSynthesisEnabled = function() { return false; };
+  global.UI.Settings.getVersion = function() { return 'test'; };
+  global.Behavior.getManifestPath = function() { return undefined; };
+  global.Behavior.getBehaviorId = function() { return undefined; };
+  global.RC.Sync = {
+    setProgress() {},
+  };
+  global.RC.Controller = {
+    onboardTimeout: 30,
+    isRunning() { return true; },
+    isExternal() { return false; },
+    isReadonly() { return false; },
+  };
+
+  try {
+    loadScript('flexbe_webui/app/rc/rc_pubsub.js');
+    RC.PubSub.initialize('/');
+
+    subscribers['/flexbe/heartbeat']({
+      behavior_id: 42,
+      current_state_checksums: [],
+    });
+
+    assert.deepStrictEqual(apiPosts, [{ action: 'session/loaded_behavior', content: null }]);
+    assertLog(logs, 'warn', 'Session restore failed; clearing saved loaded behavior.');
+  } finally {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+}
+
 async function runSynthesisPayloadCase() {
   setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -2008,6 +2564,15 @@ async function runSynthesisFormCase() {
   loadScript('flexbe_webui/app/prototype.js');
   loadScript('flexbe_webui/app/ui/panels/ui_panels_stateproperties.js');
 
+  const tabRefreshes = [];
+  UI.Panels.STATE_PROPERTIES_PANEL = 'state_properties';
+  UI.Panels.isActivePanel = function(panel) {
+    return panel === UI.Panels.STATE_PROPERTIES_PANEL;
+  };
+  UI.Panels.updatePanelTabTargets = function(panel, subPanel) {
+    tabRefreshes.push({ panel, subPanel });
+  };
+
   const state = {
     getStatePath() { return '/Container'; },
     getOutcomes() { return ['finished', 'failed']; },
@@ -2033,6 +2598,11 @@ async function runSynthesisFormCase() {
   ];
 
   UI.Panels.StateProperties.DEBUG_renderSynthesisSchema(schema, state);
+
+  assert(
+    tabRefreshes.some(entry => entry.panel === UI.Panels.STATE_PROPERTIES_PANEL && entry.subPanel === 'statemachine'),
+    `Expected synthesis render to refresh statemachine tab targets, got ${JSON.stringify(tabRefreshes)}`
+  );
 
   assert.strictEqual(
     document.getElementById('input_prop_synthesis_request__spec_name').value,
@@ -2214,6 +2784,56 @@ async function runStatePanelFlowsCase() {
   removeOutputButton.dispatchEvent({ type: 'click', preventDefault() {}, stopPropagation() {} });
   assert.deepStrictEqual(containerState.getOutputKeys(), ['out_second']);
   assert.deepStrictEqual(containerState.getOutputMapping(), ['done']);
+}
+
+async function runStatePropertiesEscapeCloseCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/ui/panels/ui_panels.js');
+
+  document.getElementById('panel_properties').querySelectorAll = function() {
+    return [];
+  };
+  document.getElementById('panel_properties_state').querySelectorAll = function() {
+    return [];
+  };
+
+  let closeCount = 0;
+  UI.Panels.StateProperties = {
+    closePropertiesClicked() {
+      closeCount += 1;
+      UI.Panels.hidePanelIfActive(UI.Panels.STATE_PROPERTIES_PANEL);
+    },
+  };
+
+  UI.Panels.setActivePanel(UI.Panels.STATE_PROPERTIES_PANEL, 'state');
+  const panelEvent = {
+    key: 'Escape',
+    target: document.getElementById('panel_properties'),
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; },
+  };
+  UI.Panels.handleKeyDown(panelEvent);
+
+  assert.strictEqual(closeCount, 1);
+  assert.strictEqual(panelEvent.defaultPrevented, true);
+  assert.strictEqual(panelEvent.propagationStopped, true);
+  assert.strictEqual(UI.Panels.isActivePanel(UI.Panels.STATE_PROPERTIES_PANEL), false);
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+
+  UI.Panels.setActivePanel(UI.Panels.STATE_PROPERTIES_PANEL, 'state');
+  const statemachineEvent = {
+    key: 'Escape',
+    target: { id: 'statemachine' },
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; },
+  };
+  UI.Statemachine.handleKeyDown(statemachineEvent);
+
+  assert.strictEqual(closeCount, 2);
+  assert.strictEqual(statemachineEvent.defaultPrevented, true);
+  assert.strictEqual(statemachineEvent.propagationStopped, true);
+  assert.strictEqual(UI.Panels.isActivePanel(UI.Panels.STATE_PROPERTIES_PANEL), false);
 }
 
 async function runStatePanelDuplicateGuardsCase() {
@@ -2925,6 +3545,103 @@ async function runHelperDragCacheCase() {
   assert.strictEqual(dragIndicator.getAttrs().stroke, '#F00');
 }
 
+async function runDrawableStateBoxLayerCase() {
+  setupGlobals();
+
+  const inserted = [];
+  const sentToBack = [];
+
+  function makeShape(type, text) {
+    return {
+      type,
+      text,
+      attr() { return this; },
+      data() { return this; },
+      click() { return this; },
+      dblclick() { return this; },
+      drag() { return this; },
+      push() { return this; },
+      translate() { return this; },
+      getBBox() {
+        return { width: text ? text.length * 6 : 80, height: 20 };
+      },
+      insertBefore(target) {
+        inserted.push({ shape: this, target });
+        return this;
+      },
+      toBack() {
+        sentToBack.push(this);
+        return this;
+      },
+    };
+  }
+
+  const paper = {
+    set() {
+      return {
+        push() { return this; },
+        translate() { return this; },
+      };
+    },
+    text(_x, _y, text) {
+      return makeShape('text', text);
+    },
+    rect() {
+      return makeShape('rect');
+    },
+    image() {
+      return makeShape('image');
+    },
+  };
+
+  global.Drawable = {
+    Helper: {
+      scaled(value) { return value; },
+      getTextWeight() { return 400; },
+      getNodeStrokeWidth() { return 1; },
+      viewStateProperties() {},
+      enterBehavior() {},
+      enterStatemachine() {},
+      beginTransition() {},
+      moveFnc() {},
+      startFnc() {},
+      endFnc() {},
+      initialIntersectCheck() {},
+    },
+  };
+
+  const baseState = {
+    getStateName() { return 'StateName'; },
+    getStateClass() { return 'StateClass'; },
+    getStatePackage() { return 'state_pkg'; },
+    getPosition() { return { x: 0, y: 0 }; },
+    getOutcomesUnconnected() { return []; },
+  };
+
+  loadScript('flexbe_webui/app/drawable/drawable_state.js');
+  new Drawable.State(baseState, paper, false, Drawable.State.Mode.SIMPLE, false, false);
+
+  const behaviorState = Object.assign({}, baseState, {
+    getBehaviorName() { return 'BehaviorName'; },
+  });
+  loadScript('flexbe_webui/app/drawable/drawable_behaviorstate.js');
+  new Drawable.BehaviorState(behaviorState, paper, false, Drawable.State.Mode.SIMPLE, false, false);
+
+  const containerState = Object.assign({}, baseState, {
+    isConcurrent() { return false; },
+    isPriority() { return false; },
+    getStates() { return []; },
+  });
+  loadScript('flexbe_webui/app/drawable/drawable_statemachine.js');
+  new Drawable.Statemachine(containerState, paper, false, Drawable.State.Mode.SIMPLE, false, false);
+
+  assert.strictEqual(sentToBack.length, 0, 'state boxes should not be sent behind the canvas background');
+  assert.strictEqual(inserted.filter(entry => entry.shape.type === 'rect').length, 5);
+  inserted
+    .filter(entry => entry.shape.type === 'rect')
+    .forEach(entry => assert.strictEqual(entry.target.text, 'StateName'));
+}
+
 async function runStatemachineBeginTransitionCase() {
   setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -3274,10 +3991,15 @@ async function runStatemachineHomeEndPanCase() {
 
   const bindings = new Map();
   global.Mousetrap = {
-    bind(key, handler) {
+    bind(key, handler, type) {
       bindings.set(key, handler);
+      if (type) {
+        bindings.set(`${type}:${key}`, handler);
+      }
     },
   };
+  let background;
+  const paths = [];
 
   function makeShape(initialAttrs = {}) {
     const attrs = Object.assign({}, initialAttrs);
@@ -3290,7 +4012,12 @@ async function runStatemachineHomeEndPanCase() {
         return this;
       },
       data() { return this; },
-      drag() { return this; },
+      drag(moveHandler, startHandler, endHandler) {
+        this.dragMove = moveHandler;
+        this.dragStart = startHandler;
+        this.dragEnd = endHandler;
+        return this;
+      },
       mousemove() { return this; },
       click() { return this; },
       toBack() { return this; },
@@ -3300,25 +4027,43 @@ async function runStatemachineHomeEndPanCase() {
         attrs.translateY = (attrs.translateY || 0) + dy;
         return this;
       },
-      transform() { return ''; },
+      transform() { return this; },
       hide() { return this; },
       show() { return this; },
       remove() {},
+      getBBox() {
+        return {
+          x: attrs.x,
+          y: attrs.y,
+          width: attrs.width,
+          height: attrs.height,
+          x2: attrs.x + attrs.width,
+          y2: attrs.y + attrs.height,
+        };
+      },
     };
   }
 
+  let rectCalls = 0;
   global.Raphael = function() {
     return {
       width: 400,
       height: 300,
       rect() {
-        return makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+        rectCalls += 1;
+        const shape = makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+        if (rectCalls === 3) {
+          background = shape;
+        }
+        return shape;
       },
       circle() {
         return makeShape({ cx: 0, cy: 0, opacity: 0 });
       },
       path() {
-        return makeShape();
+        const shape = makeShape();
+        paths.push(shape);
+        return shape;
       },
       remove() {},
     };
@@ -3338,6 +4083,216 @@ async function runStatemachineHomeEndPanCase() {
   near.setPosition({ x: 50, y: 60 });
   const far = new State('Far');
   far.setPosition({ x: 650, y: 450 });
+  const terminal = new State('finished');
+  terminal.setPosition({ x: 700, y: 520 });
+
+  Behavior.getStatemachine = function() {
+    return {
+      getStates() { return [near, far]; },
+      getSMOutcomes() { return [terminal]; },
+      getTransitions() { return []; },
+      getDataflow() { return []; },
+      getStatePath() { return ''; },
+      updateDataflow() {},
+      isInsideDifferentBehavior() { return false; },
+    };
+  };
+  Behavior.getCommentNotes = function() {
+    return [];
+  };
+  Behavior.isReadonly = function() {
+    return false;
+  };
+  RC.Controller.isRunning = function() {
+    return false;
+  };
+  RC.Controller.isCurrentState = function() {
+    return false;
+  };
+  RC.Controller.isLocked = function() {
+    return false;
+  };
+  RC.Controller.isOnLockedPath = function() {
+    return false;
+  };
+  RC.Controller.isReadonly = function() {
+    return false;
+  };
+  UI.Menu.isPageStatemachine = function() {
+    return true;
+  };
+
+  global.Drawable = {
+    Transition: function() {},
+    Outcome: function(outcome) {
+      this.obj = outcome;
+      const pos = outcome.getPosition();
+      this.drawing = makeShape({ x: pos.x, y: pos.y, width: 220, height: 70 });
+    },
+    ContainerPath: function() {
+      this.obj = {};
+      this.drawing = makeShape();
+    },
+    State: function(state) {
+      this.obj = state;
+      const pos = state.getPosition();
+      const width = state.getStateName() === 'Far' ? 240 : 80;
+      this.drawing = makeShape({ x: pos.x, y: pos.y, width, height: 80 });
+    },
+    BehaviorState: function() {},
+    Statemachine: function() {},
+  };
+  global.Drawable.State.Mode = {
+    OUTCOME: 'outcome',
+  };
+  global.Drawable.Transition.PATH_CURVE = 'curve';
+  global.Drawable.Helper = {
+    endPointClick() {},
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+  UI.Statemachine.initialize();
+  UI.Statemachine.refreshView();
+
+  assert(bindings.has('home'), 'Expected Home pan binding');
+  assert(bindings.has('ctrl+home'), 'Expected Ctrl+Home pan binding');
+  assert(bindings.has('end'), 'Expected End pan binding');
+  assert(bindings.has('ctrl+end'), 'Expected Ctrl+End pan binding');
+  assert(bindings.has('shift+home'), 'Expected Shift+Home pan binding');
+  assert(bindings.has('shift+end'), 'Expected Shift+End pan binding');
+
+  bindings.get('ctrl+end')();
+  assert.deepStrictEqual(UI.Statemachine.getPanShift(), { x: -570, y: -340 });
+
+  bindings.get('ctrl+home')();
+  assert.deepStrictEqual(UI.Statemachine.getPanShift(), { x: 0, y: 0 });
+
+  bindings.get('keydown:shift')();
+  assert(paths.length > 0, 'Expected Shift to create pan grid');
+  paths.forEach((path) => assert.strictEqual(path.attr('pointer-events'), 'none'));
+  background.dragStart(100, 100, {});
+  background.dragMove(-40, -30, 60, 70, {});
+  background.dragEnd({});
+  assert.deepStrictEqual(UI.Statemachine.getPanShift(), { x: -40, y: -30 });
+  paths.forEach((path) => assert.strictEqual(path.attr('pointer-events'), 'none'));
+  bindings.get('keyup:shift')();
+}
+
+async function runStatemachineFitViewCase() {
+  setupGlobals();
+
+  const bindings = new Map();
+  global.Mousetrap = {
+    bind(key, handler) {
+      bindings.set(key, handler);
+    },
+  };
+
+  let canvasClickHandler;
+  const canvasAttrs = {};
+  const canvas = {
+    setAttribute(name, value) {
+      canvasAttrs[name] = value;
+    },
+    getAttribute(name) {
+      return canvasAttrs[name];
+    },
+    removeAttribute(name) {
+      delete canvasAttrs[name];
+    },
+    addEventListener(type, handler) {
+      if (type === 'click') {
+        canvasClickHandler = handler;
+      }
+    },
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 400, height: 300 };
+    },
+  };
+
+  const rects = [];
+  function makeShape(initialAttrs = {}) {
+    const attrs = Object.assign({ x: 0, y: 0, width: 0, height: 0 }, initialAttrs);
+    return {
+      cached_bbox: initialAttrs.cached_bbox,
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        if (Array.isArray(arg)) {
+          const values = {};
+          arg.forEach(key => {
+            values[key] = attrs[key];
+          });
+          return values;
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      data() { return this; },
+      drag() { return this; },
+      mousemove() { return this; },
+      click() { return this; },
+      toBack() { return this; },
+      toFront() { return this; },
+      translate(dx, dy) {
+        attrs.x += dx;
+        attrs.y += dy;
+        return this;
+      },
+      transform() { return ''; },
+      hide() { return this; },
+      show() { return this; },
+      remove() {},
+      getBBox() {
+        return {
+          x: attrs.x,
+          y: attrs.y,
+          width: attrs.width,
+          height: attrs.height,
+          x2: attrs.x + attrs.width,
+          y2: attrs.y + attrs.height,
+        };
+      },
+      isPointInside(x, y) {
+        return x >= attrs.x && x <= attrs.x + attrs.width
+          && y >= attrs.y && y <= attrs.y + attrs.height;
+      },
+    };
+  }
+
+  global.Raphael = function() {
+    return {
+      width: 400,
+      height: 300,
+      canvas,
+      rect(x = 0, y = 0, width = 0, height = 0) {
+        const shape = makeShape({ x, y, width, height, opacity: 0 });
+        rects.push(shape);
+        return shape;
+      },
+      circle(cx = 0, cy = 0, radius = 0) {
+        return makeShape({ x: cx - radius, y: cy - radius, width: radius * 2, height: radius * 2, cx, cy, opacity: 0 });
+      },
+      path() {
+        return makeShape();
+      },
+      remove() {},
+    };
+  };
+
+  global.State = function(name, x, y) {
+    this.name = name;
+    this.position = { x, y };
+    this.getStateName = function() { return this.name; };
+    this.getPosition = function() { return this.position; };
+    this.setPosition = function(position) { this.position = position; };
+    this.getStateClass = function() { return 'Simple'; };
+    this.getStatePath = function() { return this.name; };
+  };
+
+  const near = new State('Near', 60, 70);
+  const far = new State('Far', 920, 130);
 
   Behavior.getStatemachine = function() {
     return {
@@ -3380,11 +4335,13 @@ async function runStatemachineHomeEndPanCase() {
     Outcome: function() {},
     ContainerPath: function() {
       this.obj = {};
-      this.drawing = makeShape();
+      this.drawing = makeShape({ x: 0, y: 0, width: 120, height: 20 });
     },
     State: function(state) {
       this.obj = state;
-      this.drawing = makeShape();
+      const pos = state.getPosition();
+      this.drawing = makeShape({ x: pos.x, y: pos.y, width: 80, height: 40 });
+      this.drawing.cached_bbox = { width: 80, height: 40 };
     },
     BehaviorState: function() {},
     Statemachine: function() {},
@@ -3401,18 +4358,67 @@ async function runStatemachineHomeEndPanCase() {
   UI.Statemachine.initialize();
   UI.Statemachine.refreshView();
 
-  assert(bindings.has('home'), 'Expected Home pan binding');
-  assert(bindings.has('ctrl+home'), 'Expected Ctrl+Home pan binding');
-  assert(bindings.has('end'), 'Expected End pan binding');
-  assert(bindings.has('ctrl+end'), 'Expected Ctrl+End pan binding');
-  assert(bindings.has('shift+home'), 'Expected Shift+Home pan binding');
-  assert(bindings.has('shift+end'), 'Expected Shift+End pan binding');
+  assert(bindings.has('ctrl+0'), 'Expected Ctrl+0 fit view binding');
+  assert.strictEqual(UI.Statemachine.isFitView(), false);
 
-  bindings.get('ctrl+end')();
-  assert.deepStrictEqual(UI.Statemachine.getPanShift(), { x: -350, y: -250 });
+  bindings.get('ctrl+0')({ preventDefault() {} });
 
-  bindings.get('ctrl+home')();
-  assert.deepStrictEqual(UI.Statemachine.getPanShift(), { x: 0, y: 0 });
+  assert.strictEqual(UI.Statemachine.isFitView(), true);
+  assert.strictEqual(UI.Statemachine.isReadonly(), true);
+  assert(canvasAttrs.viewBox, 'Expected Fit View to set an SVG viewBox');
+  assert(canvasAttrs.viewBox.split(/\s+/).map(Number)[2] > 400, 'Expected Fit View to zoom out for wide content');
+  assert.strictEqual(document.getElementById('fit_view_overlay').style.display, 'block');
+  assert.strictEqual(typeof canvasClickHandler, 'function');
+  assert.strictEqual(rects[2].attr('opacity'), 0, 'Expected Fit View background rect to be visually hidden');
+  assert.strictEqual(rects[2].attr('pointer-events'), 'auto');
+  const fitPanIndicator = rects.find(rect => rect.attr('stroke') === '#cfd6df');
+  assert(fitPanIndicator, 'Expected Fit View to create a prior-viewport pan indicator');
+  assert.strictEqual(fitPanIndicator.attr('pointer-events'), 'none');
+  assert.strictEqual(fitPanIndicator.attr('width'), 400);
+  assert.strictEqual(fitPanIndicator.attr('height'), 300);
+
+  bindings.get('end')();
+
+  assert.strictEqual(UI.Statemachine.isFitView(), false);
+  assert.strictEqual(canvasAttrs.viewBox, undefined);
+  assert.strictEqual(document.getElementById('fit_view_overlay').style.display, 'none');
+  assert.strictEqual(rects[2].attr('opacity'), 1, 'Expected regular view background rect to be visible again');
+  assert.strictEqual(rects[2].attr('pointer-events'), 'auto');
+  assert.strictEqual(fitPanIndicator.attr('width'), 0);
+  assert.strictEqual(fitPanIndicator.attr('height'), 0);
+  assert(UI.Statemachine.getPanShift().x < 0, 'Expected End to exit Fit View and pan to canvas extents');
+
+  bindings.get('ctrl+0')({ preventDefault() {} });
+
+  canvasClickHandler({
+    offsetX: 350,
+    offsetY: 120,
+    preventDefault() {},
+    stopPropagation() {},
+    stopImmediatePropagation() {},
+  });
+
+  assert.strictEqual(UI.Statemachine.isFitView(), false);
+  assert.strictEqual(canvasAttrs.viewBox, undefined);
+  assert.strictEqual(document.getElementById('fit_view_overlay').style.display, 'none');
+  assert(UI.Statemachine.getPanShift().x < 0, 'Expected click-to-focus to pan toward the clicked SVG point');
+
+  bindings.get('ctrl+0')({ preventDefault() {} });
+
+  canvasClickHandler({
+    offsetX: 350,
+    offsetY: 290,
+    preventDefault() {},
+    stopPropagation() {},
+    stopImmediatePropagation() {},
+  });
+
+  assert.strictEqual(UI.Statemachine.isFitView(), false);
+  assert.strictEqual(
+    UI.Statemachine.getPanShift().y,
+    0,
+    'Expected click-to-focus below a shallow fit view to keep the state machine vertically visible'
+  );
 }
 
 async function runValidationReportCase() {
@@ -3512,6 +4518,67 @@ async function runValidationReportCase() {
 
   UI.Menu.checkBehaviorClicked();
   assertLog(logs, 'warn', 'Behavior is valid with 2 non-fatal warning');
+}
+
+async function runValidationStyleSuggestionInfoCase() {
+  const { logs, consoleMessages, restoreConsole } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+  loadScript('flexbe_webui/app/_helper/checking.js');
+
+  const stateName = '0_move_goat';
+  let statemachine;
+  const state = {
+    getStateName() { return stateName; },
+    getStatePath() { return `/${stateName}`; },
+    getParameters() { return []; },
+    getParameterValues() { return []; },
+    getInputKeys() { return []; },
+    getInputMapping() { return []; },
+    getOutputKeys() { return []; },
+    getOutputMapping() { return []; },
+    getContainer() { return statemachine; },
+    getOutcomes() { return []; },
+    getOutcomesUnconnected() { return []; },
+  };
+  statemachine = {
+    getStateName() { return ''; },
+    getStatePath() { return ''; },
+    getStates() { return [state]; },
+    getInitialState() { return state; },
+    getDataflow() { return []; },
+    getInputKeys() { return []; },
+    getTransitions() { return []; },
+    updateDataflow() {},
+    isConcurrent() { return false; },
+  };
+
+  global.Behavior.getBehaviorName = function() { return 'Demo'; };
+  global.Behavior.getBehaviorDescription = function() { return 'Demo behavior'; };
+  global.Behavior.getAuthor = function() { return 'tester'; };
+  global.Behavior.getPrivateVariables = function() { return []; };
+  global.Behavior.getDefaultUserdata = function() { return []; };
+  global.Behavior.getBehaviorParameters = function() { return []; };
+  global.Behavior.getInterfaceOutcomes = function() { return ['finished']; };
+  global.Behavior.getInterfaceInputKeys = function() { return []; };
+  global.Behavior.getInterfaceOutputKeys = function() { return []; };
+  global.Behavior.getManualCodeImport = function() { return []; };
+  global.Behavior.getCreationDate = function() { return '2026-05-08'; };
+  global.Behavior.getTags = function() { return 'test'; };
+  global.Behavior.getStatemachine = function() { return statemachine; };
+  global.Behavior.createStructureInfo = function() {};
+
+  try {
+    const report = Checking.checkBehaviorReport();
+    const message = `State '${stateName}' does not follow suggested InitialCapitals style naming`;
+
+    assert.deepStrictEqual(report.fatal_errors, []);
+    assert(report.info.includes(message), `Expected style suggestion info, got ${JSON.stringify(report.info)}`);
+    assert.strictEqual(report.warnings.includes(message), false);
+    assert.strictEqual(logs.some(entry => entry.message.includes(message)), false);
+    assert.strictEqual(consoleMessages.some(entry => entry.includes(message)), false);
+  } finally {
+    restoreConsole();
+  }
 }
 
 async function runEventsFlowsCase() {
@@ -3740,6 +4807,16 @@ async function runEventsFlowsCase() {
 
 async function runTerminalSafeTextCase() {
   setupGlobals();
+  let activePanel;
+  global.UI.Panels.TERMINAL_PANEL = 'terminal';
+  global.UI.Panels.setActivePanel = function(panel) {
+    activePanel = panel;
+  };
+  global.UI.Panels.hidePanelIfActive = function(panel) {
+    if (activePanel === panel) {
+      activePanel = undefined;
+    }
+  };
   loadScript('flexbe_webui/app/prototype.js');
   loadScript('flexbe_webui/app/ui/panels/ui_panels_terminal.js');
 
@@ -3756,6 +4833,18 @@ async function runTerminalSafeTextCase() {
   T.clearLog();
 
   assert.strictEqual(terminal.children.length, 0);
+
+  T.show();
+  assert.strictEqual(activePanel, 'terminal');
+  T.keepOpen();
+  T.hideIfClean();
+  assert.strictEqual(activePanel, 'terminal', 'Pinned terminal should remain open during clean auto-hide');
+  T.hide();
+  assert.strictEqual(activePanel, undefined);
+
+  T.show();
+  T.hideIfClean();
+  assert.strictEqual(activePanel, undefined, 'Clean unpinned terminal should auto-hide');
 }
 
 async function runRemainingHtmlSinksSafeTextCase() {
@@ -5367,6 +6456,11 @@ async function runBehaviorLoaderFailureCase() {
 async function runBehaviorLoaderOptionalCallbackCase() {
   const { logs } = setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
+  const apiPosts = [];
+  API.post = function(action, content, callback) {
+    apiPosts.push({ action, content });
+    if (callback) callback({ success: true, data: null });
+  };
 
   Behavior.resetBehavior = function() {};
   UI.Dashboard.resetAllFields = function() {};
@@ -5393,6 +6487,151 @@ async function runBehaviorLoaderOptionalCallbackCase() {
   });
 
   assertLog(logs, 'error', "Failed to load behavior source for 'Broken'");
+  assert.deepStrictEqual(apiPosts, [{ action: 'session/loaded_behavior', content: null }]);
+}
+
+async function runBehaviorLoaderSessionRecordCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  let clearLogCalls = 0;
+  let terminalShowCalls = 0;
+  T.clearLog = function() { clearLogCalls += 1; };
+  UI.Panels.Terminal.show = function() { terminalShowCalls += 1; };
+
+  const apiPosts = [];
+  API.post = function(action, content, callback) {
+    apiPosts.push({ action, content });
+    if (callback) callback({ success: true, data: null });
+  };
+  const apiGets = [];
+  const fullBehaviorData = {
+    rosnode_name: 'my_pkg',
+    name: 'MyBehavior',
+    manifest_path: '/tmp/my_behavior.xml',
+    codefile_relpath: 'my_behavior_sm.py',
+    codefile_name: 'my_behavior_sm.py',
+    codefile_content: 'root code',
+    description: 'Restored manifest description',
+    tags: 'restore,test',
+    author: 'Test Author',
+    date: '2026-05-07',
+    params: [],
+    contains: [],
+  };
+  API.getData = function(action, callback) {
+    apiGets.push(action);
+    assert.strictEqual(action, 'io/behavior/my_pkg/my_behavior_sm.py');
+    callback(fullBehaviorData);
+  };
+
+  Behavior.resetBehavior = function() {};
+  UI.Dashboard.resetAllFields = function() {};
+  UI.Statemachine.resetStatemachine = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Menu.toDashboardClicked = function() {};
+  UI.Panels.NO_PANEL = 'none';
+  UI.Panels.setActivePanel = function() {};
+
+  global.IO.CodeParser = {
+    parseCode() {
+      return { behavior_name: 'MyBehavior', sm_defs: [], sm_states: [], root_sm_name: 'root', default_userdata: [], state_types: {} };
+    },
+  };
+  WS.Behaviorlib.getByKey = function(pkg, name) {
+    assert.strictEqual(pkg, 'my_pkg');
+    assert.strictEqual(name, 'MyBehavior');
+    return undefined;
+  };
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  let generatedManifest;
+  global.IO.ModelGenerator = {
+    generateBehaviorAttributes(_data, manifest) { generatedManifest = manifest; },
+    buildStateMachine() { return {}; },
+  };
+  Behavior.setStatemachine = function() {};
+  Behavior.setReadonly = function() {};
+  ActivityTracer.resetActivities = function() {};
+  global.Checking = { checkBehavior() { return undefined; } };
+  RC.Controller.signalChanged = function() {};
+
+  const loadError = await new Promise(resolve => {
+    IO.BehaviorLoader.loadBehavior({
+      rosnode_name: 'my_pkg',
+      name: 'MyBehavior',
+      manifest_path: '/tmp/my_behavior.xml',
+      codefile_relpath: 'my_behavior_sm.py',
+      codefile_name: 'my_behavior_sm.py',
+      editable: true,
+    }, resolve);
+  });
+
+  assert.strictEqual(loadError, undefined, 'Expected successful load');
+  assert.deepStrictEqual(apiGets, ['io/behavior/my_pkg/my_behavior_sm.py']);
+  assert.strictEqual(generatedManifest.description, 'Restored manifest description');
+  assert.strictEqual(generatedManifest.tags, 'restore,test');
+  assert.strictEqual(generatedManifest.author, 'Test Author');
+  assert.strictEqual(generatedManifest.date, '2026-05-07');
+  assert.strictEqual(clearLogCalls, 1, 'Expected manual/default behavior load to clear terminal log');
+  assert.strictEqual(terminalShowCalls, 1, 'Expected manual/default behavior load to show terminal');
+  assert.strictEqual(apiPosts.length, 2, 'Expected session clear on start and session record on success');
+  assert.deepStrictEqual(apiPosts[0], { action: 'session/loaded_behavior', content: null });
+  assert.deepStrictEqual(apiPosts[1], {
+    action: 'session/loaded_behavior',
+    content: {
+      package: 'my_pkg',
+      behavior_name: 'MyBehavior',
+      manifest_path: '/tmp/my_behavior.xml',
+      codefile_name: 'my_behavior_sm.py',
+      editable: true,
+    },
+  });
+}
+
+async function runBehaviorLoaderRestoreFailureKeepsSessionCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  let clearLogCalls = 0;
+  let terminalShowCalls = 0;
+  T.clearLog = function() { clearLogCalls += 1; };
+  UI.Panels.Terminal.show = function() { terminalShowCalls += 1; };
+
+  const apiPosts = [];
+  API.post = function(action, content, callback) {
+    apiPosts.push({ action, content });
+    if (callback) callback({ success: true, data: null });
+  };
+
+  Behavior.resetBehavior = function() {};
+  UI.Dashboard.resetAllFields = function() {};
+  UI.Statemachine.resetStatemachine = function() {};
+  UI.Statemachine.refreshView = function() {};
+  UI.Menu.toDashboardClicked = function() {};
+  UI.Panels.NO_PANEL = 'none';
+  UI.Panels.setActivePanel = function() {};
+
+  loadScript('flexbe_webui/app/io/io_behaviorloader.js');
+
+  IO.BehaviorLoader.ensureFullContent = function(_manifest, callback) {
+    callback(undefined);
+  };
+
+  const loadError = await new Promise(resolve => {
+    IO.BehaviorLoader.loadBehavior({
+      name: 'BrokenRestore',
+      manifest_path: '/tmp/broken_restore.xml',
+      codefile_path: '/tmp/broken_restore.py',
+      codefile_name: 'broken_restore_sm.py',
+      rosnode_name: 'demo_pkg',
+    }, resolve, { clear_session: false, clear_terminal: false });
+  });
+
+  assert.strictEqual(loadError, 'Failed to load behavior source');
+  assert.strictEqual(clearLogCalls, 0, 'Expected session restore load to preserve terminal log');
+  assert.strictEqual(terminalShowCalls, 0, 'Expected session restore load to avoid forcing terminal open');
+  assert.deepStrictEqual(apiPosts, []);
 }
 
 async function runBehaviorLoaderBrowserDeferredCallbacksCase() {
@@ -6434,6 +7673,207 @@ async function runStateUndoRedoAutonomyConsistencyCase() {
   assert.deepStrictEqual(state.getAutonomy(), [3, 2, 0], 'second redo cycle: autonomy still correct');
 }
 
+async function runSubscriberCallbackDeferredCase() {
+  // Regression: setTimeout(callback(o), 0) called callback immediately (at parse time)
+  // rather than deferring it.  Fix: setTimeout(function() { callback(o); }, 0).
+  setupGlobals();
+
+  let wsInstance = null;
+  global.WebSocket = function(_url) {
+    wsInstance = this;
+    this.close = function() {};
+  };
+  global.window = { location: { protocol: 'http:', host: 'localhost' }, crypto: { randomUUID() { return 'test-uuid'; } } };
+  global.localStorage = { getItem() { return ''; } };
+  global.API = { postFlag() {} };
+  global.ROS = {};
+
+  // Deterministic parse: returns one complete message for the exact test input.
+  global.json_parse_raw = function(buf) {
+    const msg = '{"data":1}';
+    if (buf === msg) return [{ data: 1 }, msg.length];
+    return [null, 0];
+  };
+
+  const received = [];
+  const deferred = [];
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = function(fn, _delay) { deferred.push(fn); return 1; };
+
+  try {
+    loadScript('flexbe_webui/app/ros/ros_subscriber.js');
+    new ROS.Subscriber('/test/topic', 'std_msgs/String', function(msg) { received.push(msg); });
+
+    wsInstance.onmessage({ data: '{"data":1}' });
+
+    assert.strictEqual(received.length, 0, 'callback must not fire synchronously during onmessage');
+    assert.strictEqual(deferred.length, 1, 'exactly one deferred callback expected');
+
+    deferred[0]();
+    assert.strictEqual(received.length, 1);
+    assert.deepStrictEqual(received[0], { data: 1 });
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+}
+
+async function runSubscriberBufferSliceRecoveryCase() {
+  // Regression: buffer.slice(err.at) discarded the result, leaving buffer unchanged
+  // so parse-error recovery looped on the same bad bytes forever.
+  // Fix: buffer = buffer.slice(err.at).
+  setupGlobals();
+
+  let wsInstance = null;
+  global.WebSocket = function(_url) {
+    wsInstance = this;
+    this.close = function() {};
+  };
+  global.window = { location: { protocol: 'http:', host: 'localhost' }, crypto: { randomUUID() { return 'test-uuid'; } } };
+  global.localStorage = { getItem() { return ''; } };
+  global.API = { postFlag() {} };
+  global.ROS = {};
+
+  const GOOD = '{"ok":true}';
+  let parseCalls = 0;
+  global.json_parse_raw = function(buf) {
+    parseCalls++;
+    if (buf.startsWith('BAD')) {
+      // Plain object matches how json_parse_raw actually throws — own-property 'name'
+      // is required because the subscriber checks err.hasOwnProperty('name').
+      throw { name: 'SyntaxError', message: 'Unexpected token', at: 3 };
+    }
+    if (buf === GOOD) return [{ ok: true }, GOOD.length];
+    return [null, 0];
+  };
+
+  const received = [];
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = function(fn, _delay) { fn(); return 1; };
+
+  try {
+    loadScript('flexbe_webui/app/ros/ros_subscriber.js');
+    new ROS.Subscriber('/test/topic', 'std_msgs/String', function(msg) { received.push(msg); });
+
+    // First chunk: bad bytes only — should advance buffer past them, not loop forever.
+    wsInstance.onmessage({ data: 'BAD' });
+    assert.strictEqual(received.length, 0, 'no message from malformed chunk');
+
+    // Second chunk appended to the (now-empty) buffer produces valid JSON.
+    wsInstance.onmessage({ data: GOOD });
+    assert.strictEqual(received.length, 1, 'valid message parsed after buffer recovery');
+    assert.deepStrictEqual(received[0], { ok: true });
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+}
+
+async function runStateMapCallbackStateIdAssignmentCase() {
+  // Regression: state_map_callback had `state.getStateId() != undefined || state.getStateId() == -1`
+  // The != undefined branch was always true for any defined ID, so:
+  //   - states with stateId=undefined fell through to the else-if (stateMapValidationError)
+  //     instead of getting their ID set.
+  //   - states with a mismatching pre-existing ID were silently overwritten.
+  // Fix: `== undefined || == -1` so only unset/placeholder IDs are written.
+  const { consoleMessages, restoreConsole } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const subscribers = {};
+  global.ROS = {
+    Subscriber: function(topic, _type, callback) {
+      subscribers[topic] = callback;
+      this.close = function() {};
+    },
+    Publisher: function() {
+      this.publish = function() {};
+      this.close = function() {};
+    },
+  };
+
+  // Three states: one with stateId=undefined, one with matching ID, one with mismatching ID.
+  const makeState = (id, path) => ({
+    stateId: id,
+    getStateId() { return this.stateId; },
+    setStateId(v) { this.stateId = v; },
+    getStatePath() { return path; },
+  });
+  const stateUnset   = makeState(undefined, '/Demo/Unset');
+  const stateMatch   = makeState(0x100,     '/Demo/Match');
+  const stateMismatch = makeState(0x200,    '/Demo/Mismatch');
+
+  const stateMap = new Map([[0, { path: '', state: undefined }]]);
+  let behaviorId = undefined;
+  const rootSM = {
+    getStatePath() { return ''; },
+    getStateByPath(p) {
+      if (p === '/Demo/Unset')    return stateUnset;
+      if (p === '/Demo/Match')    return stateMatch;
+      if (p === '/Demo/Mismatch') return stateMismatch;
+      return undefined;
+    },
+  };
+
+  global.Behavior.getStateMap    = () => stateMap;
+  global.Behavior.getStatemachine = () => rootSM;
+  global.Behavior.getBehaviorId  = () => behaviorId;
+  global.Behavior.setBehaviorId  = (v) => { behaviorId = v; };
+  global.Behavior.getManifestPath = () => '/tmp/demo.xml';
+  global.RC.Controller = { isRunning() { return true; }, isExternal() { return false; }, isReadonly() { return false; } };
+  global.UI.RuntimeControl.updateCurrentState = function() {};
+  global.UI.Settings.isSynthesisEnabled = () => false;
+  global.UI.Settings.getVersion = () => 'test';
+
+  try {
+    loadScript('flexbe_webui/app/rc/rc_pubsub.js');
+    RC.PubSub.initialize('/');
+
+    // Case 1: state with stateId=undefined should get its ID assigned (not a validation error).
+    subscribers['/flexbe/mirror/state_map']({
+      behavior_id: 99,
+      state_ids:   [0, 0x050],
+      state_paths: ['', '/Demo/Unset'],
+    });
+    assert.strictEqual(stateUnset.stateId, 0x050, 'stateId=undefined should be assigned from state map');
+    assert(
+      !consoleMessages.some(m => m.includes('Unexpected state ID')),
+      'no mismatch error expected for undefined stateId'
+    );
+
+    // Case 2: state with pre-existing ID matching the map — no error, ID unchanged.
+    stateMap.clear();
+    stateMap.set(0, { path: '', state: rootSM });
+    behaviorId = undefined;
+    consoleMessages.length = 0;
+    subscribers['/flexbe/mirror/state_map']({
+      behavior_id: 100,
+      state_ids:   [0, 0x100],
+      state_paths: ['', '/Demo/Match'],
+    });
+    assert.strictEqual(stateMatch.stateId, 0x100, 'matching pre-existing ID should be unchanged');
+    assert(
+      !consoleMessages.some(m => m.includes('Unexpected state ID')),
+      'no mismatch error expected for matching stateId'
+    );
+
+    // Case 3: state with mismatching pre-existing ID — validation error expected.
+    stateMap.clear();
+    stateMap.set(0, { path: '', state: rootSM });
+    behaviorId = undefined;
+    consoleMessages.length = 0;
+    subscribers['/flexbe/mirror/state_map']({
+      behavior_id: 101,
+      state_ids:   [0, 0x999],
+      state_paths: ['', '/Demo/Mismatch'],
+    });
+    assert(
+      consoleMessages.some(m => m.includes('Unexpected state ID')),
+      'mismatch error expected when pre-existing stateId differs from state map'
+    );
+    assert.strictEqual(stateMismatch.stateId, 0x200, 'mismatching pre-existing ID must not be overwritten');
+  } finally {
+    restoreConsole();
+  }
+}
+
 async function main() {
   if (caseName === 'behavior_saver') {
     await runBehaviorSaverCase();
@@ -6499,8 +7939,44 @@ async function main() {
     await runBehaviorStructureOutcomeCopyCase();
     return;
   }
+  if (caseName === 'pubsub_inactive_state_map') {
+    await runPubSubInactiveStateMapCase();
+    return;
+  }
+  if (caseName === 'pubsub_outcome_request_before_state_map') {
+    await runPubSubOutcomeRequestBeforeStateMapCase();
+    return;
+  }
+  if (caseName === 'pubsub_rejects_empty_behavior_start') {
+    await runPubSubRejectsEmptyBehaviorStartCase();
+    return;
+  }
+  if (caseName === 'pubsub_clears_failed_session_restore') {
+    await runPubSubClearsFailedSessionRestoreCase();
+    return;
+  }
   if (caseName === 'runtime_flows') {
     await runRuntimeFlowsCase();
+    return;
+  }
+  if (caseName === 'runtime_deepest_state') {
+    await runRuntimeDeepestStateCase();
+    return;
+  }
+  if (caseName === 'runtime_pinned_level') {
+    await runRuntimePinnedLevelCase();
+    return;
+  }
+  if (caseName === 'runtime_pinned_status_cleanup') {
+    await runRuntimePinnedStatusCleanupCase();
+    return;
+  }
+  if (caseName === 'runtime_outcome_request_focus') {
+    await runRuntimeOutcomeRequestFocusCase();
+    return;
+  }
+  if (caseName === 'controller_external_prompt_preserves_terminal') {
+    await runControllerExternalPromptPreservesTerminalCase();
     return;
   }
   if (caseName === 'synthesis_payload') {
@@ -6513,6 +7989,10 @@ async function main() {
   }
   if (caseName === 'state_panel_flows') {
     await runStatePanelFlowsCase();
+    return;
+  }
+  if (caseName === 'state_properties_escape_close') {
+    await runStatePropertiesEscapeCloseCase();
     return;
   }
   if (caseName === 'state_panel_duplicate_guards') {
@@ -6551,6 +8031,10 @@ async function main() {
     await runHelperDragCacheCase();
     return;
   }
+  if (caseName === 'drawable_state_box_layer') {
+    await runDrawableStateBoxLayerCase();
+    return;
+  }
   if (caseName === 'statemachine_begin_transition') {
     await runStatemachineBeginTransitionCase();
     return;
@@ -6567,8 +8051,16 @@ async function main() {
     await runStatemachineHomeEndPanCase();
     return;
   }
+  if (caseName === 'statemachine_fit_view') {
+    await runStatemachineFitViewCase();
+    return;
+  }
   if (caseName === 'validation_report') {
     await runValidationReportCase();
+    return;
+  }
+  if (caseName === 'validation_style_suggestion_info') {
+    await runValidationStyleSuggestionInfoCase();
     return;
   }
   if (caseName === 'terminal_safe_text') {
@@ -6659,6 +8151,14 @@ async function main() {
     await runBehaviorLoaderOptionalCallbackCase();
     return;
   }
+  if (caseName === 'behavior_loader_session_record') {
+    await runBehaviorLoaderSessionRecordCase();
+    return;
+  }
+  if (caseName === 'behavior_loader_restore_failure_keeps_session') {
+    await runBehaviorLoaderRestoreFailureKeepsSessionCase();
+    return;
+  }
   if (caseName === 'behavior_loader_browser_deferred_callbacks') {
     await runBehaviorLoaderBrowserDeferredCallbacksCase();
     return;
@@ -6697,6 +8197,18 @@ async function main() {
   }
   if (caseName === 'concurrent_outcome_copy') {
     await runConcurrentOutcomeCopyCase();
+    return;
+  }
+  if (caseName === 'subscriber_callback_deferred') {
+    await runSubscriberCallbackDeferredCase();
+    return;
+  }
+  if (caseName === 'subscriber_buffer_slice_recovery') {
+    await runSubscriberBufferSliceRecoveryCase();
+    return;
+  }
+  if (caseName === 'state_map_callback_state_id_assignment') {
+    await runStateMapCallbackStateIdAssignmentCase();
     return;
   }
   throw new Error(`Unknown case '${caseName}'`);
