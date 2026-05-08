@@ -168,7 +168,8 @@ IO.ModelGenerator = new (function() {
 			UI.Dashboard.addManualImport(element);
 		});
 
-		manifest.params.forEach(function(element) {
+		var params = Array.isArray(manifest.params) ? manifest.params : [];
+		params.forEach(function(element) {
 			UI.Dashboard.addParameter(element.type, element.name);
 			Behavior.updateBehaviorParameter(element.name, element.default, "default");
 			Behavior.updateBehaviorParameter(element.name, element.label, "label");

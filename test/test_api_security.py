@@ -400,6 +400,7 @@ def test_get_config_settings_reload_rejects_paths_outside_config_folder(token_pr
     'path',
     [
         '/api/v1/get_config_files',
+        '/api/v1/session/loaded_behavior',
         '/api/v1/packages/behaviors',
         '/api/v1/packages/states',
     ],

@@ -76,6 +76,8 @@ class WebuiServer:
         if self._api_token:
             print('\x1b[93mAPI token auth enabled for mutating endpoints.\x1b[0m', flush=True)
 
+        self._last_loaded_behavior: dict | None = None
+
         self.register(self._app)
 
         print(f'WebuiServer args: {args}', flush=True)
@@ -555,6 +557,34 @@ class WebuiServer:
         async def read_ready():
             print('\x1b[92mFlexBE WebUI Server is ready!\x1b[0m', flush=True)
             return self.api_success({'status': 'ok', 'online_mode': self._online_mode})
+
+        @app.get('/api/v1/session/loaded_behavior')
+        async def get_session_loaded_behavior(request: Request):
+            """Return the last behavior loaded in the editor, or null if none."""
+            self.authorize_request(request)
+            return self.api_success(self._last_loaded_behavior)
+
+        @app.post('/api/v1/session/loaded_behavior')
+        async def post_session_loaded_behavior(request: Request):
+            """Record or clear the behavior currently loaded in the editor."""
+            try:
+                self.authorize_request(request)
+                body = await request.json()
+                if body is None:
+                    self._last_loaded_behavior = None
+                else:
+                    self._last_loaded_behavior = {
+                        'package': body.get('package'),
+                        'behavior_name': body.get('behavior_name'),
+                        'manifest_path': body.get('manifest_path'),
+                        'codefile_name': body.get('codefile_name'),
+                        'editable': bool(body.get('editable', True)),
+                        'updated_at': int(datetime.now().timestamp()),
+                    }
+                return self.api_command_success()
+            except (RuntimeError, ValueError, TypeError, AttributeError) as exc:
+                print(f'\x1b[91mFailed to update session loaded behavior:\n{exc}\x1b[0m', flush=True)
+                return self.api_command_failure(exc)
 
         @app.post('/api/v1/ui_connected')
         async def ui_connected(request: Request):

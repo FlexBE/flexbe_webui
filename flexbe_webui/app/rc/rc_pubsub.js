@@ -38,6 +38,9 @@ RC.PubSub = new (function() {
 	var last_launcher_status= undefined;
 	var last_ocs_status = undefined;
 
+	var session_restore_attempted = false;
+	var pending_outcome_messages = new Map();
+
 	// BEStatus codes from BEStatus.msg
 	const STARTED = 0;
 	const FINISHED = 1;
@@ -84,25 +87,51 @@ RC.PubSub = new (function() {
 		}
 	}
 
-	var outcome_request_callback = function(msg) {
+	var process_outcome_request = function(msg, defer_if_state_map_pending=true) {
 		var targetEntry = Behavior.getStateMap().get(msg.target);
 		if (targetEntry == undefined) {
-			console.log(`\x1b[93m Error : cannot find state for '${msg.target}'!\x1b[0m`);
-			return;
+			var mapSize = Behavior.getStateMap().size;
+			if (mapSize <= 1) {
+				if (defer_if_state_map_pending) {
+					if (msg.outcome == 255) {
+						pending_outcome_messages.delete(msg.target);
+					} else {
+						pending_outcome_messages.set(msg.target, {
+							target: msg.target,
+							outcome: msg.outcome
+						});
+					}
+				}
+				console.log(`\x1b[93mOutcome request arrived before state map is ready`
+							+ ` (target=${msg.target}, map has ${mapSize} entr${mapSize == 1 ? 'y' : 'ies'}) — waiting for state map sync\x1b[0m`);
+			} else {
+				console.log(`\x1b[93mOutcome request target '${msg.target}' is not in state map (${mapSize} entries) — ignoring\x1b[0m`);
+			}
+			return false;
 		}
 		UI.RuntimeControl.displayOutcomeRequest(msg.outcome, targetEntry.state);
+		return true;
+	}
+
+	var process_pending_outcome_requests = function() {
+		if (pending_outcome_messages.size == 0) return;
+
+		for (const [target, msg] of Array.from(pending_outcome_messages.entries())) {
+			if (process_outcome_request(msg, false)) {
+				pending_outcome_messages.delete(target);
+			} else if (Behavior.getStateMap().size > 1) {
+				pending_outcome_messages.delete(target);
+			}
+		}
+	}
+
+	var outcome_request_callback = function(msg) {
+		process_outcome_request(msg);
 	}
 
 	var behavior_feedback_callback = function (msg){
 		if (msg.text == undefined) return;
 		UI.RuntimeControl.displayBehaviorFeedback(msg.status_code, msg.text);
-	}
-
-	var launch_feedback_text = function(reason) {
-		if (reason == "not_ready") {
-			return "Behavior launch blocked: onboard engine is not ready for a new behavior.";
-		}
-		return "Behavior launch blocked before reaching onboard.";
 	}
 
 	var behavior_status_callback = function (msg){
@@ -168,6 +197,39 @@ RC.PubSub = new (function() {
 		}
 	}
 
+	var trySessionRestore = function(behavior_id) {
+		if (session_restore_attempted) {
+			return;
+		}
+		if (Behavior.getManifestPath() != undefined) {
+			return;
+		}
+		session_restore_attempted = true;
+		API.get('session/loaded_behavior', function(response) {
+			if (!response.success || response.data == null) {
+				return;
+			}
+			if (Behavior.getManifestPath() != undefined) {
+				return;
+			}
+			var session = response.data;
+			console.log(`\x1b[32mSession restore: loading '${session.behavior_name}' from '${session.package}'\x1b[0m`);
+			T.logInfo("Restoring previously loaded behavior...");
+			IO.BehaviorLoader.loadBehavior({
+				rosnode_name: session.package,
+				name: session.behavior_name,
+				manifest_path: session.manifest_path,
+				codefile_name: session.codefile_name,
+				editable: session.editable !== false
+			}, function(error_string) {
+				if (error_string != undefined) {
+					T.logWarn("Session restore failed; clearing saved loaded behavior.");
+					API.post('session/loaded_behavior', null, function() {});
+				}
+			}, {clear_session: false, clear_terminal: false});
+		});
+	}
+
 	var onboard_heartbeat_timer;
 	var onboard_heartbeat_callback = function (msg){
 		if (onboard_heartbeat_timer != undefined) clearTimeout(onboard_heartbeat_timer);
@@ -176,6 +238,7 @@ RC.PubSub = new (function() {
 		if (last_onboard_heartbeat_time == undefined) {
 			RC.Sync.setProgress("Delay", 1, false);
 			console.log(`\x1b[32mOnboard heartbeat received ${JSON.stringify(msg)}!\x1b[0m`);
+			trySessionRestore(msg.behavior_id);
 		}
 
 		const behId = Behavior.getBehaviorId();
@@ -252,9 +315,23 @@ RC.PubSub = new (function() {
 			console.log(`\x1b[93mstate_map_callback: ignoring message with behavior_id=0\x1b[0m`);
 			return;
 		}
-		if (Behavior.getBehaviorId() != msg.behavior_id) {
-			if (Behavior.getBehaviorId() != undefined) {
-				console.log(`\x1b[93m Updating behavior ID to ${msg.behavior_id} from ${Behavior.getBehaviorId()} and clear existing state map\x1b[0m`);
+		if (Behavior.getStatemachine() == undefined) {
+			console.log(`\x1b[93mstate_map_callback: no behavior loaded, cannot process state map for behavior_id=${msg.behavior_id} - ignoring\x1b[0m`);
+			return;
+		}
+		if (Behavior.getManifestPath() == undefined && !Behavior.getBehaviorName()) {
+			console.log(`\x1b[93mstate_map_callback: no behavior loaded, cannot process state map for behavior_id=${msg.behavior_id} - ignoring\x1b[0m`);
+			return;
+		}
+		if (!RC.Controller.isRunning() && !RC.Controller.isExternal() && !RC.Controller.isReadonly()) {
+			console.log(`\x1b[93mstate_map_callback: ignoring inactive state map for behavior_id=${msg.behavior_id}\x1b[0m`);
+			return;
+		}
+		const prior_behavior_id = Behavior.getBehaviorId();
+		if (prior_behavior_id != msg.behavior_id) {
+			if (prior_behavior_id != undefined) {
+				console.log(`\x1b[93m Updating behavior ID to ${msg.behavior_id} from ${prior_behavior_id} and clear existing state map\x1b[0m`);
+				pending_outcome_messages.clear();
 			}
 			Behavior.setBehaviorId(msg.behavior_id); // presume state map message is the latest requested behavior
 			state_map.clear();
@@ -303,6 +380,10 @@ RC.PubSub = new (function() {
 						+ `${JSON.stringify(Array.from(state_map))}]`);
 		} else {
 			console.log(`\x1b[94mState map sync complete for '${Behavior.getBehaviorName()}' — ${state_map.size} states ready; any earlier 'state update arrived before state map' warnings can be ignored\x1b[0m`);
+			process_pending_outcome_requests();
+			if (last_mirror_state_id != undefined && last_mirror_state_id > 0) {
+				UI.RuntimeControl.updateCurrentState(last_mirror_state_id);
+			}
 		}
 	}
 
@@ -450,7 +531,11 @@ RC.PubSub = new (function() {
 				RC.Sync.setProgress("Switch", 1, false);
 				RC.Sync.setStatus("Switch", RC.Sync.STATUS_ERROR);
 			}
-			UI.RuntimeControl.displayBehaviorFeedback(3, launch_feedback_text(msg.args[1]));
+			const launch_reason = msg.args.length >= 2 ? msg.args[1] : undefined;
+			const launch_msg = launch_reason == "not_ready"
+				? "Behavior launch blocked: onboard engine is not ready for a new behavior."
+				: "Behavior launch blocked before reaching onboard.";
+			UI.RuntimeControl.displayBehaviorFeedback(3, launch_msg);
 		}
 		if (msg.command == "autonomy") {
 			RC.Sync.remove("Autonomy");
@@ -475,6 +560,7 @@ RC.PubSub = new (function() {
 					}
 					RC.Controller.signalRunning();
 					RC.Sync.remove("Attach");
+					UI.RuntimeControl.syncMirrorClicked();
 				} else {
 					UI.RuntimeControl.displayBehaviorFeedback(3, "Failed to attach! Please load behavior: " + (msg.args?.[0] ?? 'unknown'));
 					RC.Sync.setStatus("Attach", RC.Sync.STATUS_ERROR);
@@ -655,6 +741,8 @@ RC.PubSub = new (function() {
 		if (!ns.startsWith('/')) ns = '/' + ns;
 		if (!ns.endsWith('/')) ns += '/';
 
+		session_restore_attempted = false;
+		pending_outcome_messages.clear();
 
 		// Subscriber
 		console.log(`\x1b[92mStarting pub/sub from FlexBE WebUI node ...\x1b[0m`);
@@ -882,6 +970,11 @@ RC.PubSub = new (function() {
 	this.sendBehaviorStart = function(param_keys, param_vals, autonomy) {
 		if (behavior_start_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
 		var names = Behavior.createNames();
+		if (!names.rosnode_name || !names.behavior_name) {
+			T.logError("Cannot start behavior: behavior package or name is not set.");
+			document.getElementById('button_behavior_start').disabled = false;
+			return;
+		}
 
 		RC.Controller.signalStarted();
 		RC.Sync.register("BehaviorStart", 60);
@@ -895,7 +988,7 @@ RC.PubSub = new (function() {
 
 		// request start
 		behavior_start_publisher.publish({
-			behavior_name: Behavior.getBehaviorPackage() + "/" + Behavior.getBehaviorName(),
+			behavior_name: names.rosnode_name + "/" + names.behavior_name,
 			autonomy_level: autonomy,
 			arg_keys: param_keys,
 			arg_values: param_vals,
@@ -907,11 +1000,15 @@ RC.PubSub = new (function() {
 	this.sendBehaviorUpdate = function(param_keys, param_vals, autonomy) {
 		if (behavior_start_publisher == undefined) { T.debugWarn("ROS not initialized!"); return; }
 		var names = Behavior.createNames();
+		if (!names.rosnode_name || !names.behavior_name) {
+			T.logError("Cannot update behavior: behavior package or name is not set.");
+			return;
+		}
 		RC.Sync.register("Switch", 70);
-		console.log("Send behavior update for " + Behavior.getBehaviorName());
+		console.log("Send behavior update for " + names.behavior_name);
 		// request start
 		behavior_start_publisher.publish({
-			behavior_name: Behavior.getBehaviorPackage() + "/" + Behavior.getBehaviorName(),
+			behavior_name: names.rosnode_name + "/" + names.behavior_name,
 			autonomy_level: autonomy,
 			arg_keys: param_keys,
 			arg_values: param_vals,

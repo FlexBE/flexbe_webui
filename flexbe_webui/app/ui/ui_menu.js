@@ -49,7 +49,6 @@ UI.Menu = new (function() {
 			document.getElementById("button_to_" + key).setAttribute("class", "category_button" + active);
 			document.getElementById("button_to_" + key).children[0].setAttribute("src", "img/" + key + active + ".png");
 		}
-		console.log(`\x1b[94mSetting focus to '${target}' from '${current_page}'\x1b[0m`);
 		current_page = target;
 		that.updateFocus();
 	}
@@ -198,11 +197,6 @@ UI.Menu = new (function() {
 		document.getElementById("settings").style.left = `${(containerWidth + 50) * 3}px`;
 		that.setFocus("db");
 		setMenuButtons(button_config_db);
-		console.log(`db=${document.getElementById("dashboard").style.left} `
-					+ `sm=${document.getElementById("statemachine").style.left}`
-					+ `rc=${document.getElementById("runtimecontrol").style.left}`
-					+ `se=${document.getElementById("settings").style.left}`
-					)
 	}
 
 	this.toStatemachineClicked = function(event=undefined) {
@@ -220,11 +214,6 @@ UI.Menu = new (function() {
 		that.setFocus("sm");
 		setMenuButtons(button_config_sm);
 		UI.Statemachine.refreshView();
-		console.log(`db=${document.getElementById("dashboard").style.left} `
-					+ `sm=${document.getElementById("statemachine").style.left}`
-					+ `rc=${document.getElementById("runtimecontrol").style.left}`
-					+ `se=${document.getElementById("settings").style.left}`
-					)
 	}
 
 	this.toControlClicked = function(event=undefined) {
@@ -241,12 +230,6 @@ UI.Menu = new (function() {
 		document.getElementById("settings").style.left = `${containerWidth + 50}px`;;
 		that.setFocus("rc");
 		setMenuButtons(button_config_rc);
-
-		console.log(`db=${document.getElementById("dashboard").style.left} `
-					+ `sm=${document.getElementById("statemachine").style.left}`
-					+ `rc=${document.getElementById("runtimecontrol").style.left}`
-					+ `se=${document.getElementById("settings").style.left}`
-					)
 	}
 
 	this.toSettingsClicked = function(event=undefined) {
@@ -263,11 +246,6 @@ UI.Menu = new (function() {
 		document.getElementById("settings").style.left = "0px";
 		that.setFocus("se");
 		setMenuButtons(button_config_se);
-		console.log(`db=${document.getElementById("dashboard").style.left} `
-					+ `sm=${document.getElementById("statemachine").style.left}`
-					+ `rc=${document.getElementById("runtimecontrol").style.left}`
-					+ `se=${document.getElementById("settings").style.left}`
-					)
 	}
 
 	this.displayRuntimeStatus = function(status) {
@@ -540,6 +518,7 @@ UI.Menu = new (function() {
 			}
 		}
 
+		API.post('session/loaded_behavior', null, function() {});
 		Behavior.resetBehavior();
 		UI.Dashboard.resetAllFields();
 		UI.Statemachine.resetStatemachine();

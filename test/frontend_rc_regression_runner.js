@@ -46,6 +46,12 @@ function setupGlobals() {
   const subscriberCallbacks = new Map();
   const syncProcesses = new Map();
   const consoleMessages = [];
+  const apiGets = [];
+  const behaviorLoads = [];
+  const behaviorLoadOptions = [];
+  let clearLogCalls = 0;
+  let syncMirrorCalls = 0;
+  const currentStateUpdates = [];
 
   const originalConsoleLog = console.log;
   console.log = function(...args) {
@@ -71,7 +77,7 @@ function setupGlobals() {
     logInfo(message) { logs.push({ level: 'info', message: String(message) }); },
     logWarn(message) { logs.push({ level: 'warn', message: String(message) }); },
     logError(message) { logs.push({ level: 'error', message: String(message) }); },
-    clearLog() {},
+    clearLog() { clearLogCalls += 1; },
     show() {},
     debugWarn() {},
   };
@@ -97,7 +103,8 @@ function setupGlobals() {
       refreshView() {},
       resetPauseButton() {},
       setRosProperties() {},
-      updateCurrentState() {},
+      updateCurrentState(hash) { currentStateUpdates.push(hash); },
+      syncMirrorClicked() { syncMirrorCalls += 1; },
       switchPauseButton() {},
       transitionFeedback() {},
       setProgress() {},
@@ -158,10 +165,12 @@ function setupGlobals() {
 
   global.Behavior = {
     behaviorId: undefined,
+    manifestPath: '/tmp/demo_manifest.xml',
     getBehaviorId() { return this.behaviorId; },
     setBehaviorId(id) { this.behaviorId = id; },
     getBehaviorName() { return 'DemoBehavior'; },
     getBehaviorPackage() { return 'demo_pkg'; },
+    getManifestPath() { return this.manifestPath; },
     getStateMap() { return stateMap; },
     getStatemachine() { return rootSm; },
     createNames() {
@@ -173,6 +182,22 @@ function setupGlobals() {
       };
     },
     createStructureInfo() { return {}; },
+  };
+
+  global.API = {
+    post(_action, _content, callback) { if (callback) callback({ success: true, data: null }); },
+    get(action, callback) {
+      apiGets.push(action);
+      if (callback) callback({ success: false, data: null });
+    },
+  };
+  global.IO = {
+    BehaviorLoader: {
+      loadBehavior(manifest, _callback, options) {
+        behaviorLoads.push(manifest);
+        behaviorLoadOptions.push(options);
+      },
+    },
   };
 
   global.RC = {};
@@ -234,7 +259,13 @@ function setupGlobals() {
     syncProcesses,
     stateMap,
     knownState,
+    apiGets,
+    behaviorLoads,
+    behaviorLoadOptions,
+    currentStateUpdates,
+    getSyncMirrorCalls() { return syncMirrorCalls; },
     consoleMessages,
+    getClearLogCalls() { return clearLogCalls; },
     restoreConsole() {
       console.log = originalConsoleLog;
     },
@@ -263,6 +294,96 @@ function runHeartbeatOrderingCase() {
   }
 }
 
+function runSessionRestoreIdleHeartbeatCase() {
+  const context = initializeRcHarness();
+  try {
+    Behavior.manifestPath = undefined;
+    const heartbeat = context.subscriberCallbacks.get('/test/flexbe/heartbeat');
+    assert(heartbeat);
+
+    heartbeat({ behavior_id: 0 });
+
+    assert.deepStrictEqual(context.apiGets, ['session/loaded_behavior']);
+    assert.deepStrictEqual(context.behaviorLoads, []);
+  } finally {
+    context.restoreConsole();
+  }
+}
+
+function runSessionRestoreStoppedHeartbeatCase() {
+  const context = initializeRcHarness();
+  try {
+    Behavior.manifestPath = undefined;
+    API.get = function(action, callback) {
+      context.apiGets.push(action);
+      callback({
+        success: true,
+        data: {
+          package: 'demo_pkg',
+          behavior_name: 'DemoBehavior',
+          manifest_path: '/tmp/demo.xml',
+          codefile_name: 'demo_behavior_sm.py',
+          editable: true,
+        },
+      });
+    };
+
+    const heartbeat = context.subscriberCallbacks.get('/test/flexbe/heartbeat');
+    assert(heartbeat);
+    heartbeat({ behavior_id: 0 });
+
+    assert.deepStrictEqual(context.apiGets, ['session/loaded_behavior']);
+    assert.strictEqual(context.behaviorLoads.length, 1);
+    assert.deepStrictEqual(context.behaviorLoads[0], {
+      rosnode_name: 'demo_pkg',
+      name: 'DemoBehavior',
+      manifest_path: '/tmp/demo.xml',
+      codefile_name: 'demo_behavior_sm.py',
+      editable: true,
+    });
+    assert.deepStrictEqual(context.behaviorLoadOptions[0], { clear_session: false, clear_terminal: false });
+    assert.strictEqual(context.getClearLogCalls(), 0);
+  } finally {
+    context.restoreConsole();
+  }
+}
+
+function runSessionRestoreActiveHeartbeatCase() {
+  const context = initializeRcHarness();
+  try {
+    Behavior.manifestPath = undefined;
+    API.get = function(action, callback) {
+      context.apiGets.push(action);
+      callback({
+        success: true,
+        data: {
+          package: 'demo_pkg',
+          behavior_name: 'DemoBehavior',
+          manifest_path: '/tmp/demo.xml',
+          codefile_name: 'demo_behavior_sm.py',
+        },
+      });
+    };
+
+    const heartbeat = context.subscriberCallbacks.get('/test/flexbe/heartbeat');
+    assert(heartbeat);
+    heartbeat({ behavior_id: 99 });
+
+    assert.deepStrictEqual(context.apiGets, ['session/loaded_behavior']);
+    assert.strictEqual(context.behaviorLoads.length, 1);
+    assert.deepStrictEqual(context.behaviorLoads[0], {
+      rosnode_name: 'demo_pkg',
+      name: 'DemoBehavior',
+      manifest_path: '/tmp/demo.xml',
+      codefile_name: 'demo_behavior_sm.py',
+      editable: true,
+    });
+    assert.deepStrictEqual(context.behaviorLoadOptions[0], { clear_session: false, clear_terminal: false });
+  } finally {
+    context.restoreConsole();
+  }
+}
+
 function runOutcomeOrderingCase() {
   const context = initializeRcHarness();
   try {
@@ -270,7 +391,7 @@ function runOutcomeOrderingCase() {
     assert(outcomeRequest);
     outcomeRequest({ target: 99, outcome: 2 });
     assert.deepStrictEqual(context.outcomeRequests, []);
-    assert(context.consoleMessages.some(message => message.includes("cannot find state for '99'")));
+    assert(context.consoleMessages.some(message => message.includes("Outcome request arrived before state map is ready")));
   } finally {
     context.restoreConsole();
   }
@@ -308,6 +429,13 @@ function runStateMapOrderingCase() {
     context.stateMap.set(5, { path: '/stale', state: { getStatePath() { return '/stale'; } } });
     Behavior.setBehaviorId(11);
 
+    RC.Controller.signalConnected();
+    RC.Controller.signalBehavior();
+    RC.Controller.signalStarted();
+    RC.Controller.updateCurrentStatePath('/known');
+    RC.Controller.signalRunning();
+    RC.Controller.signalLocked();
+
     const stateMapCallback = context.subscriberCallbacks.get('/test/flexbe/mirror/state_map');
     assert(stateMapCallback);
     stateMapCallback({
@@ -321,6 +449,63 @@ function runStateMapOrderingCase() {
     assert.strictEqual(context.stateMap.get(7).path, '/known');
     assert.strictEqual(context.knownState.getStateId(), 7);
     assert.strictEqual(context.stateMap.has(5), false);
+  } finally {
+    context.restoreConsole();
+  }
+}
+
+function runStateMapRequiresLoadedManifestCase() {
+  const context = initializeRcHarness();
+  try {
+    Behavior.manifestPath = undefined;
+    Behavior.getBehaviorName = function() { return ''; };
+    context.stateMap.set(5, { path: '/stale', state: { getStatePath() { return '/stale'; } } });
+    Behavior.setBehaviorId(11);
+
+    RC.Controller.signalConnected();
+    RC.Controller.signalBehavior();
+    RC.Controller.signalStarted();
+    RC.Controller.signalRunning();
+
+    const stateMapCallback = context.subscriberCallbacks.get('/test/flexbe/mirror/state_map');
+    assert(stateMapCallback);
+    stateMapCallback({
+      behavior_id: 42,
+      state_ids: [0, 7],
+      state_paths: ['', '/known'],
+    });
+
+    assert.strictEqual(Behavior.getBehaviorId(), 11);
+    assert.strictEqual(context.stateMap.has(5), true);
+    assert.strictEqual(context.stateMap.has(7), false);
+    assert(context.consoleMessages.some(message => message.includes('no behavior loaded')));
+  } finally {
+    context.restoreConsole();
+  }
+}
+
+function runStateMapReplaysPendingStateCase() {
+  const context = initializeRcHarness();
+  try {
+    RC.Controller.signalConnected();
+    RC.Controller.signalBehavior();
+    RC.Controller.signalStarted();
+    RC.Controller.signalRunning();
+
+    const currentStateCallback = context.subscriberCallbacks.get('/test/flexbe/behavior_update');
+    assert(currentStateCallback);
+    currentStateCallback({ data: 1792 });
+
+    const stateMapCallback = context.subscriberCallbacks.get('/test/flexbe/mirror/state_map');
+    assert(stateMapCallback);
+    stateMapCallback({
+      behavior_id: 42,
+      state_ids: [0, 1792],
+      state_paths: ['', '/known'],
+    });
+
+    assert.deepStrictEqual(context.currentStateUpdates, [1792, 1792]);
+    assert.strictEqual(context.knownState.getStateId(), 1792);
   } finally {
     context.restoreConsole();
   }
@@ -412,16 +597,43 @@ function runLaunchBlockedSwitchCase() {
   }
 }
 
+function runAttachSuccessRequestsSyncCase() {
+  const context = initializeRcHarness();
+  try {
+    RC.Controller.signalConnected();
+    RC.Controller.signalExternal();
+    RC.Controller.signalBehavior();
+    RC.Sync.register('Attach', 30);
+
+    const commandFeedback = context.subscriberCallbacks.get('/test/flexbe/command_feedback');
+    assert(commandFeedback);
+    commandFeedback({ command: 'attach', args: ['DemoBehavior', '3'] });
+
+    assert.strictEqual(RC.Controller.isRunning(), true);
+    assert.strictEqual(context.syncProcesses.has('Attach'), false);
+    assert.strictEqual(context.getSyncMirrorCalls(), 1);
+    assert.strictEqual(document.getElementById('selection_rc_autonomy').value, 3);
+  } finally {
+    context.restoreConsole();
+  }
+}
+
 function main() {
   const cases = {
     heartbeat_ordering: runHeartbeatOrderingCase,
+    session_restore_idle_heartbeat: runSessionRestoreIdleHeartbeatCase,
+    session_restore_stopped_heartbeat: runSessionRestoreStoppedHeartbeatCase,
+    session_restore_active_heartbeat: runSessionRestoreActiveHeartbeatCase,
     outcome_ordering: runOutcomeOrderingCase,
     status_ordering: runStatusOrderingCase,
     state_map_ordering: runStateMapOrderingCase,
+    state_map_requires_loaded_manifest: runStateMapRequiresLoadedManifestCase,
+    state_map_replays_pending_state: runStateMapReplaysPendingStateCase,
     ready_ordering: runReadyOrderingCase,
     switch_ordering: runSwitchOrderingCase,
     launch_blocked_start: runLaunchBlockedStartCase,
     launch_blocked_switch: runLaunchBlockedSwitchCase,
+    attach_success_requests_sync: runAttachSuccessRequestsSyncCase,
   };
 
   if (caseName) {

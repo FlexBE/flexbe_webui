@@ -182,6 +182,40 @@ IO.BehaviorLoader = new (function() {
 		};
 	}
 
+	var overlayDefined = function(base, overlay) {
+		var merged = Object.assign({}, base || {});
+		Object.keys(overlay || {}).forEach(function(key) {
+			if (overlay[key] !== undefined) {
+				merged[key] = overlay[key];
+			}
+		});
+		return merged;
+	}
+
+	var finalizeLoadManifest = function(manifest) {
+		var normalized = Object.assign({}, manifest || {});
+		if (normalized.description == undefined) normalized.description = "";
+		if (normalized.tags == undefined) normalized.tags = "";
+		if (normalized.author == undefined) normalized.author = "";
+		if (normalized.date == undefined) normalized.date = "";
+		if (normalized.params == undefined) normalized.params = [];
+		if (normalized.contains == undefined) normalized.contains = [];
+		return normalized;
+	}
+
+	var normalizeLoadManifest = function(manifest) {
+		var normalized = Object.assign({}, manifest || {});
+		var lib_entry = undefined;
+		if (normalized.rosnode_name != undefined && normalized.name != undefined
+			&& WS.Behaviorlib != undefined && WS.Behaviorlib.getByKey != undefined) {
+			lib_entry = WS.Behaviorlib.getByKey(normalized.rosnode_name, normalized.name);
+		}
+		if (lib_entry != undefined && lib_entry.getBehaviorManifest != undefined) {
+			normalized = overlayDefined(lib_entry.getBehaviorManifest(), normalized);
+		}
+		return finalizeLoadManifest(normalized);
+	}
+
 	var parseCode = function(file_content, manifest_data, callback) {
 		callback = callback || console.error;
 		var parsingResult;
@@ -230,9 +264,20 @@ IO.BehaviorLoader = new (function() {
 			Behavior.setReadonly(true);
 		}
 		UI.Statemachine.refreshView();
+		API.post('session/loaded_behavior', {
+			package: manifest.rosnode_name,
+			behavior_name: manifest.name,
+			manifest_path: manifest.manifest_path,
+			codefile_name: manifest.codefile_relpath || manifest.codefile_name,
+			editable: manifest.editable !== false
+		}, function() {});
 	}
 
-	var resetEditor = function() {
+	var resetEditor = function(options) {
+		options = options || {};
+		if (options.clear_session !== false) {
+			API.post('session/loaded_behavior', null, function() {});
+		}
 		Behavior.resetBehavior();
 		UI.Dashboard.resetAllFields();
 		UI.Statemachine.resetStatemachine();
@@ -246,7 +291,7 @@ IO.BehaviorLoader = new (function() {
 	// Calls callback(manifest) on success, callback(undefined) on failure.
 	this.ensureFullContent = function(manifest, callback) {
 		if (manifest.codefile_content) {
-			callback(manifest);
+			callback(finalizeLoadManifest(manifest));
 			return;
 		}
 		var pkg = manifest.rosnode_name;
@@ -257,8 +302,11 @@ IO.BehaviorLoader = new (function() {
 				callback(undefined);
 				return;
 			}
-			manifest.codefile_content = full_data.codefile_content;
-			callback(manifest);
+			var full_manifest = overlayDefined(manifest, full_data);
+			if (manifest.editable !== undefined) {
+				full_manifest.editable = manifest.editable;
+			}
+			callback(finalizeLoadManifest(full_manifest));
 		}, function(error) {
 			T.logError("Failed to fetch full content for '" + manifest.name + "': " + error);
 			callback(undefined);
@@ -325,12 +373,16 @@ IO.BehaviorLoader = new (function() {
 		ensureManifest(manifest, root_hints, callback);
 	}
 
-	this.loadBehavior = function(manifest, callback) {
+	this.loadBehavior = function(manifest, callback, options) {
 		callback = callback || function() {};
-		T.clearLog();
-		UI.Panels.Terminal.show();
+		options = options || {};
+		manifest = normalizeLoadManifest(manifest);
+		if (options.clear_terminal !== false) {
+			T.clearLog();
+			UI.Panels.Terminal.show();
+		}
 
-		resetEditor();
+		resetEditor(options);
 
 		T.logInfo("Loading behavior...");
 		T.logInfo("Manifest: " + manifest.manifest_path);
