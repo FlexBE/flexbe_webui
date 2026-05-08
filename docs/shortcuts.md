@@ -65,9 +65,10 @@ These shortcuts are specific to the State Machine drawing area.
 | Shortcut | Action |
 | --- | --- |
 | `Shift` | Temporarily enable panning mode and show the grid while held |
+| `Ctrl+0` | Toggle Fit View; while active, click the drawing pane to return to 1:1 edit mode centered on the clicked point |
 | `Shift+Space` | Pan back to the home position |
-| `Home` / `Ctrl+Home` / `Shift+Home` | Pan back to the home position |
-| `End` / `Ctrl+End` / `Shift+End` | Pan to the current canvas extents |
+| `Home` / `Ctrl+Home` / `Shift+Home` | Pan back to the home position; exits Fit View first if active |
+| `End` / `Ctrl+End` / `Shift+End` | Pan to the current canvas extents; exits Fit View first if active |
 | `Shift+Left` | Pan left by one grid step |
 | `Shift+Right` | Pan right by one grid step |
 | `Shift+Up` | Pan up by one grid step |

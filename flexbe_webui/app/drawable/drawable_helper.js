@@ -23,6 +23,10 @@ Drawable.Helper = new (function() {
 		};
 	}
 
+	var isFitView = function() {
+		return UI.Statemachine.isFitView && UI.Statemachine.isFitView();
+	}
+
 	this.getTextScale = function() {
 		return getRenderConfig().text_scale;
 	}
@@ -149,6 +153,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// state - object representing the state
 	this.viewStateProperties = function() {
+		if (isFitView()) return;
 		if (!UI.Statemachine.isConnecting())
 			UI.Panels.StateProperties.displayStateProperties(this.data("state"));
 		else
@@ -158,6 +163,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// state - object representing the statemachine
 	this.enterStatemachine = function() {
+		if (isFitView()) return;
 		if (!UI.Statemachine.isConnecting()) {
 			UI.Statemachine.setDisplayedSM(this.data("state"));
 			UI.Panels.hidePanelIfActive(UI.Panels.STATE_PROPERTIES_PANEL);
@@ -170,6 +176,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// state - object representing the behavior
 	this.enterBehavior = function() {
+		if (isFitView()) return;
 		if (!UI.Statemachine.isConnecting()) {
 			UI.Statemachine.setDisplayedSM(this.data("state").getBehaviorStatemachine());
 			UI.Panels.hidePanelIfActive(UI.Panels.STATE_PROPERTIES_PANEL);
@@ -183,6 +190,7 @@ Drawable.Helper = new (function() {
 	// state - object representing the state
 	// box - rectangle matching the size of the movable object
 	this.moveFnc = function(dx, dy, x, y, evt) {
+		if (isFitView()) return;
 		if (UI.Statemachine.isConnecting()) return;
 		lx = dx + ox;
 		ly = dy + oy;
@@ -202,6 +210,7 @@ Drawable.Helper = new (function() {
 	// transition - object representing the transition
 	// bubble - ellipse matching the size of the movable object
 	this.moveFncTransition = function(dx, dy, x, y, evt) {
+		if (isFitView()) return;
 		if (UI.Statemachine.isConnecting()) return;
 		lx = dx + ox;
 		ly = dy + oy;
@@ -226,6 +235,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// state - object representing the state
 	this.startFnc = function() {
+		if (isFitView()) return;
 		if (UI.Statemachine.isConnecting()) return;
 		lx = this.data("state").getPosition().x + UI.Statemachine.getPanShift().x; // coordinates on screen
 		ly = this.data("state").getPosition().y + UI.Statemachine.getPanShift().y;
@@ -246,6 +256,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// transition - object representing the state
 	this.startFncTransition = function() {
+		if (isFitView()) return;
 		if (UI.Statemachine.isConnecting()) return;
 
 		var trans = this.data("transition");
@@ -265,6 +276,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// state - object representing the state
 	this.endFnc = function(evt) {
+		if (isFitView()) return;
 		if (UI.Statemachine.isConnecting()) return;
 		var state = this.data("state");
 		var bbox = (UI.Statemachine.getDragIndicator().attr('width') > 1)?
@@ -335,6 +347,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// transition - object representing the state
 	this.endFncTransition = function(evt) {
+		if (isFitView()) return;
 		if (UI.Statemachine.isConnecting()) return;
 
 		var transition = this.data("transition");
@@ -385,6 +398,7 @@ Drawable.Helper = new (function() {
 	}
 
 	this.startFncEndPoint = function() {
+		if (isFitView()) return;
 		if (UI.Statemachine.isConnecting()) return;
 		lx = this.data("point").attr("cx") + UI.Statemachine.getPanShift().x; // absolute to screen coordinates
 		ly = this.data("point").attr("cy") + UI.Statemachine.getPanShift().y;
@@ -399,6 +413,7 @@ Drawable.Helper = new (function() {
 	}
 
 	this.moveFncEndPoint = function(dx, dy, x, y, evt) {
+		if (isFitView()) return;
 		x =  UI.Statemachine.getMousePos().getBBox().cx - UI.Statemachine.getPanShift().x; // account for movement of canvas
 		y =  UI.Statemachine.getMousePos().getBBox().cy - UI.Statemachine.getPanShift().y; // by converting from screen to absolute coordinates
 
@@ -432,6 +447,7 @@ Drawable.Helper = new (function() {
 	// state - object representing the state
 	// label - name of the transition to begin
 	this.beginTransition = function() {
+		if (isFitView()) return;
 		if (RC.Controller.isReadonly()) return;
 
 		if (!UI.Statemachine.isConnecting())
@@ -443,6 +459,7 @@ Drawable.Helper = new (function() {
 	// Raphael func
 	// state - object representing the state
 	this.connectTransition = function() {
+		if (isFitView()) return;
 		UI.Statemachine.connectTransition(this.data("state"));
 	}
 

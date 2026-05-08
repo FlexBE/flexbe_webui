@@ -373,6 +373,10 @@ document.addEventListener('DOMContentLoaded', function() {
 	Mousetrap.bind("ctrl+t", UI.Panels.Terminal.toggle );
 
 	Mousetrap.bind("esc", function() {
+		if (UI.Statemachine.isFitView && UI.Statemachine.isFitView()) {
+			UI.Statemachine.disableFitView();
+			return;
+		}
 		UI.Statemachine.abortTransition();
 		UI.Statemachine.removeSelection();
 	});

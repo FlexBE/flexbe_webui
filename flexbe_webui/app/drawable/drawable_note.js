@@ -14,7 +14,12 @@ Drawable.Note = function(note_obj, paper) {
 
 	var ox = 0, oy = 0, lx = 0, ly = 0;
 
+	var isFitView = function() {
+		return UI.Statemachine.isFitView && UI.Statemachine.isFitView();
+	}
+
 	var moveFnc = function(dx, dy, x, y, evt) {
+		if (isFitView()) return;
 		lx = dx + ox;
 		ly = dy + oy;
 		lx = Math.min(Math.max(lx, 0), UI.Statemachine.getR().width - this.getBBox().width);
@@ -22,12 +27,14 @@ Drawable.Note = function(note_obj, paper) {
 		note.attr({x: lx, y: ly});
 	}
 	var startFnc = function() {
+		if (isFitView()) return;
 		lx = note_obj.getPosition().x;
 		ly = note_obj.getPosition().y;
 		ox = note_obj.getPosition().x;
 		oy = note_obj.getPosition().y;
 	}
 	var endFnc = function(evt) {
+		if (isFitView()) return;
 		note_obj.setPosition({x: lx, y: ly});
 	}
 
@@ -50,6 +57,7 @@ Drawable.Note = function(note_obj, paper) {
 	}
 
 	this.editNote = function() {
+		if (isFitView()) return;
 		var editor = document.getElementById("note_editor"),
 			text_input = document.getElementById("input_note_editor_text"),
 			delete_btn = document.getElementById("button_note_editor_delete"),
@@ -130,9 +138,11 @@ Drawable.Note = function(note_obj, paper) {
 
 	txt.translate(text_x, text_y + txt.getBBox().height / 2);
 
-	note.attr({x: note_obj.getPosition().x, y: note_obj.getPosition().y})
-		.drag(moveFnc, startFnc, endFnc)
-		.dblclick(that.editNote);
+	note.attr({x: note_obj.getPosition().x, y: note_obj.getPosition().y});
+	if (!isFitView()) {
+		note.drag(moveFnc, startFnc, endFnc)
+			.dblclick(that.editNote);
+	}
 
 	this.drawing = note;
 	this.obj = note_obj;

@@ -27,6 +27,10 @@ UI.Statemachine = new (function() {
 	var dataflow_displayed = false;
 	var comments_displayed = true;
 	var outcomes_displayed = true;
+	var zoom_fit_active = false;
+	var zoom_fit_previous_pan = undefined;
+	var fit_view_overlay = undefined;
+	var fit_pan_indicator = undefined;
 	var render_config = {
 		gridsize: 50,
 		text_scale: 1.0,
@@ -107,6 +111,7 @@ UI.Statemachine = new (function() {
 	}
 
 	Mousetrap.bind("shift", function() {
+		if (zoom_fit_active) return;
 		displayGrid();
 		background.attr({'cursor': 'move'});
 		allow_panning = true;
@@ -135,53 +140,70 @@ UI.Statemachine = new (function() {
 		callback();
 	}
 
+	var runRegularViewShortcut = function(callback) {
+		if (!statemachineShortcutsActive()) {
+			return;
+		}
+		if (zoom_fit_active) {
+			that.disableFitView();
+		}
+		callback();
+	}
+
 	Mousetrap.bind("shift+space", function() {
 		runStatemachineShortcut(that.panToHome);
 	});
 
+	Mousetrap.bind("ctrl+0", function(evt) {
+		if (!statemachineShortcutsActive()) {
+			return;
+		}
+		if (evt && evt.preventDefault) evt.preventDefault();
+		that.toggleFitView();
+	});
+
 	Mousetrap.bind("home", function() {
-		runStatemachineShortcut(that.panToHome);
+		runRegularViewShortcut(that.panToHome);
 	});
 
 	Mousetrap.bind("ctrl+home", function() {
-		runStatemachineShortcut(that.panToHome);
+		runRegularViewShortcut(that.panToHome);
 	});
 
 	Mousetrap.bind("shift+home", function() {
-		runStatemachineShortcut(that.panToHome);
+		runRegularViewShortcut(that.panToHome);
 	});
 
 	Mousetrap.bind("end", function() {
-		runStatemachineShortcut(that.panToCanvasExtents);
+		runRegularViewShortcut(that.panToCanvasExtents);
 	});
 
 	Mousetrap.bind("ctrl+end", function() {
-		runStatemachineShortcut(that.panToCanvasExtents);
+		runRegularViewShortcut(that.panToCanvasExtents);
 	});
 
 	Mousetrap.bind("shift+end", function() {
-		runStatemachineShortcut(that.panToCanvasExtents);
+		runRegularViewShortcut(that.panToCanvasExtents);
 	});
 
 	Mousetrap.bind("shift+left", function() {
-		// console.log(`shift+left - pan left ...`);
-		panShift(that.getGridSize(), 0);
+		runRegularViewShortcut(function() { panShift(that.getGridSize(), 0); });
 	});
 	Mousetrap.bind("shift+right", function() {
-		// console.log(`shift+right - pan right ...`);
-		panShift(-that.getGridSize(), 0);
+		runRegularViewShortcut(function() { panShift(-that.getGridSize(), 0); });
 	});
 	Mousetrap.bind("shift+up", function() {
-		// console.log(`shift+up - pan up ...`);
-		panShift(0, that.getGridSize());
+		runRegularViewShortcut(function() { panShift(0, that.getGridSize()); });
 	});
 	Mousetrap.bind("shift+down", function() {
-		// console.log(`shift+down - pan down ...`);
-		panShift(0, -that.getGridSize());
+		runRegularViewShortcut(function() { panShift(0, -that.getGridSize()); });
 	});
 
 	var panShift = function(dx, dy, force) {
 		let show_pan_feedback = allow_panning || panning;
+		if (zoom_fit_active && !force) {
+			return;
+		}
 		if (!allow_panning && !force) {
 			T.logInfo(`    Panning is not allowed in this configuration!`);
 			return;
@@ -209,6 +231,10 @@ UI.Statemachine = new (function() {
 		if (!panning && show_pan_feedback) displayGrid();
 	}
 
+	var setPanShift = function(target) {
+		panShift(-pan_shift.x + target.x, -pan_shift.y + target.y, true);
+	}
+
 	this.panToHome = function() {
 		panShift(-pan_shift.x, -pan_shift.y, true);
 	}
@@ -224,8 +250,240 @@ UI.Statemachine = new (function() {
 		panShift(-pan_shift.x - xc, -pan_shift.y - yc, true);
 	}
 
+	var createFitViewOverlay = function() {
+		let parent = document.getElementById("statemachine");
+		if (parent == undefined) return;
+		fit_view_overlay = document.getElementById("fit_view_overlay");
+		if (fit_view_overlay == undefined) {
+			fit_view_overlay = document.createElement("div");
+			fit_view_overlay.setAttribute("id", "fit_view_overlay");
+			fit_view_overlay.textContent = "Fit View - read-only - click to focus - Ctrl+0 to exit";
+			parent.appendChild(fit_view_overlay);
+		}
+		fit_view_overlay.style.display = "none";
+	}
+
+	var updateFitViewOverlay = function() {
+		if (fit_view_overlay == undefined) return;
+		fit_view_overlay.style.display = zoom_fit_active ? "block" : "none";
+	}
+
+	var getCanvasViewBox = function() {
+		if (R == undefined || R.canvas == undefined || R.canvas.getAttribute == undefined) {
+			return {x: 0, y: 0, width: R ? R.width : 0, height: R ? R.height : 0};
+		}
+		let value = R.canvas.getAttribute("viewBox");
+		if (value == undefined || value === "") {
+			return {x: 0, y: 0, width: R.width, height: R.height};
+		}
+		let parts = value.trim().split(/\s+/).map(parseFloat);
+		if (parts.length != 4 || parts.some(function(part) { return !isFinite(part); })) {
+			return {x: 0, y: 0, width: R.width, height: R.height};
+		}
+		return {x: parts[0], y: parts[1], width: parts[2], height: parts[3]};
+	}
+
+	var clientToSVGPoint = function(event) {
+		if (R == undefined || R.canvas == undefined) {
+			return {x: event.offsetX || 0, y: event.offsetY || 0};
+		}
+		if (R.canvas.createSVGPoint && R.canvas.getScreenCTM) {
+			let matrix = R.canvas.getScreenCTM();
+			if (matrix != undefined && matrix.inverse != undefined && event.clientX != undefined && event.clientY != undefined) {
+				let pt = R.canvas.createSVGPoint();
+				pt.x = event.clientX;
+				pt.y = event.clientY;
+				return pt.matrixTransform(matrix.inverse());
+			}
+		}
+		let rect = R.canvas.getBoundingClientRect ? R.canvas.getBoundingClientRect() : {left: 0, top: 0, width: R.width, height: R.height};
+		let viewBox = getCanvasViewBox();
+		let local_x = event.offsetX;
+		let local_y = event.offsetY;
+		if (local_x == undefined || local_y == undefined) {
+			local_x = (event.clientX == undefined ? 0 : event.clientX - rect.left);
+			local_y = (event.clientY == undefined ? 0 : event.clientY - rect.top);
+		}
+		let rect_width = rect.width || R.width;
+		let rect_height = rect.height || R.height;
+		return {
+			x: viewBox.x + local_x / rect_width * viewBox.width,
+			y: viewBox.y + local_y / rect_height * viewBox.height
+		};
+	}
+
+	var computeFitBounds = function() {
+		let bounds = undefined;
+		drawings.forEach(function(entry) {
+			if (entry == undefined || entry.drawing == undefined || entry.drawing.getBBox == undefined) return;
+			let b;
+			try {
+				b = entry.drawing.getBBox();
+			} catch (err) {
+				return;
+			}
+			if (b == undefined || !isFinite(b.x) || !isFinite(b.y) || !isFinite(b.width) || !isFinite(b.height)) return;
+			let x2 = isFinite(b.x2) ? b.x2 : b.x + b.width;
+			let y2 = isFinite(b.y2) ? b.y2 : b.y + b.height;
+			if (bounds == undefined) {
+				bounds = {x: b.x, y: b.y, x2: x2, y2: y2};
+			} else {
+				bounds.x = Math.min(bounds.x, b.x);
+				bounds.y = Math.min(bounds.y, b.y);
+				bounds.x2 = Math.max(bounds.x2, x2);
+				bounds.y2 = Math.max(bounds.y2, y2);
+			}
+		});
+		if (bounds == undefined) {
+			bounds = {x: 0, y: 0, x2: R.width, y2: R.height};
+		}
+		let margin = that.getGridSize();
+		bounds.x = Math.max(0, bounds.x - margin);
+		bounds.y = Math.max(0, bounds.y - margin);
+		bounds.x2 += margin;
+		bounds.y2 += margin;
+		bounds.width = Math.max(1, bounds.x2 - bounds.x);
+		bounds.height = Math.max(1, bounds.y2 - bounds.y);
+		return bounds;
+	}
+
+	var updateCanvasExtentsFromDrawings = function() {
+		if (R == undefined) return;
+		let bounds = undefined;
+		drawings.forEach(function(entry) {
+			if (entry == undefined || entry.drawing == undefined || entry.drawing.getBBox == undefined) return;
+			if (entry.obj instanceof State && entry.obj.getStateClass() == ':CONTAINER') return;
+			let b;
+			try {
+				b = entry.drawing.getBBox();
+			} catch (err) {
+				return;
+			}
+			if (b == undefined || !isFinite(b.x) || !isFinite(b.y) || !isFinite(b.width) || !isFinite(b.height)) return;
+			let x2 = isFinite(b.x2) ? b.x2 : b.x + b.width;
+			let y2 = isFinite(b.y2) ? b.y2 : b.y + b.height;
+			if (bounds == undefined) {
+				bounds = {x2: x2, y2: y2};
+			} else {
+				bounds.x2 = Math.max(bounds.x2, x2);
+				bounds.y2 = Math.max(bounds.y2, y2);
+			}
+		});
+		if (bounds == undefined) return;
+		let padding = that.getGridSize();
+		sm_extents.x = Math.max(sm_extents.x, Math.ceil(bounds.x2 + padding), R.width);
+		sm_extents.y = Math.max(sm_extents.y, Math.ceil(bounds.y2 + padding), R.height);
+	}
+
+	var applyFitViewBox = function() {
+		if (R == undefined || R.canvas == undefined || R.canvas.setAttribute == undefined) return;
+		let bounds = computeFitBounds();
+		let scale = Math.min(R.width / bounds.width, R.height / bounds.height, 1.0);
+		if (!isFinite(scale) || scale <= 0) scale = 1.0;
+		let view_w = R.width / scale;
+		let view_h = R.height / scale;
+		let center_x = bounds.x + bounds.width / 2;
+		let center_y = bounds.y + bounds.height / 2;
+		let view_x = Math.max(0, center_x - view_w / 2);
+		let view_y = Math.max(0, center_y - view_h / 2);
+		R.canvas.setAttribute("viewBox", view_x + " " + view_y + " " + view_w + " " + view_h);
+		if (fit_pan_indicator != undefined) {
+			let ix = zoom_fit_previous_pan ? -zoom_fit_previous_pan.x : 0;
+			let iy = zoom_fit_previous_pan ? -zoom_fit_previous_pan.y : 0;
+			fit_pan_indicator.attr({x: ix, y: iy, width: R.width, height: R.height, opacity: 1});
+		}
+	}
+
+	var clearFitViewBox = function() {
+		if (R == undefined || R.canvas == undefined) return;
+		if (R.canvas.removeAttribute) {
+			R.canvas.removeAttribute("viewBox");
+		} else if (R.canvas.setAttribute) {
+			R.canvas.setAttribute("viewBox", "0 0 " + R.width + " " + R.height);
+		}
+		if (fit_pan_indicator != undefined) {
+			fit_pan_indicator.attr({x: 0, y: 0, width: 0, height: 0, opacity: 0});
+		}
+	}
+
+	var clampPanToFitBounds = function(target_pan) {
+		if (target_pan == undefined || R == undefined) return target_pan;
+		let bounds = computeFitBounds();
+		let min_x = Math.min(-bounds.x, R.width - bounds.x2);
+		let max_x = Math.max(-bounds.x, R.width - bounds.x2);
+		let min_y = Math.min(-bounds.y, R.height - bounds.y2);
+		let max_y = Math.max(-bounds.y, R.height - bounds.y2);
+		return {
+			x: Math.min(max_x, Math.max(min_x, target_pan.x)),
+			y: Math.min(max_y, Math.max(min_y, target_pan.y))
+		};
+	}
+
+	this.enableFitView = function() {
+		if (zoom_fit_active || R == undefined) return;
+		if (connecting) {
+			T.logInfo("Finish or abort the active transition before entering Fit View.");
+			return;
+		}
+		zoom_fit_previous_pan = {x: pan_shift.x, y: pan_shift.y};
+		that.removeSelection();
+		that.panToHome();
+		zoom_fit_active = true;
+		hideGrid();
+		updateFitViewOverlay();
+		if (displayed_sm != undefined) {
+			that.refreshView();
+		} else {
+			applyFitViewBox();
+		}
+		T.logInfo("Fit View enabled: editing is disabled until you return to actual size.");
+	}
+
+	this.disableFitView = function(focus_point) {
+		if (!zoom_fit_active) return;
+		zoom_fit_active = false;
+		clearFitViewBox();
+		updateFitViewOverlay();
+		let target_pan = zoom_fit_previous_pan || {x: 0, y: 0};
+		if (focus_point != undefined && isFinite(focus_point.x) && isFinite(focus_point.y)) {
+			target_pan = {
+				x: Math.min(0, Math.round(R.width / 2 - focus_point.x)),
+				y: Math.min(0, Math.round(R.height / 2 - focus_point.y))
+			};
+		}
+		target_pan = clampPanToFitBounds(target_pan);
+		setPanShift(target_pan);
+		zoom_fit_previous_pan = undefined;
+		if (displayed_sm != undefined) {
+			that.refreshView();
+		}
+		T.logInfo("Fit View disabled: editing restored.");
+	}
+
+	this.toggleFitView = function() {
+		if (zoom_fit_active) {
+			that.disableFitView();
+		} else {
+			that.enableFitView();
+		}
+	}
+
+	this.isFitView = function() {
+		return zoom_fit_active;
+	}
+
+	var handleFitViewClick = function(event) {
+		if (!zoom_fit_active) return;
+		if (event.preventDefault) event.preventDefault();
+		if (event.stopPropagation) event.stopPropagation();
+		if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+		let focus_point = clientToSVGPoint(event);
+		that.disableFitView(focus_point);
+	}
+
 	var updateMousePos = function(event) {
-		mouse_pos.attr({ cx: event.offsetX, cy: event.offsetY });
+		let p = clientToSVGPoint(event);
+		mouse_pos.attr({ cx: p.x, cy: p.y });
 		if (connecting) {
 			if (connect_refresh_pending) return;
 			connect_refresh_pending = true;
@@ -242,11 +500,14 @@ UI.Statemachine = new (function() {
 	var createGrid = function() {
 		if (grid.length > 0) return;
 		let gridsize = that.getGridSize();
+		let makeGridLine = function(path) {
+			return R.path(path).attr({stroke: '#ddd', 'pointer-events': 'none'}).hide();
+		}
 		for (let i = 0; i <= R.width + gridsize; i += gridsize) {
-			grid.push(R.path("M" + i + ",0L" + i + "," + (R.height + gridsize)).attr({stroke: '#ddd'}).hide());
+			grid.push(makeGridLine("M" + i + ",0L" + i + "," + (R.height + gridsize)));
 		}
 		for (let i = 0; i <= R.height + gridsize; i += gridsize) {
-			grid.push(R.path("M0," + i + "L" + (R.width + gridsize) + "," + i).attr({stroke: '#ddd'}).hide());
+			grid.push(makeGridLine("M0," + i + "L" + (R.width + gridsize) + "," + i));
 		}
 	}
 	var displayGrid = function() {
@@ -261,6 +522,7 @@ UI.Statemachine = new (function() {
 	}
 
 	var beginSelection = function(x, y, event) {
+		if (zoom_fit_active) return;
 		if (allow_panning) {
 			panning = true;
 			pan_origin.x = x;
@@ -511,14 +773,21 @@ UI.Statemachine = new (function() {
 			cursor: "pointer"})
 			.drag(updateSelectionMove, beginSelectionMove, endSelectionMove);
 
-		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0});
+		mouse_pos = R.circle(0, 0, 2).attr({opacity: 0, 'pointer-events': 'none'});
 
 		background = R.rect(0, 0, R.width, R.height)
 			.attr({fill: '#FFF', stroke: '#FFF'}).toBack()
 			.mousemove(updateMousePos)
 			.drag(updateSelection, beginSelection, endSelection)
 			.click(function() { document.activeElement.blur(); });
+		fit_pan_indicator = R.rect(0, 0, 0, 0)
+			.attr({fill: '#fff', stroke: '#cfd6df', 'stroke-width': 1, opacity: 0, 'pointer-events': 'none'});
 		sm_extents = {x: R.width, y: R.height};
+		createFitViewOverlay();
+		if (R.canvas != undefined && R.canvas.addEventListener != undefined) {
+			R.canvas.addEventListener("click", handleFitViewClick, true);
+		}
+		updateFitViewOverlay();
 	}
 
 
@@ -532,6 +801,8 @@ UI.Statemachine = new (function() {
 	}
 
 	this.recreateDrawingArea = function() {
+		zoom_fit_active = false;
+		zoom_fit_previous_pan = undefined;
 		// clear
 		for (let i=0; i<drawings.length; ++i) {
 			drawings[i].drawing.remove();
@@ -608,6 +879,12 @@ UI.Statemachine = new (function() {
 	}
 
 	this.setDisplayedSM = function(statemachine) {
+		if (zoom_fit_active) {
+			zoom_fit_active = false;
+			clearFitViewBox();
+			updateFitViewOverlay();
+			zoom_fit_previous_pan = undefined;
+		}
 		displayed_sm = statemachine;
 		connecting = false;
 		drag_transition = undefined;
@@ -636,7 +913,8 @@ UI.Statemachine = new (function() {
 	}
 
 	this.isReadonly = function() {
-		return displayed_sm == undefined
+		return zoom_fit_active
+			|| displayed_sm == undefined
 			|| RC.Controller.isReadonly()
 			|| displayed_sm.isInsideDifferentBehavior()
 			|| Behavior.isReadonly();
@@ -1063,11 +1341,11 @@ UI.Statemachine = new (function() {
 			let l = RC.Controller.isLocked() && RC.Controller.isOnLockedPath(s.getStatePath());
 			let sd;
 			if (s instanceof Statemachine)
-				sd = new Drawable.Statemachine(s, R, false, Drawable.State.Mode.OUTCOME, a, l);
+				sd = new Drawable.Statemachine(s, R, zoom_fit_active, Drawable.State.Mode.OUTCOME, a, l);
 			else if (s instanceof BehaviorState)
-				sd = new Drawable.BehaviorState(s, R, false, Drawable.State.Mode.OUTCOME, a, l);
+				sd = new Drawable.BehaviorState(s, R, zoom_fit_active, Drawable.State.Mode.OUTCOME, a, l);
 			else
-				sd = new Drawable.State(s, R, false, Drawable.State.Mode.OUTCOME, a, l);
+				sd = new Drawable.State(s, R, zoom_fit_active, Drawable.State.Mode.OUTCOME, a, l);
 			drawings.push(sd);
 			state_drawings_map.set(s.getStateName(), sd.drawing);
 
@@ -1077,7 +1355,7 @@ UI.Statemachine = new (function() {
 		}
 		for (let i=0; i<sm_outcomes.length; ++i) {
 			o = sm_outcomes[i];
-			let obj = new Drawable.Outcome(o, R, false, !outcomes_displayed);
+			let obj = new Drawable.Outcome(o, R, zoom_fit_active, !outcomes_displayed);
 			drawings.push(obj);
 			state_drawings_map.set(o.getStateName(), obj.drawing);
 			if (o.getPosition().x > sm_extents.x) sm_extents.x = o.getPosition().x + that.getGridSize();
@@ -1085,7 +1363,7 @@ UI.Statemachine = new (function() {
 		}
 
 		// draw transitions at last
-		let transitions_readonly = RC.Controller.isReadonly() || dataflow_displayed || displayed_sm.isInsideDifferentBehavior() || Behavior.isReadonly();
+		let transitions_readonly = that.isReadonly() || dataflow_displayed;
 		let transition_merge_map = new Map();
 		for (let i=0; i<transitions.length; ++i) {
 			let t = transitions[i];
@@ -1155,15 +1433,21 @@ UI.Statemachine = new (function() {
 				if (notes[i].getContent() == "") n.editNote();
 			}
 		}
+		updateCanvasExtentsFromDrawings();
 
-		if (RC.Controller.isReadonly()) {
-			background.attr({fill: '#f3f6ff', stroke: '#c5d2ee'});
+		if (zoom_fit_active) {
+			background.attr({fill: '#f7f8fa', stroke: 'none', opacity: 0, cursor: 'default', 'pointer-events': 'auto'});
+		} else if (RC.Controller.isReadonly()) {
+			background.attr({fill: '#f3f6ff', stroke: '#c5d2ee', opacity: 1, cursor: 'auto', 'pointer-events': 'auto'});
 		} else if (displayed_sm.isInsideDifferentBehavior() || Behavior.isReadonly()) {
-			background.attr({fill: '#fff3f6'});
+			background.attr({fill: '#fff3f6', stroke: '#fff3f6', opacity: 1, cursor: 'auto', 'pointer-events': 'auto'});
 		} else {
-			background.attr({fill: '#FFF'});
+			background.attr({fill: '#FFF', stroke: '#FFF', opacity: 1, cursor: 'auto', 'pointer-events': 'auto'});
 		}
 		background.toBack();
+		if (zoom_fit_active && fit_pan_indicator != undefined && fit_pan_indicator.insertAfter) {
+			fit_pan_indicator.insertAfter(background);
+		}
 		selection_area.toFront();
 
 		drawings.push(displaySMPath());
@@ -1184,6 +1468,9 @@ UI.Statemachine = new (function() {
 			d.translate(pan_shift.x, pan_shift.y);
 			d.mousemove(updateMousePos);
 		});
+		if (zoom_fit_active) {
+			applyFitViewBox();
+		}
 	}
 
 	this.getDrawnState = function(state) {
@@ -1191,6 +1478,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.beginTransition = function(state, label) {
+		if (zoom_fit_active) return;
 		if (connecting) return;
 		that.removeSelection();
 
@@ -1207,6 +1495,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.beginInitTransition = function() {
+		if (zoom_fit_active) return;
 		if (connecting) return;
 		that.removeSelection();
 
@@ -1245,6 +1534,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.resetTransition = function(transition) {
+		if (zoom_fit_active) return;
 		if (connecting) return;
 		transition.setBeginning(undefined);
 		transition.setEnd(undefined);
@@ -1261,6 +1551,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.removeTransition = function() {
+		if (zoom_fit_active) return;
 		if (!connecting) return;
 		if (!displayed_sm.hasTransition(drag_transition)) {
 			that.abortTransition();
@@ -1325,6 +1616,7 @@ UI.Statemachine = new (function() {
 	}
 
 	this.connectTransition = function(state) {
+		if (zoom_fit_active) return;
 		if (!connecting) return;
 		if (displayed_sm.isConcurrent()
 			&& state.getStateClass() != ':CONDITION'
@@ -1614,6 +1906,13 @@ UI.Statemachine = new (function() {
 			event.stopPropagation(); // Stop the event from propagating to other handlers
 			UI.Panels.setFocus();
 			UI.Panels.handleKeyDown(event);
+		} else if (event.key === "Escape"
+			&& UI.Panels.isActivePanel != undefined
+			&& UI.Panels.isActivePanel(UI.Panels.STATE_PROPERTIES_PANEL)
+			&& UI.Panels.closeActiveStateProperties != undefined) {
+			event.preventDefault(); // Prevent the default action
+			event.stopPropagation(); // Stop the event from propagating to other handlers
+			UI.Panels.closeActiveStateProperties();
 		} else if (event.target.id === 'statemachine') {
 			// SM view is active so capture all keys
 			event.preventDefault(); // Prevent the default action

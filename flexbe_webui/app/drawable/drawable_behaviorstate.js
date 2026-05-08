@@ -140,7 +140,9 @@ Drawable.BehaviorState = function(_state_obj, target_paper, readonly, mode, acti
 
 	width += width_padding;
 	height -= height_trim;
-	const state_outer_box = paper.rect(0, 0, width, height).toBack();
+	const state_outer_box = paper.rect(0, 0, width, height);
+	if (state_outer_box.insertBefore) state_outer_box.insertBefore(state_name);
+	else state_outer_box.toBack();
 	state_outer_box.attr({'stroke-width': node_stroke_width});
 	if (!readonly) state_outer_box
 		.attr({'cursor': 'pointer'})
@@ -148,7 +150,9 @@ Drawable.BehaviorState = function(_state_obj, target_paper, readonly, mode, acti
 		.click(Drawable.Helper.viewStateProperties)
 		.dblclick(Drawable.Helper.enterBehavior);
 
-	const state_box = paper.rect(border_inset, border_inset, width - border_inset * 2, height - border_inset * 2).toBack();
+	const state_box = paper.rect(border_inset, border_inset, width - border_inset * 2, height - border_inset * 2);
+	if (state_box.insertBefore) state_box.insertBefore(state_name);
+	else state_box.toBack();
 	if (locked) state_box
 		.attr({fill: '120-#eb6:0-#fd9:80', 'stroke-width': node_stroke_width_highlight});
 	else if (active) state_box
