@@ -9,6 +9,10 @@ UI.RuntimeControl = new (function() {
 	var income_transition = undefined;
 	var current_state = undefined;
 	var current_level = 0;
+	var current_depth = 0;
+	var chosen_level = undefined;
+	var chosen_level_state_path = undefined;
+	var pinned_at_depth = 0;
 	var next_states = {};
 	var outcome_transitions = [];
 	var drawings = [];
@@ -159,6 +163,33 @@ UI.RuntimeControl = new (function() {
 			.attr({'font-size': 16, 'fill': 'gray'});
 	}
 
+	var clearChosenLevel = function() {
+		chosen_level = undefined;
+		chosen_level_state_path = undefined;
+		pinned_at_depth = 0;
+	}
+
+	var clearStaleStatusLabel = function(displayed_state) {
+		if (status_label == undefined) return;
+		const preserve_status = displayed_state != undefined
+			&& outcome_request.target != undefined
+			&& outcome_request.target == displayed_state.getStatePath();
+		if (!preserve_status) {
+			status_label.remove();
+			status_label = undefined;
+		}
+	}
+
+	var focusOutcomeRequestTarget = function(target_path) {
+		if (target_path == undefined) return;
+		if (level_fallback_timer != undefined) {
+			clearTimeout(level_fallback_timer);
+			level_fallback_timer = undefined;
+		}
+		clearChosenLevel();
+		current_level = target_path.split("/").length - 1;
+	}
+
 	this.createDrawing = function(state_obj, mode, active, locked) {
 
 		if (current_state == undefined) {
@@ -237,6 +268,11 @@ UI.RuntimeControl = new (function() {
 		if (selection_box != undefined) {
 			selection_box.selectedIndex = selection_box.length - current_level;
 		}
+
+		chosen_level = current_level;
+		chosen_level_state_path = (current_states[chosen_level] != undefined)
+			? current_states[chosen_level].getStatePath() : undefined;
+		pinned_at_depth = current_depth;
 
 		that.updateStateDisplay();
 	}
@@ -341,6 +377,8 @@ UI.RuntimeControl = new (function() {
 			level_fallback_timer = undefined;
 		}
 		current_level = 0;
+		current_depth = 0;
+		clearChosenLevel();
 		current_state = undefined;
 		current_states = [];
 		previous_states = [];
@@ -851,7 +889,13 @@ UI.RuntimeControl = new (function() {
 		RC.Sync.setVisualizationCallback(function (sync_processes) {
 			let processes = sync_processes.clone();
 			if (processes.length == 0) {
-				document.getElementById("sync_extension").innerHTML = '<div id="sync_empty" style="font-style: italic; color: gray;"> none active</div>';
+				if (document.getElementById("sync_empty") == undefined) {
+					const sync_empty = document.createElement("div");
+					sync_empty.id = "sync_empty";
+					sync_empty.style.cssText = "font-style: italic; color: gray;";
+					sync_empty.textContent = " none active";
+					document.getElementById("sync_extension").appendChild(sync_empty);
+				}
 				return;
 			} else {
 				let empt = document.getElementById("sync_empty");
@@ -899,10 +943,17 @@ UI.RuntimeControl = new (function() {
 				let entry_color = (p.status == RC.Sync.STATUS_WARN)? '#dd2' :
 								  (p.status == RC.Sync.STATUS_ERROR)? '#c64' :
 								  '#9d5';
-				let d_content  = '<div class="sync_bar_border">';
-				d_content += '<div class="sync_bar_content" style="width: ' + (p.fulfilled * 100) + '%; background-color: ' + entry_color + ';"></div>';
-				d_content += '</div><font>' + p.key + '</font>';
-				d.innerHTML = d_content;
+				const bar_border = document.createElement("div");
+				bar_border.className = "sync_bar_border";
+				const bar_content = document.createElement("div");
+				bar_content.className = "sync_bar_content";
+				bar_content.style.width = (p.fulfilled * 100) + '%';
+				bar_content.style.backgroundColor = entry_color;
+				bar_border.appendChild(bar_content);
+				d.appendChild(bar_border);
+				const key_label = document.createElement("span");
+				key_label.textContent = p.key;
+				d.appendChild(key_label);
 				document.getElementById("sync_extension").appendChild(d);
 			}
 			document.getElementById("sync_extension").style.height = Math.max(20, 20 * document.getElementById("sync_extension").childNodes.length) + "px";
@@ -1144,27 +1195,28 @@ UI.RuntimeControl = new (function() {
 				const path = entry.path;
 				const target_state = entry.state;
 				if (value !== 255 && value >= 0) {
-				nextRequest = key;
-				outcome_request.target = path;
-				outcome_request.outcome = target_state.getOutcomes()[value];
-				pending_outcome_requests.set(key, -1 - value); // negate and subtract -1 (for 0) to show we have sent the request
-				break; // Exit the loop once the first non-255 value is found
+					nextRequest = key;
+					outcome_request.target = path;
+					outcome_request.outcome = target_state.getOutcomes()[value];
+					pending_outcome_requests.set(key, -1 - value); // negate and subtract -1 (for 0) to show we have sent the request
+					break; // Exit the loop once the first non-255 value is found
+				}
+			}
+
+			if (nextRequest == null) {
+				// No pending outcome requests
+				return;
+			}
+
+			// Force immediate redraw to avoid issues with prior updates
+			current_state = undefined; // force full update
+			focusOutcomeRequestTarget(outcome_request.target);
+			RC.Controller.setCurrentStatePath(outcome_request.target);
+			if (R != undefined) {
+				that.drawStatusLabel(`Onboard requested outcome: ${RC.Controller.getCurrentState().getStateName()} > ${outcome_request.outcome}`);
+				that.updateDrawing();
 			}
 		}
-
-		if (nextRequest == null) {
-			// No pending outcome requests
-			return;
-		}
-
-		// Force immediate redraw to avoid issues with prior updates
-		current_state = undefined; // force full update
-		RC.Controller.setCurrentStatePath(outcome_request.target);
-		if (R != undefined) {
-			that.drawStatusLabel(`Onboard requested outcome: ${RC.Controller.getCurrentState().getStateName()} > ${outcome_request.outcome}`);
-			that.updateDrawing();
-		}
-	}
 
 	this.displayLockBehavior = function() {
 		let lock_button = document.getElementById("button_behavior_lock");
@@ -1174,7 +1226,9 @@ UI.RuntimeControl = new (function() {
 		selection_box.setAttribute("id", "selection_rc_lock_layer");
 		if (R == undefined) {
 			lock_button.setAttribute("disabled", "disabled");
-			selection_box.innerHTML = '<option>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</option>';
+			const placeholder_opt = document.createElement("option");
+			placeholder_opt.textContent = '     ';
+			selection_box.appendChild(placeholder_opt);
 			selection_box.setAttribute("disabled", "disabled");
 		} else {
 			lock_button.removeAttribute("disabled");
@@ -1226,7 +1280,7 @@ UI.RuntimeControl = new (function() {
 		}
 
 		let label_td = document.createElement("td");
-		label_td.innerHTML = "At level: ";
+		label_td.textContent = "At level: ";
 		let selection_td = document.createElement("td");
 		selection_td.appendChild(selection_box);
 
@@ -1241,10 +1295,11 @@ UI.RuntimeControl = new (function() {
 		lock_button.removeAttribute("disabled");
 
 		let label_td = document.createElement("td");
+		label_td.style.color = "gray";
 		if (have_changes) {
-			label_td.innerHTML = '<font style="color: gray">Do further changes or switch to the new version and continue its execution.</font>';
+			label_td.textContent = 'Do further changes or switch to the new version and continue its execution.';
 		} else {
-			label_td.innerHTML = '<font style="color: gray">You may now change the behavior or unlock it to continue its execution.</font>';
+			label_td.textContent = 'You may now change the behavior or unlock it to continue its execution.';
 		}
 
 		let tr = document.getElementById("behavior_lock_display");
@@ -1271,7 +1326,8 @@ UI.RuntimeControl = new (function() {
 		});
 
 		let label_td = document.createElement("td");
-		label_td.innerHTML = '<font style="color: gray">Behavior changed, please save before unlock.</font>';
+		label_td.style.color = "gray";
+		label_td.textContent = 'Behavior changed, please save before unlock.';
 		let button_td = document.createElement("td");
 		button_td.appendChild(button);
 
@@ -1302,6 +1358,18 @@ UI.RuntimeControl = new (function() {
 			current_states[i] = new_current_state;
 		}
 
+		current_depth = new_depth;
+
+		// Release pin if execution deepened past the level it was set, or if the
+		// pinned container has been exited (a different state now occupies that level).
+		if (chosen_level != undefined) {
+			let container_changed = current_states[chosen_level] == undefined
+				|| current_states[chosen_level].getStatePath() != chosen_level_state_path;
+			if (new_depth > pinned_at_depth || container_changed) {
+				clearChosenLevel();
+			}
+		}
+
 		if (new_depth < current_level && !force_redraw) {
 			// Path got shallower (container exit). Keep displaying the current level
 			// for a short window — if a new deeper path arrives within LEVEL_FALLBACK_MS
@@ -1311,6 +1379,9 @@ UI.RuntimeControl = new (function() {
 				let fallback_depth = new_depth;
 				level_fallback_timer = setTimeout(function() {
 					level_fallback_timer = undefined;
+					if (chosen_level != undefined && chosen_level > fallback_depth) {
+						clearChosenLevel();
+					}
 					current_states = current_states.slice(0, fallback_depth + 1);
 					previous_states = previous_states.slice(0, fallback_depth + 1);
 					current_level = fallback_depth;
@@ -1330,12 +1401,23 @@ UI.RuntimeControl = new (function() {
 		current_states = current_states.slice(0, path_segments.length);
 		previous_states = previous_states.slice(0, path_segments.length);
 
+		// If the user pinned a container level, stay there while the pin is valid.
+		if (!force_redraw && chosen_level != undefined) {
+			current_level = chosen_level;
+			if (!RC.Controller.isLocked()) that.displayLockBehavior();
+			clearStaleStatusLabel(current_states[current_level]);
+			that.updateStateDisplay();
+			return;
+		}
+
 		if (!force_redraw) {
 			try {
-				if (current_state != undefined && current_level < path_segments.length
+				if (current_state != undefined && current_level == new_depth
 					&& current_states[current_level] != undefined
 					&& current_states[current_level].getStatePath() == current_state.getStatePath()) {
-					// don't update display if it's only a child update
+					// Don't redraw if this update keeps the displayed path unchanged.
+					// If the mirror reports a deeper child path, fall through so the
+					// runtime display follows the deepest active state.
 					if (!RC.Controller.isLocked()) {
 						that.displayLockBehavior();
 					}
@@ -1362,16 +1444,7 @@ UI.RuntimeControl = new (function() {
 			that.displayLockBehavior();
 		}
 
-		if (status_label != undefined) {
-			const displayed_state = current_states[current_level];
-			const preserve_status = displayed_state != undefined
-				&& outcome_request.target != undefined
-				&& outcome_request.target == displayed_state.getStatePath();
-			if (!preserve_status) {
-				status_label.remove();
-				status_label = undefined;
-			}
-		}
+		clearStaleStatusLabel(current_states[current_level]);
 
 		that.updateStateDisplay();
 	}
