@@ -2,6 +2,35 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.1.2 (2026-05-08)
+------------------
+* Add Fit View (``Ctrl+0``) to zoom the canvas to fit the full state machine
+  * click anywhere to recenter and exit fit view
+  * ``Ctrl+0`` or ``Esc`` to toggle and return back to prior view
+  * ``Shift + arrow`` pan shortcut to exit.
+* Restore the last-loaded behavior across WebUI client reconnects
+  * The server persists session state and the client reloads it automatically on first heartbeat after reconnect.
+* Track runtime display depth and let users pin a display level that survives sibling-state
+  transitions, with a short fallback window before committing to a shallower view.
+* Add simple automatic layout for behavior-selection state machines (``Tools → Auto Layout``).
+* Add package-aware selective behavior loading so multi-package workspaces load only the packages
+  they need; resolves cross-package name collisions unambiguously.
+* Improve behavior loading and rendering performance for large behavior libraries and state machines.
+* Add copied-outcome connection support so copied states carry their outgoing transitions.
+* Document all new shortcuts in ``docs/shortcuts.md``.
+* Add ``Home`` / ``End`` canvas pan shortcuts, including ``Ctrl``/``Shift`` variants and ``Shift+Space`` home.
+* Make UI panel sizes configurable through the Settings panel.
+* Rescale state positions proportionally when the statemachine font size is changed.
+* ``Ctrl+S`` now applies pending state property edits before saving to prevent parameter loss.
+* Fix behavior save paths for install-space and symlink (editable-install) package layouts.
+* Fix transition label stacking for outcomes that share the same target state.
+* Fix WebSocket subscriber lifecycle: defer subscription destruction to the ROS executor thread to prevent ``InvalidHandle`` crashes on disconnect.
+* Accept boolean and ``None`` values in tuple-type parameters; add parameter type tooltips.
+* Send synthesis predicates as arrays to match the expected action payload shape.
+* Downgrade suggested state-name style warnings to local info so they do not pollute the user-facing console.
+* Harden behavior parser, API/ROS transport handling, action-goal cancellation, safe text rendering, interface resolution, and nested behavior path handling.
+* Fix Pydantic v1/v2 serialization compatibility in the package cache and behavior endpoints.
+
 4.1.1 (2026-03-25)
 ------------------
 * Fix UI freeze when autonomy raised while behavior is blocked
