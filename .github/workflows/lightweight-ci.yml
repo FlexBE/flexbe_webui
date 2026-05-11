@@ -28,6 +28,7 @@ jobs:
           python -m pip install \
             fastapi \
             flake8 \
+            jinja2 \
             pytest \
             flake8-bugbear \
             flake8-builtins \

@@ -29,7 +29,7 @@ from starlette.responses import Response
 
 def _install_shims_if_needed():
     """Provide minimal stubs for ROS-only imports when running outside ROS."""
-    if importlib.util.find_spec('ament_index_python') is None:
+    if 'ament_index_python' not in sys.modules and importlib.util.find_spec('ament_index_python') is None:
         ament_index_python = types.ModuleType('ament_index_python')
         ament_index_python.get_package_share_directory = lambda _: os.getcwd()
         ament_index_python.get_packages_with_prefixes = lambda: {}
@@ -39,7 +39,7 @@ def _install_shims_if_needed():
         ament_index_python_packages.get_package_share_directory = lambda _: os.getcwd()
         sys.modules['ament_index_python.packages'] = ament_index_python_packages
 
-    if importlib.util.find_spec('flexbe_core') is None:
+    if 'flexbe_core' not in sys.modules and importlib.util.find_spec('flexbe_core') is None:
         flexbe_core = types.ModuleType('flexbe_core')
 
         class EventState:
