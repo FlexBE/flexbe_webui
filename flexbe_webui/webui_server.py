@@ -1014,7 +1014,7 @@ class WebuiServer:
                     )
                     self._record_timing('viewer', endpoint, elapsed, True, package=package_name, file=file_name)
                     return self.api_success({'text': highlighted_code, 'file_path': display_file_path})
-                except (OSError, ValueError, UnicodeError) as exc:
+                except (OSError, ValueError) as exc:
                     elapsed = datetime.now().timestamp() - start_clock
                     self._log_request(
                         logging.WARNING,

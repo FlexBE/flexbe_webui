@@ -50,7 +50,7 @@ def get_packages() -> Dict[str, PackageData]:
                 python_path = list(spec.submodule_search_locations)[-1]
             else:
                 editable = False
-        except (ImportError, ModuleNotFoundError, AttributeError, IndexError, ValueError):
+        except (ImportError, AttributeError, IndexError, ValueError):
             editable = False
         except Exception as exc:  # noqa: B902
             # Broad catch for broken import hooks or package metadata. Log and
