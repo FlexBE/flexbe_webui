@@ -16,22 +16,22 @@
 
 import argparse
 import asyncio
+from datetime import datetime
 import os
 import signal
 import sys
-import time
-from datetime import datetime
 from threading import Thread
+import time
 from urllib.parse import quote
 
-from PySide6.QtCore import QTimer, QUrl, Qt, Signal, Slot
+from ament_index_python.packages import get_package_share_directory
+
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow
-
-from ament_index_python.packages import get_package_share_directory
 
 import websockets
 

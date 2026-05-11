@@ -14,9 +14,9 @@
 
 """Browser-free frontend regression tests executed through Node.js."""
 
+from pathlib import Path
 import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
 

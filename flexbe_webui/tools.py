@@ -16,8 +16,8 @@
 """Load settings for flexbe_webui."""
 
 import os
-import re
 from pathlib import Path
+import re
 
 from pygments import highlight
 from pygments.formatters import HtmlFormatter

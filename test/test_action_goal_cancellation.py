@@ -16,15 +16,15 @@
 
 import argparse
 import asyncio
-import threading
 from collections import deque
+import threading
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
-import flexbe_webui.webui_node as webui_node
 from flexbe_webui.io.base_models import CloseSubscriberRequest, CreateSubscriberRequest, SendActionGoalRequest
-from flexbe_webui.webui_node import WebuiNode, _RosWebsocketBridge
+import flexbe_webui.webui_node as webui_node
+from flexbe_webui.webui_node import _RosWebsocketBridge, WebuiNode
 
 from pydantic import ValidationError
 

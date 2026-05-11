@@ -16,6 +16,9 @@
 
 import argparse
 import asyncio
+from collections import deque
+from contextlib import asynccontextmanager
+from datetime import datetime
 import glob
 import hmac
 import importlib
@@ -24,12 +27,9 @@ import logging
 import os
 import shlex
 import shutil
+from subprocess import Popen
 import threading
 import traceback
-from collections import deque
-from contextlib import asynccontextmanager
-from datetime import datetime
-from subprocess import Popen
 from typing import Dict, List, Optional
 
 from ament_index_python import get_package_share_directory
@@ -47,8 +47,8 @@ from .io.base_models import (AutoLayoutRequest, Behavior, BehaviorCodeGeneratorR
                              FileRequest, ManifestGeneratorRequest, OpenFileEditorRequest)
 from .io.behavior_parser import parse_behavior_folder
 from .io.code_generator import CodeGenerator
-from .io.manifest_generator import ManifestGenerator
 from .io.manifest_generator import generate_file_name, generate_manifest_name, xml_attr
+from .io.manifest_generator import ManifestGenerator
 from .io.state_parser import parse_state_folder
 from .ros import PackageData
 from .ros.packages import get_packages, has_behaviors, has_states

@@ -17,9 +17,9 @@
 import argparse
 import asyncio
 import json
+from pathlib import Path
 import shutil
 import subprocess
-from pathlib import Path
 from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
