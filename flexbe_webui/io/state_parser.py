@@ -87,12 +87,12 @@ def parse_state(import_path: str, file_path: str) -> List[StateDefinition]:
             # print(f'parseState {state_class} with parameters={state_params}'
             #       f' [{state_params_values}] [{argdefs}]', flush=True)
 
-            def __event_init(*args, **kwargs):
+            def __event_init(*args, _sd=state_data, **kwargs):
                 # print(f'state_parser: __event_init args={args} kwargs={kwargs}', flush=True)
-                state_data['state_outcomes'] = kwargs.get('outcomes', [])
-                state_data['state_autonomy'] = [0] * len(state_data['state_outcomes'])
-                state_data['state_input'] = kwargs.get('input_keys', [])
-                state_data['state_output'] = kwargs.get('output_keys', [])
+                _sd['state_outcomes'] = kwargs.get('outcomes', [])
+                _sd['state_autonomy'] = [0] * len(_sd['state_outcomes'])
+                _sd['state_input'] = kwargs.get('input_keys', [])
+                _sd['state_output'] = kwargs.get('output_keys', [])
                 raise NotImplementedError()  # expected - used to prevent further instantiation to avoid side-effects
 
             with _EVENT_STATE_INIT_LOCK:
