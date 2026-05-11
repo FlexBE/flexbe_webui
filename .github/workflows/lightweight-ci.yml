@@ -3,6 +3,7 @@ name: Lightweight CI
 on:
   pull_request:
   push:
+    branches: [main]
 
 jobs:
   checks:
@@ -27,6 +28,7 @@ jobs:
           python -m pip install \
             fastapi \
             flake8 \
+            pytest \
             flake8-bugbear \
             flake8-builtins \
             flake8-import-order \
@@ -39,7 +41,7 @@ jobs:
 
       - name: Run flake8
         if: matrix.check == 'flake8'
-        run: python -m flake8 --jobs=1 .
+        run: python -m flake8 .
 
       - name: Run py_compile
         if: matrix.check == 'py_compile'
@@ -47,4 +49,4 @@ jobs:
 
       - name: Run In-Process Smoke Test
         if: matrix.check == 'smoke'
-        run: python test/smoke_server.py
+        run: python -m pytest test/test_smoke_server.py -v
