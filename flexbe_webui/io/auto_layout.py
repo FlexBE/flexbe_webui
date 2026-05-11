@@ -367,7 +367,7 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
     init_name = layout_request.initial_state_name or ''
 
     order_lookup: Dict[str, int] = {}
-    for rank, nodes in ranked_nodes.items():
+    for _rank, nodes in ranked_nodes.items():
         nodes.sort(key=lambda n: (n.state_name != init_name, *_stable_sort_key(n)))
         for order, node in enumerate(nodes):
             order_lookup[node.state_name] = order

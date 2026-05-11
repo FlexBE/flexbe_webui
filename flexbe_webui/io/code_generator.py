@@ -678,7 +678,7 @@ class CodeGenerator:
         transition_strings = []
         state_transitions = [tran for tran in transitions if tran.from_state_name == state.state_name]
 
-        for ndx, out in enumerate(state.outcomes):
+        for _ndx, out in enumerate(state.outcomes):
             outcome_transition = next((tran for tran in state_transitions if tran.outcome == out), None)
             if outcome_transition is None:
                 raise ValueError(f"outcome '{out}' in state '{state.state_name}' is not connected")
