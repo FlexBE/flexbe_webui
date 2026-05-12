@@ -2,6 +2,17 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.1.3 (2026-05-11)
+------------------
+* Fix to work with flexbe_behaviors packages defined using ament_python
+* Align flake8 with ROS 2 defaults
+* Update for CI testing
+* Suppress A005 and B008 in flake8 config (intentional patterns)
+* Bind loop variable in closure
+* Remove redundant exception subtypes
+* Rename unused loop variables
+* Fix lightweight CI: correct smoke path, config, and triggers
+
 4.1.2 (2026-05-08)
 ------------------
 * Add Fit View (``Ctrl+0``) to zoom the canvas to fit the full state machine
