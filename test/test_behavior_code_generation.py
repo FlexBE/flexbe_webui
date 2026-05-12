@@ -252,6 +252,50 @@ def test_behavior_code_generator_reports_install_only_when_source_save_disabled(
     assert result['data']['src_error_msg'] == ''
 
 
+def test_behavior_code_generator_prefers_manifest_install_root_for_ament_python_symlink(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
+):
+    """ament_python symlink installs should save code beside the install-side manifest."""
+    build_python_root = tmp_path / 'build' / 'symlink_pkg' / 'symlink_pkg'
+    install_root = tmp_path / 'install' / 'symlink_pkg'
+    install_code_root = install_root / 'lib' / 'symlink_pkg'
+    install_manifest_root = install_code_root / 'manifest'
+    build_python_root.mkdir(parents=True)
+    install_manifest_root.mkdir(parents=True)
+
+    server_with_package.packages['symlink_pkg'] = PackageData(
+        name='symlink_pkg',
+        path=str(install_root),
+        python_path=str(build_python_root),
+        editable=True,
+    )
+    server_with_package._settings['save_in_source'] = False
+
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.package_name = 'symlink_pkg'
+    request_payload.file_name = 'symlink_demo_sm.py'
+    request_payload.save_as = True
+    request_payload.behavior.update({
+        'behavior_name': 'Symlink Demo',
+        'behavior_package': 'symlink_pkg',
+    })
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is True
+    assert result['data']['error_msg'] == ''
+    assert result['data']['python_file_path'] == str(install_code_root)
+    assert (install_code_root / 'symlink_demo_sm.py').exists()
+    assert (install_manifest_root / 'symlink_demo.xml').exists()
+    assert not (build_python_root / 'symlink_demo_sm.py').exists()
+
+
 def test_behavior_code_generator_save_as_writes_new_file_in_target_package(
     server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
 ):

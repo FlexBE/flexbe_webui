@@ -346,10 +346,13 @@ class WebuiServer:
         if not manifest_path:
             return []
         manifest_real = os.path.realpath(str(manifest_path))
-        marker = f'{os.sep}lib{os.sep}'
-        if marker not in manifest_real:
+        install_prefix = None
+        for marker in (f'{os.sep}lib{os.sep}', f'{os.sep}share{os.sep}'):
+            if marker in manifest_real:
+                install_prefix = manifest_real.split(marker, 1)[0]
+                break
+        if install_prefix is None:
             return []
-        install_prefix = manifest_real.split(marker, 1)[0]
         candidates = []
         pattern = os.path.join(install_prefix, 'lib', 'python*', 'site-packages', package_name)
         candidates.extend(glob.glob(pattern))
@@ -370,10 +373,11 @@ class WebuiServer:
         if not requested.lower().endswith('.py'):
             requested += '.py'
 
-        roots = self._get_package_python_roots(package_name, package)
-        for root in self._candidate_roots_from_manifest(manifest_path, package_name):
-            if root not in roots:
-                roots.append(root)
+        manifest_roots = self._candidate_roots_from_manifest(manifest_path, package_name)
+        roots = manifest_roots + [
+            root for root in self._get_package_python_roots(package_name, package)
+            if root not in manifest_roots
+        ]
         if len(roots) == 0:
             raise ValueError(f"Invalid package '{package_name}' for source lookup")
 
@@ -398,7 +402,8 @@ class WebuiServer:
         raise ValueError(f"Path '{file_name}' is outside package Python path")
 
     def _resolve_package_python_write_file(self, package_name: str, package: PackageData,
-                                           file_name: str) -> tuple[str, str]:
+                                           file_name: str,
+                                           manifest_path: Optional[str] = None) -> tuple[str, str]:
         """Resolve a writable behavior Python file under the package Python root."""
         requested = str(file_name).strip()
         if requested == '':
@@ -406,20 +411,35 @@ class WebuiServer:
         if not requested.lower().endswith('.py'):
             requested += '.py'
 
-        roots = self._get_package_python_roots(package_name, package)
+        manifest_roots = self._candidate_roots_from_manifest(manifest_path, package_name)
+        roots = manifest_roots + [
+            root for root in self._get_package_python_roots(package_name, package)
+            if root not in manifest_roots
+        ]
         if len(roots) == 0:
             raise ValueError(f"Invalid package '{package_name}' for behavior code generation")
 
-        root = roots[0]
-        candidate = os.path.abspath(requested if os.path.isabs(requested) else os.path.join(root, requested))
-        if not self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable):
+        if os.path.isabs(requested):
+            for root in roots:
+                candidate = os.path.abspath(requested)
+                if self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable):
+                    relative_name = os.path.relpath(candidate, root)
+                    if relative_name.startswith(os.pardir + os.sep) or relative_name == os.pardir:
+                        continue
+                    return candidate, relative_name.replace(os.sep, '/')
             raise ValueError(f"Path '{file_name}' is outside package Python path")
 
-        relative_name = os.path.relpath(candidate, root)
-        if relative_name.startswith(os.pardir + os.sep) or relative_name == os.pardir:
-            raise ValueError(f"Path '{file_name}' is outside package Python path")
-        relative_name = relative_name.replace(os.sep, '/')
-        return candidate, relative_name
+        for root in roots:
+            candidate = os.path.abspath(os.path.join(root, requested))
+            if not self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable):
+                continue
+
+            relative_name = os.path.relpath(candidate, root)
+            if relative_name.startswith(os.pardir + os.sep) or relative_name == os.pardir:
+                continue
+            return candidate, relative_name.replace(os.sep, '/')
+
+        raise ValueError(f"Path '{file_name}' is outside package Python path")
 
     def _get_package_manifest_roots(self, package_name: str, package: PackageData) -> List[str]:
         """Return accepted roots for behavior manifest writes."""
@@ -1111,7 +1131,6 @@ class WebuiServer:
                 if package is None or package.python_path is None:
                     raise ValueError(f"Invalid package '{package_name}' for behavior code generation")
 
-                python_path = package.python_path
                 behavior_file_name = ''
                 if save_as or behavior.file_name is None:
                     behavior_file_name = generate_file_name(behavior.behavior_name)
@@ -1125,11 +1144,6 @@ class WebuiServer:
                 if not file_name.lower().endswith('.py'):
                     print(f"Adding .py to file name '{file_name}'", flush=True)
                     file_name += '.py'  # remaining code presumes .py extension
-                python_file_path, file_name = self._resolve_package_python_write_file(
-                    package_name,
-                    package,
-                    file_name,
-                )
 
                 print(f" Generate code to '{file_name}' at '{package.path}' using ws='{ws}' "
                       f'and explicit package={explicit_package} ...', flush=True)
@@ -1168,6 +1182,15 @@ class WebuiServer:
                     manifest_path = behavior.manifest_path
                 manifest_path = self._resolve_package_manifest_write_file(package_name, package, manifest_path)
                 manifest_name = os.path.basename(manifest_path)
+                python_file_path, file_name = self._resolve_package_python_write_file(
+                    package_name,
+                    package,
+                    file_name,
+                    manifest_path,
+                )
+                python_path = python_file_path
+                for _ in file_name.split('/'):
+                    python_path = os.path.dirname(python_path)
 
                 # Validate that python_path and manifest paths are consistent
                 if not validate_path_consistency(python_path, manifest_path):
