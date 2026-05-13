@@ -273,59 +273,200 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 
 		}
 	}
-	if (to == from) x1 += 30;
-	dx = Math.max(Math.abs(x1 - x2) / 2, 10);
-	dy = Math.max(Math.abs(y1 - y2) / 2, 10);
-
-	var keep_ends = UI.Settings.isTransitionModeCentered()
-		|| UI.Settings.isTransitionModeCombined() && (Math.abs(x1 - x2) < 2 || Math.abs(y1 - y2) < 2);
-
-
-	if (!keep_ends) {
-		if (transition_obj.getFrom().getStateName() != "INIT" && transition_obj.getBeginning() == undefined) {
-			if (res[0] <= 1) { // vertical
-				x1 += (bb1.width / 2) / paper.width * (p[res[1]].x - paper.width / 2);
-			} else {
-				y1 += (bb1.height / 2) / paper.height * (p[res[1]].y - paper.height / 2);
-			}
-		}
-		if(transition_obj.getEnd() == undefined){
-			if (res[1] <= 5) { // vertical
-				x2 += (bb2.width / 2) / paper.width * (p[res[0]].x - paper.width / 2);
-			} else {
-				y2 += (bb2.height / 2) / paper.height * (p[res[0]].y - paper.height / 2);
-			}
-		}
-	}
-
-	x3 = transition_obj.getX();
-	y3 = transition_obj.getY();
-
 	let path;
-	if (runtime_view ||
-		transition_obj == UI.Statemachine.getDisplayedSM().getInitialTransition() ||
-		transition_obj.getX() == undefined ||
-		transition_obj.getY() == undefined){
-		if (!(runtime_view || transition_obj == UI.Statemachine.getDisplayedSM().getInitialTransition()) &&
-			(transition_obj.getX() != undefined || transition_obj.getY() != undefined)){
-				console.log("\x1b[31m HOW IS THIS POSSIBLE! Both should be set or unset (" + transition_obj.getX() + ", " + transition_obj.getY() + ")!\x1b[0m");
+	let self_label_center = null;
+	if (to == from) {
+		// Pick the side with fewest connected transitions to avoid crossings
+		const fromState = transition_obj.getFrom();
+		const fromName = fromState.getStateName();
+		const cx1 = bb1.x + bb1.width / 2;
+		const cy1 = bb1.y + bb1.height / 2;
+		const sideCounts = [0, 0, 0, 0]; // right, top, bottom, left
+		fromState.getContainer().getTransitions().forEach(function(t) {
+			if (t === transition_obj) return;
+			const isFrom = t.getFrom().getStateName() === fromName;
+			const toState = t.getTo();
+			const isTo = toState && toState.getStateName() === fromName;
+			if (!isFrom && !isTo) return;
+			const otherState = isFrom ? toState : t.getFrom();
+			if (!otherState) return;
+			const otherElem = drawings.findElement(function(e) {
+				return e.obj instanceof State && e.obj.getStateName() === otherState.getStateName();
+			});
+			if (!otherElem || !otherElem.drawing) return;
+			const obb = otherElem.drawing.getBBox();
+			const ddx = (obb.x + obb.width / 2) - cx1;
+			const ddy = (obb.y + obb.height / 2) - cy1;
+			if (Math.abs(ddx) >= Math.abs(ddy)) {
+				if (ddx >= 0) sideCounts[0]++; else sideCounts[3]++;
+			} else {
+				if (ddy >= 0) sideCounts[2]++; else sideCounts[1]++;
+			}
+		});
+		// Pick side with fewest neighbors; preference: right > top > bottom > left
+		let bestSide = 0, bestCount = sideCounts[0];
+		if (sideCounts[1] < bestCount) { bestCount = sideCounts[1]; bestSide = 1; }
+		if (sideCounts[2] < bestCount) { bestCount = sideCounts[2]; bestSide = 2; }
+		if (sideCounts[3] < bestCount) { bestSide = 3; }
+
+		const outcome = transition_obj.getOutcome() || '';
+		const est_label_rx = (outcome.length * text_font_size * 0.6 + text_padding_x) / 2;
+		const loop_r = Math.max(30, Math.min(Math.max(bb1.width, bb1.height) * 0.6, est_label_rx * 2.5));
+		const isInitial = runtime_view || transition_obj === UI.Statemachine.getDisplayedSM().getInitialTransition();
+		const hasBeg = !isInitial && transition_obj.getBeginning() != undefined;
+		const hasEnd = !isInitial && transition_obj.getEnd() != undefined;
+		const hasLabel = !isInitial && transition_obj.getX() != undefined && transition_obj.getY() != undefined;
+
+		if (bestSide === 0) { // right
+			const ex = bb1.x + bb1.width + edge_offset;
+			const midy = bb1.y + bb1.height / 2;
+			const gap = Math.max(bb1.height * 0.25, 12);
+			x1 = ex; y1 = midy - gap; x2 = ex; y2 = midy + gap;
+			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
+			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
+			const mid_arc = {x: ex + loop_r * 0.75, y: (y1 + y2) / 2};
+			if (hasLabel) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else if (hasBeg || hasEnd) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else {
+				const cpx = ex + loop_r;
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"C", cpx.toFixed(3), (y1 - loop_r * 0.4).toFixed(3),
+							 cpx.toFixed(3), (y2 + loop_r * 0.4).toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+				self_label_center = mid_arc;
+			}
+		} else if (bestSide === 1) { // top
+			const ey = bb1.y - edge_offset;
+			const midx = bb1.x + bb1.width / 2;
+			const gap = Math.max(bb1.width * 0.25, 12);
+			x1 = midx + gap; y1 = ey; x2 = midx - gap; y2 = ey;
+			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
+			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
+			const mid_arc = {x: (x1 + x2) / 2, y: ey - loop_r * 0.75};
+			if (hasLabel) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else if (hasBeg || hasEnd) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else {
+				const cpy = ey - loop_r;
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"C", (x1 + loop_r * 0.4).toFixed(3), cpy.toFixed(3),
+							 (x2 - loop_r * 0.4).toFixed(3), cpy.toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+				self_label_center = mid_arc;
+			}
+		} else if (bestSide === 2) { // bottom
+			const ey = bb1.y + bb1.height + edge_offset;
+			const midx = bb1.x + bb1.width / 2;
+			const gap = Math.max(bb1.width * 0.25, 12);
+			x1 = midx - gap; y1 = ey; x2 = midx + gap; y2 = ey;
+			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
+			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
+			const mid_arc = {x: (x1 + x2) / 2, y: ey + loop_r * 0.75};
+			if (hasLabel) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else if (hasBeg || hasEnd) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else {
+				const cpy = ey + loop_r;
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"C", (x1 - loop_r * 0.4).toFixed(3), cpy.toFixed(3),
+							 (x2 + loop_r * 0.4).toFixed(3), cpy.toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+				self_label_center = mid_arc;
+			}
+		} else { // left
+			const ex = bb1.x - edge_offset;
+			const midy = bb1.y + bb1.height / 2;
+			const gap = Math.max(bb1.height * 0.25, 12);
+			x1 = ex; y1 = midy + gap; x2 = ex; y2 = midy - gap;
+			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
+			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
+			const mid_arc = {x: ex - loop_r * 0.75, y: (y1 + y2) / 2};
+			if (hasLabel) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else if (hasBeg || hasEnd) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else {
+				const cpx = ex - loop_r;
+				path = ["M", x1.toFixed(3), y1.toFixed(3),
+						"C", cpx.toFixed(3), (y1 + loop_r * 0.4).toFixed(3),
+							 cpx.toFixed(3), (y2 - loop_r * 0.4).toFixed(3),
+						x2.toFixed(3), y2.toFixed(3)].join(",");
+				self_label_center = mid_arc;
+			}
 		}
-		var x4 = [x1, x1, x1 - dx, x1 + dx][res[0]].toFixed(3),
-		y4 = [y1 - dy, y1 + dy, y1, y1][res[0]].toFixed(3),
-		x3 = [0, 0, 0, 0, x2, x2, x2 - dx, x2 + dx][res[1]].toFixed(3),
-		y3 = [0, 0, 0, 0, y1 + dy, y1 - dy, y2, y2][res[1]].toFixed(3);
-		if (path_type == Drawable.Transition.PATH_CURVE) {
-			path = ["M", x1.toFixed(3), y1.toFixed(3), "C", x4, y4, x3, y3, x2.toFixed(3), y2.toFixed(3)].join(",");
-		}else{
-			path = ["M", x1.toFixed(3), y1.toFixed(3), "L", x2.toFixed(3), y2.toFixed(3)].join(",");
+	} else {
+		dx = Math.max(Math.abs(x1 - x2) / 2, 10);
+		dy = Math.max(Math.abs(y1 - y2) / 2, 10);
+
+		var keep_ends = UI.Settings.isTransitionModeCentered()
+			|| UI.Settings.isTransitionModeCombined() && (Math.abs(x1 - x2) < 2 || Math.abs(y1 - y2) < 2);
+
+
+		if (!keep_ends) {
+			if (transition_obj.getFrom().getStateName() != "INIT" && transition_obj.getBeginning() == undefined) {
+				if (res[0] <= 1) { // vertical
+					x1 += (bb1.width / 2) / paper.width * (p[res[1]].x - paper.width / 2);
+				} else {
+					y1 += (bb1.height / 2) / paper.height * (p[res[1]].y - paper.height / 2);
+				}
+			}
+			if(transition_obj.getEnd() == undefined){
+				if (res[1] <= 5) { // vertical
+					x2 += (bb2.width / 2) / paper.width * (p[res[0]].x - paper.width / 2);
+				} else {
+					y2 += (bb2.height / 2) / paper.height * (p[res[0]].y - paper.height / 2);
+				}
+			}
 		}
-	} else{
-		if (path_type == Drawable.Transition.PATH_CURVE) {
-			//path = ["M", x1.toFixed(3), y1.toFixed(3), "C", x4, y4, x3, y3, x2.toFixed(3), y2.toFixed(3)].join(",");
-			path = ["M", x1.toFixed(3), y1.toFixed(3), "R", x3.toFixed(3), y3.toFixed(3), x2.toFixed(3), y2.toFixed(3)].join(",");
-		} else {
-			//path = ["M", x1.toFixed(3), y1.toFixed(3), "L", x2.toFixed(3), y2.toFixed(3)].join(",");
-			path = ["M", x1.toFixed(3), y1.toFixed(3), "L", x3.toFixed(3), y3.toFixed(3), "L", x2.toFixed(3), y2.toFixed(3)].join(",");
+
+		x3 = transition_obj.getX();
+		y3 = transition_obj.getY();
+
+		if (runtime_view ||
+			transition_obj == UI.Statemachine.getDisplayedSM().getInitialTransition() ||
+			transition_obj.getX() == undefined ||
+			transition_obj.getY() == undefined){
+			if (!(runtime_view || transition_obj == UI.Statemachine.getDisplayedSM().getInitialTransition()) &&
+				(transition_obj.getX() != undefined || transition_obj.getY() != undefined)){
+					console.log("\x1b[31m HOW IS THIS POSSIBLE! Both should be set or unset (" + transition_obj.getX() + ", " + transition_obj.getY() + ")!\x1b[0m");
+			}
+			var x4 = [x1, x1, x1 - dx, x1 + dx][res[0]].toFixed(3),
+			y4 = [y1 - dy, y1 + dy, y1, y1][res[0]].toFixed(3),
+			x3 = [0, 0, 0, 0, x2, x2, x2 - dx, x2 + dx][res[1]].toFixed(3),
+			y3 = [0, 0, 0, 0, y1 + dy, y1 - dy, y2, y2][res[1]].toFixed(3);
+			if (path_type == Drawable.Transition.PATH_CURVE) {
+				path = ["M", x1.toFixed(3), y1.toFixed(3), "C", x4, y4, x3, y3, x2.toFixed(3), y2.toFixed(3)].join(",");
+			}else{
+				path = ["M", x1.toFixed(3), y1.toFixed(3), "L", x2.toFixed(3), y2.toFixed(3)].join(",");
+			}
+		} else{
+			if (path_type == Drawable.Transition.PATH_CURVE) {
+				//path = ["M", x1.toFixed(3), y1.toFixed(3), "C", x4, y4, x3, y3, x2.toFixed(3), y2.toFixed(3)].join(",");
+				path = ["M", x1.toFixed(3), y1.toFixed(3), "R", x3.toFixed(3), y3.toFixed(3), x2.toFixed(3), y2.toFixed(3)].join(",");
+			} else {
+				//path = ["M", x1.toFixed(3), y1.toFixed(3), "L", x2.toFixed(3), y2.toFixed(3)].join(",");
+				path = ["M", x1.toFixed(3), y1.toFixed(3), "L", x3.toFixed(3), y3.toFixed(3), "L", x2.toFixed(3), y2.toFixed(3)].join(",");
+			}
 		}
 	}
 	var line = paper.path(path)
@@ -361,7 +502,9 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 
 		var text_obj;
 		var center = {'x': bbox.x + bbox.width / 2, 'y': bbox.y + bbox.height / 2};
-		if (!runtime_view && transition_obj.getX() != undefined && transition_obj.getY() != undefined){
+		if (self_label_center) {
+			center = self_label_center;
+		} else if (!runtime_view && transition_obj.getX() != undefined && transition_obj.getY() != undefined){
 			center.x = transition_obj.getX(); //+ UI.Statemachine.getPanShift().x; // move to screen coordinates
 			center.y = transition_obj.getY(); //+ UI.Statemachine.getPanShift().y;
 		}
@@ -399,10 +542,10 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 
 			// Store data for later in case we start to drag (but not until then)
 			if (transition_obj.getX() == undefined) {
-				text_bg.data("set_x", Math.floor(bbox.x + bbox.width / 2 + label_init_x_offset));
+				text_bg.data("set_x", self_label_center ? Math.floor(self_label_center.x) : Math.floor(bbox.x + bbox.width / 2 + label_init_x_offset));
 			}
 			if (transition_obj.getY() == undefined) {
-				text_bg.data("set_y",Math.floor(bbox.y + bbox.height / 2));
+				text_bg.data("set_y", self_label_center ? Math.floor(self_label_center.y) : Math.floor(bbox.y + bbox.height / 2));
 			}
 		}
 		text_obj.toFront();
