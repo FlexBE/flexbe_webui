@@ -594,6 +594,68 @@ UI.Tools = new (function() {
 		});
 	}
 
+	this.customSynthesisResult = async function(title, messages, isError) {
+		return new Promise((resolve) => {
+			const modal = document.getElementById('custom_synthesis_result_dialog');
+			const titleSpan = document.getElementById('custom_synthesis_result_title');
+			const messagesDiv = document.getElementById('custom_synthesis_result_messages');
+			const okBtn = document.getElementById('custom_synthesis_result_ok_btn');
+
+			titleSpan.textContent = title;
+			const hasMessages = messages && messages.length > 0;
+			if (isError) {
+				titleSpan.style.color = '#900';
+				okBtn.className = 'custom_modal_dialog_button custom_modal_dialog_button_warning';
+			} else if (hasMessages) {
+				titleSpan.style.color = '#7a4f00';
+				okBtn.className = 'custom_modal_dialog_button custom_modal_dialog_button_warning';
+			} else {
+				titleSpan.style.color = '#154f1a';
+				okBtn.className = 'custom_modal_dialog_button custom_modal_dialog_button_positive';
+			}
+
+			messagesDiv.innerHTML = '';
+			if (hasMessages) {
+				messages.forEach(function(msg) {
+					const p = document.createElement('p');
+					p.textContent = msg;
+					messagesDiv.appendChild(p);
+				});
+				messagesDiv.style.display = 'block';
+			} else {
+				messagesDiv.style.display = 'none';
+			}
+
+			modal.style.display = 'block';
+
+			function closeModal(event) {
+				event.stopImmediatePropagation();
+				event.preventDefault();
+				modal.style.display = 'none';
+				modal.removeEventListener('click', closeModal, true);
+				modal.removeEventListener('keydown', closeModalKey, true);
+				resolve(true);
+			}
+
+			function closeModalKey(event) {
+				event.stopImmediatePropagation();
+				event.preventDefault();
+				if (!modal.contains(event.target)) return;
+				if (event.key === 'Tab') {
+					okBtn.focus({preventScroll: true});
+					return;
+				}
+				if (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') {
+					closeModal(event);
+				}
+			}
+
+			modal.addEventListener('keydown', closeModalKey, true);
+			modal.addEventListener('click', closeModal, true);
+			okBtn.focus({preventScroll: true});
+		});
+	}
+
 	this.customSaveWithRenameDecision = async function(confirmMsg) {
 		return new Promise((resolve) => {
 			const modal = document.getElementById('custom_save_behavior_dialog');

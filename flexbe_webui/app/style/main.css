@@ -392,6 +392,23 @@ body.dashboard-text-bold font {
 	margin-right: 8px;
 }
 
+.custom_synthesis_messages {
+	max-height: 150px;
+	overflow-y: auto;
+	text-align: left;
+	padding: 4px 8px;
+	margin: 4px 0 8px 0;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	background: #fafafa;
+	font-size: 12pt;
+	color: #333;
+}
+
+.custom_synthesis_messages p {
+	margin: 2px 0;
+}
+
 .custom_modal_dialog_text {
 	display: inline-block;
 	padding: 2px;

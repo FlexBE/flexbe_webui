@@ -647,7 +647,9 @@ RC.PubSub = new (function() {
 			return;
 		}
 		if (result.error_code.value != 1) {
+			var err_msgs = (result.messages && result.messages.length > 0) ? result.messages : [];
 			T.logError("Synthesis failed: " + result.error_code.value);
+			UI.Tools.customSynthesisResult("Synthesis Failed (code " + result.error_code.value + ")", err_msgs, true);
 			return;
 		}
 		if (root == undefined || root == null) {
@@ -732,6 +734,11 @@ RC.PubSub = new (function() {
 				UI.Statemachine.refreshView();
 			}
 		);
+
+		var warn_msgs = (result.messages && result.messages.length > 0) ? result.messages : [];
+		var state_count = state_machine.getStates().length;
+		var title = "Synthesis succeeded with " + state_count + " state" + (state_count != 1 ? "s" : "");
+		UI.Tools.customSynthesisResult(title, warn_msgs, false);
 
 		if(result_cb != undefined) result_cb(result);
 	}
