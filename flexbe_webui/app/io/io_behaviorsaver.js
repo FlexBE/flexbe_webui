@@ -81,6 +81,9 @@ IO.BehaviorSaver = new (function() {
 						if (result_data.install_success) {
 							// Successfully saved code to the install folder
 							T.logInfo("Behavior code generation completed.");
+							if (result_data.license_warning) {
+								T.logWarn(result_data.license_warning);
+							}
 							if (save_as || Behavior.file_name == undefined || Behavior.manifest_path == undefined) {
 								console.log(`\x1b[92mSetting behavior file data ${JSON.stringify(result_data)}\x1b[0m`);
 								Behavior.setFiles(result_data.python_file_name, result_data.manifest_file_path)

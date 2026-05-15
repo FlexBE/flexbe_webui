@@ -293,6 +293,81 @@ class WebuiServer:
             pass
         return None
 
+    @staticmethod
+    def _normalize_license_text(license_text: str) -> str:
+        """Normalize license text for semantic comparison."""
+        return '\n'.join(line.rstrip() for line in str(license_text).strip().splitlines())
+
+    @classmethod
+    def _extract_generated_license_text(cls, code: str) -> Optional[str]:
+        """Extract the generated license block from existing behavior source."""
+        lines = str(code).splitlines(keepends=True)
+        warning_index = next(
+            (idx for idx, line in enumerate(lines) if 'WARNING: Generated code!' in line),
+            None,
+        )
+        if warning_index is None:
+            return None
+
+        banner_start = warning_index
+        while banner_start > 0 and lines[banner_start - 1].lstrip().startswith('#'):
+            banner_start -= 1
+
+        license_end = banner_start
+        while license_end > 0 and lines[license_end - 1].strip() == '':
+            license_end -= 1
+
+        copyright_index = next(
+            (idx for idx, line in enumerate(lines[:license_end]) if line.startswith('# Copyright ')),
+            None,
+        )
+        if copyright_index is None:
+            return None
+
+        license_start = copyright_index + 1
+        if license_start < license_end and lines[license_start].strip() == '#':
+            license_start += 1
+        if license_start >= license_end:
+            return None
+
+        license_lines = lines[license_start:license_end]
+        while license_lines and license_lines[0].strip() == '':
+            license_lines.pop(0)
+        while license_lines and license_lines[-1].strip() == '':
+            license_lines.pop()
+        if not license_lines:
+            return None
+        return ''.join(license_lines)
+
+    def _select_behavior_license_text(self, file_path: str, save_as: bool, result_dict: Dict) -> str:
+        """Return configured license text or the existing generated license for resaves."""
+        configured_license_text = self._settings['license_text']
+        if save_as or not os.path.exists(file_path):
+            return configured_license_text
+
+        try:
+            with open(file_path, 'r', encoding=self._settings['text_encoding']) as fin:
+                existing_code = fin.read()
+        except OSError as exc:
+            print(f"\x1b[93mCannot read existing behavior license from '{file_path}': {exc}\x1b[0m", flush=True)
+            return configured_license_text
+
+        existing_license_text = self._extract_generated_license_text(existing_code)
+        if existing_license_text is None:
+            return configured_license_text
+
+        if (
+            self._normalize_license_text(existing_license_text)
+            != self._normalize_license_text(configured_license_text)
+        ):
+            warning = (
+                'Existing behavior license differs from configured license; '
+                'preserving existing license on resave.'
+            )
+            result_dict.update({'license_warning': warning})
+            print(f'\x1b[93m{warning}\x1b[0m', flush=True)
+        return existing_license_text
+
     def _get_package_python_relative_path(self, package_name: str, package: PackageData,
                                           file_path: str, manifest_path: Optional[str] = None) -> str:
         """Return a display-safe relative path for a resolved package Python file."""
@@ -1099,7 +1174,8 @@ class WebuiServer:
         @app.post('/api/v1/behavior/code_generator')
         async def behavior_code_generator(request: Request, json_dict: BehaviorCodeGeneratorRequest = Body(...)):
             result_dict = {'install_success': False, 'error_msg': '',
-                           'src_save_success': False, 'src_error_msg': ''}
+                           'src_save_success': False, 'src_error_msg': '',
+                           'license_warning': ''}
 
             try:
                 self.authorize_request(request)
@@ -1156,33 +1232,6 @@ class WebuiServer:
                     print(f"Adding .py to file name '{file_name}'", flush=True)
                     file_name += '.py'  # remaining code presumes .py extension
 
-                print(f" Generate code to '{file_name}' at '{package.path}' using ws='{ws}' "
-                      f'and explicit package={explicit_package} ...', flush=True)
-
-                cg = CodeGenerator(ws=ws,
-                                   target_line_length=self._settings['target_line_length'],
-                                   initialize_flexbe_core=self._settings['initialize_flexbe_core'],
-                                   )
-                cg.set_explicit_package(explicit_package)
-
-                code = cg.generate_behavior_code(behavior, self._settings['license_text'])
-                # Validate the code
-                try:
-                    compile(code, '<string>', 'exec')
-                    print(' Python code compiles!', flush=True)
-                except SyntaxError as exc:
-                    print('Python code does NOT compile!')
-                    print(exc, flush=True)
-                    print(30 * '=')
-                    print('\n'.join([f'{i:4d} {line}' for i, line in
-                                     enumerate(code.split('\n'))]))
-                    print(30 * '-')
-                    print(exc, flush=True)
-                    print(30 * '=')
-
-                    result_dict.update({'error_msg': 'Python code does NOT compile!'})
-                    return self.api_success(result_dict)
-
                 manifest_path = ''
                 if save_as or behavior.manifest_path is None:
                     manifest_name = generate_manifest_name(behavior.behavior_name)
@@ -1210,6 +1259,34 @@ class WebuiServer:
                                  f"                 code='{python_path}' ")
                     result_dict.update({'error_msg': error_msg})
                     print(f'\x1b[91m{error_msg}\x1b[0m', flush=True)
+                    return self.api_success(result_dict)
+
+                print(f" Generate code to '{file_name}' at '{package.path}' using ws='{ws}' "
+                      f'and explicit package={explicit_package} ...', flush=True)
+
+                cg = CodeGenerator(ws=ws,
+                                   target_line_length=self._settings['target_line_length'],
+                                   initialize_flexbe_core=self._settings['initialize_flexbe_core'],
+                                   )
+                cg.set_explicit_package(explicit_package)
+
+                license_text = self._select_behavior_license_text(python_file_path, save_as, result_dict)
+                code = cg.generate_behavior_code(behavior, license_text)
+                # Validate the code
+                try:
+                    compile(code, '<string>', 'exec')
+                    print(' Python code compiles!', flush=True)
+                except SyntaxError as exc:
+                    print('Python code does NOT compile!')
+                    print(exc, flush=True)
+                    print(30 * '=')
+                    print('\n'.join([f'{i:4d} {line}' for i, line in
+                                     enumerate(code.split('\n'))]))
+                    print(30 * '-')
+                    print(exc, flush=True)
+                    print(30 * '=')
+
+                    result_dict.update({'error_msg': 'Python code does NOT compile!'})
                     return self.api_success(result_dict)
 
                 encoding = self._settings['text_encoding'].upper()

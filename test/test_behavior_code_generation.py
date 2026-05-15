@@ -252,6 +252,64 @@ def test_behavior_code_generator_reports_install_only_when_source_save_disabled(
     assert result['data']['src_error_msg'] == ''
 
 
+def test_behavior_code_generator_preserves_existing_license_on_resave(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
+):
+    """Resaving an existing behavior should preserve its generated license block."""
+    existing_license = '# Existing License\n# Keep me\n'
+    existing_code = (
+        '#!/usr/bin/env python3\n'
+        '# -*- coding: utf-8 -*-\n'
+        '\n'
+        '# Copyright 2020 Existing Author\n'
+        '#\n'
+        f'{existing_license}'
+        '\n'
+        '###########################################################\n'
+        '#               WARNING: Generated code!                  #\n'
+        '#              **************************                 #\n'
+        '# Manual changes may get lost if file is generated again. #\n'
+        '# Only code inside the [MANUAL] tags will be kept.        #\n'
+        '###########################################################\n'
+        '\n'
+        'class Old:\n'
+        '    pass\n'
+    )
+    (tmp_path / 'lib' / 'test_pkg' / 'demo_behavior.py').write_text(existing_code, encoding='utf-8')
+    manifest_path = tmp_path / 'lib' / 'test_pkg' / 'manifest' / 'demo_behavior.xml'
+
+    captured = {}
+
+    class CapturingCodeGenerator(_DummyCodeGenerator):
+        """Capture the license text passed into code generation."""
+
+        def generate_behavior_code(self, _behavior, license_text):
+            captured['license_text'] = license_text
+            return 'class Dummy:\n    pass\n'
+
+    server_with_package._settings['save_in_source'] = False
+    server_with_package._settings['license_text'] = '# Configured License\n'
+
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.save_as = False
+    request_payload.behavior.update({
+        'file_name': 'demo_behavior.py',
+        'manifest_path': str(manifest_path),
+    })
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', CapturingCodeGenerator)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True
+    assert result['data']['install_success'] is True
+    assert captured['license_text'] == existing_license
+    assert 'preserving existing license' in result['data']['license_warning']
+
+
 def test_behavior_code_generator_prefers_manifest_install_root_for_ament_python_symlink(
     server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
 ):
