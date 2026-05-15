@@ -178,7 +178,11 @@ RC.PubSub = new (function() {
 			if (RC.Sync.hasProcess("BehaviorStart")) {
 				RC.Sync.remove("BehaviorStart");
 				RC.Controller.signalRunning();
-			} else {
+			} else if (last_onboard_heartbeat_time != undefined) {
+				// Only treat STARTED as an externally running behavior after we have
+				// received at least one heartbeat confirming the engine is alive.
+				// Without a heartbeat, STARTED is likely a replay from topic history
+				// (TRANSIENT_LOCAL QoS delivering a message from a prior run).
 				RC.Controller.signalConnected();
 				RC.Controller.signalExternal();
 			}

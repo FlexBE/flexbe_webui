@@ -1302,9 +1302,8 @@ UI.Settings = new (function() {
 			document.getElementById('synthesis_display_option').style.display = "inline";
 			if (RC.ROS.isConnected()) {
 				RC.PubSub.initializeSynthesisAction();
-			} else {
-				T.logError("ROS is not connected - cannot activate synthesis interface!")
 			}
+			// If not connected yet, RC.PubSub.startup() will call initializeSynthesisAction() at connect time.
 		} else {
 			document.getElementById('synthesis_display_option').style.display = "none";
 		}
