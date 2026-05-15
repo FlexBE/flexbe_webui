@@ -82,9 +82,12 @@ class WebuiServer:
 
         print(f'WebuiServer args: {args}', flush=True)
         if args.config_folder == '':
-            self._config_file_folder = os.path.join(get_package_share_directory('flexbe_webui'), 'config')
+            config_file_folder = os.path.join(get_package_share_directory('flexbe_webui'), 'config')
+            self._allow_config_symlink_files = True
         else:
-            self._config_file_folder = args.config_folder
+            config_file_folder = args.config_folder
+            self._allow_config_symlink_files = False
+        self._config_file_folder = os.path.abspath(os.path.expanduser(config_file_folder))
 
         if not os.path.exists(self._config_file_folder) or not os.path.isdir(self._config_file_folder):
             raise ValueError(f"'{self._config_file_folder}' is not a valid directory!")
@@ -257,8 +260,8 @@ class WebuiServer:
             return False
 
     @classmethod
-    def _is_safe_write_target(cls, root: str, path: str, allow_existing_lexical: bool = False) -> bool:
-        """Return true when path can be safely created or overwritten under root."""
+    def _is_safe_file_target(cls, root: str, path: str, allow_existing_lexical: bool = False) -> bool:
+        """Return true when an existing file or missing file parent is safe under root."""
         try:
             if not cls._is_within_root(root, path):
                 return False
@@ -313,7 +316,11 @@ class WebuiServer:
         folder_path = str(json_dict.get('folder_path', self._config_file_folder))
         file_name = str(json_dict['file_name'])
         file_path = os.path.abspath(os.path.join(folder_path, file_name))
-        if not self._is_resolved_within_root(self._config_file_folder, file_path):
+        if not self._is_safe_file_target(
+            self._config_file_folder,
+            file_path,
+            allow_existing_lexical=self._allow_config_symlink_files,
+        ):
             raise ValueError(f"Config load path '{file_path}' is outside the config folder")
         if not file_path.endswith('.json'):
             raise ValueError(f"Config load path '{file_path}' must have a .json extension")
@@ -422,7 +429,7 @@ class WebuiServer:
         if os.path.isabs(requested):
             for root in roots:
                 candidate = os.path.abspath(requested)
-                if self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable):
+                if self._is_safe_file_target(root, candidate, allow_existing_lexical=package.editable):
                     relative_name = os.path.relpath(candidate, root)
                     if relative_name.startswith(os.pardir + os.sep) or relative_name == os.pardir:
                         continue
@@ -431,7 +438,7 @@ class WebuiServer:
 
         for root in roots:
             candidate = os.path.abspath(os.path.join(root, requested))
-            if not self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable):
+            if not self._is_safe_file_target(root, candidate, allow_existing_lexical=package.editable):
                 continue
 
             relative_name = os.path.relpath(candidate, root)
@@ -468,7 +475,7 @@ class WebuiServer:
         default_root = next((root for root in manifest_roots if os.path.isdir(root)), manifest_roots[0])
         candidate = os.path.abspath(requested if os.path.isabs(requested) else os.path.join(default_root, requested))
         if any(
-            self._is_safe_write_target(root, candidate, allow_existing_lexical=package.editable)
+            self._is_safe_file_target(root, candidate, allow_existing_lexical=package.editable)
             for root in manifest_roots
         ):
             return candidate
@@ -722,10 +729,14 @@ class WebuiServer:
                         save_settings = new_settings.copy()
                         save_settings.pop('license_text', None)
                         print(save_settings, flush=True)
-                        file_path = os.path.realpath(
+                        file_path = os.path.abspath(
                             os.path.join(json_dict['folder_path'], json_dict['file_name'])
                         )
-                        if not self._is_resolved_within_root(self._config_file_folder, file_path):
+                        if not self._is_safe_file_target(
+                            self._config_file_folder,
+                            file_path,
+                            allow_existing_lexical=self._allow_config_symlink_files,
+                        ):
                             raise ValueError(f"Config save path '{file_path}' is outside the config folder")
                         if not file_path.endswith('.json'):
                             raise ValueError(f"Config save path '{file_path}' must have a .json extension")
