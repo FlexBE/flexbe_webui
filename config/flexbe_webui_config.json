@@ -23,7 +23,7 @@
     "feed_panel_width": 270,
     "gridsize": 50,
     "initialize_flexbe_core": true,
-    "license": "BSD-3",
+    "license": "APACHE-2",
     "license_file": "",
     "pkg_cache_enabled": false,
     "rc_right_panel_width": 34,
