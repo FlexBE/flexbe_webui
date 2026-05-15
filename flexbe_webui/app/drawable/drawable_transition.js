@@ -317,102 +317,69 @@ Drawable.Transition = function(transition_obj, target_paper, readonly, drawings,
 		const hasEnd = !isInitial && transition_obj.getEnd() != undefined;
 		const hasLabel = !isInitial && transition_obj.getX() != undefined && transition_obj.getY() != undefined;
 
+		// Pass 1: default endpoints for the chosen side
+		let anchorX = 0, anchorY = 0; // fixed edge coordinate (x for left/right, y for top/bottom)
 		if (bestSide === 0) { // right
-			const ex = bb1.x + bb1.width + edge_offset;
-			const midy = bb1.y + bb1.height / 2;
+			anchorX = bb1.x + bb1.width + edge_offset;
 			const gap = Math.max(bb1.height * 0.25, 12);
-			x1 = ex; y1 = midy - gap; x2 = ex; y2 = midy + gap;
-			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
-			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
-			const mid_arc = {x: ex + loop_r * 0.75, y: (y1 + y2) / 2};
-			if (hasLabel) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else if (hasBeg || hasEnd) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else {
-				const cpx = ex + loop_r;
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"C", cpx.toFixed(3), (y1 - loop_r * 0.4).toFixed(3),
-							 cpx.toFixed(3), (y2 + loop_r * 0.4).toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-				self_label_center = mid_arc;
-			}
+			const midy = bb1.y + bb1.height / 2;
+			x1 = anchorX; y1 = midy - gap; x2 = anchorX; y2 = midy + gap;
 		} else if (bestSide === 1) { // top
-			const ey = bb1.y - edge_offset;
-			const midx = bb1.x + bb1.width / 2;
+			anchorY = bb1.y - edge_offset;
 			const gap = Math.max(bb1.width * 0.25, 12);
-			x1 = midx + gap; y1 = ey; x2 = midx - gap; y2 = ey;
-			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
-			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
-			const mid_arc = {x: (x1 + x2) / 2, y: ey - loop_r * 0.75};
-			if (hasLabel) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else if (hasBeg || hasEnd) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else {
-				const cpy = ey - loop_r;
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"C", (x1 + loop_r * 0.4).toFixed(3), cpy.toFixed(3),
-							 (x2 - loop_r * 0.4).toFixed(3), cpy.toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-				self_label_center = mid_arc;
-			}
+			const midx = bb1.x + bb1.width / 2;
+			x1 = midx + gap; y1 = anchorY; x2 = midx - gap; y2 = anchorY;
 		} else if (bestSide === 2) { // bottom
-			const ey = bb1.y + bb1.height + edge_offset;
-			const midx = bb1.x + bb1.width / 2;
+			anchorY = bb1.y + bb1.height + edge_offset;
 			const gap = Math.max(bb1.width * 0.25, 12);
-			x1 = midx - gap; y1 = ey; x2 = midx + gap; y2 = ey;
-			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
-			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
-			const mid_arc = {x: (x1 + x2) / 2, y: ey + loop_r * 0.75};
-			if (hasLabel) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else if (hasBeg || hasEnd) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else {
-				const cpy = ey + loop_r;
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"C", (x1 - loop_r * 0.4).toFixed(3), cpy.toFixed(3),
-							 (x2 + loop_r * 0.4).toFixed(3), cpy.toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-				self_label_center = mid_arc;
-			}
+			const midx = bb1.x + bb1.width / 2;
+			x1 = midx - gap; y1 = anchorY; x2 = midx + gap; y2 = anchorY;
 		} else { // left
-			const ex = bb1.x - edge_offset;
-			const midy = bb1.y + bb1.height / 2;
+			anchorX = bb1.x - edge_offset;
 			const gap = Math.max(bb1.height * 0.25, 12);
-			x1 = ex; y1 = midy + gap; x2 = ex; y2 = midy - gap;
-			if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
-			if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
-			const mid_arc = {x: ex - loop_r * 0.75, y: (y1 + y2) / 2};
-			if (hasLabel) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else if (hasBeg || hasEnd) {
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-			} else {
-				const cpx = ex - loop_r;
-				path = ["M", x1.toFixed(3), y1.toFixed(3),
-						"C", cpx.toFixed(3), (y1 + loop_r * 0.4).toFixed(3),
-							 cpx.toFixed(3), (y2 - loop_r * 0.4).toFixed(3),
-						x2.toFixed(3), y2.toFixed(3)].join(",");
-				self_label_center = mid_arc;
-			}
+			const midy = bb1.y + bb1.height / 2;
+			x1 = anchorX; y1 = midy + gap; x2 = anchorX; y2 = midy - gap;
+		}
+
+		// Apply user-dragged endpoint overrides before computing arc geometry
+		if (hasBeg) { x1 = transition_obj.getBeginning().x; y1 = transition_obj.getBeginning().y; }
+		if (hasEnd) { x2 = transition_obj.getEnd().x;       y2 = transition_obj.getEnd().y; }
+
+		// Pass 2: arc geometry depends on post-override endpoints
+		let mid_arc, cp1x, cp1y, cp2x, cp2y;
+		if (bestSide === 0) { // right
+			mid_arc = {x: anchorX + loop_r * 0.75, y: (y1 + y2) / 2};
+			cp1x = anchorX + loop_r; cp1y = y1 - loop_r * 0.4;
+			cp2x = anchorX + loop_r; cp2y = y2 + loop_r * 0.4;
+		} else if (bestSide === 1) { // top
+			mid_arc = {x: (x1 + x2) / 2, y: anchorY - loop_r * 0.75};
+			cp1x = x1 + loop_r * 0.4; cp1y = anchorY - loop_r;
+			cp2x = x2 - loop_r * 0.4; cp2y = anchorY - loop_r;
+		} else if (bestSide === 2) { // bottom
+			mid_arc = {x: (x1 + x2) / 2, y: anchorY + loop_r * 0.75};
+			cp1x = x1 - loop_r * 0.4; cp1y = anchorY + loop_r;
+			cp2x = x2 + loop_r * 0.4; cp2y = anchorY + loop_r;
+		} else { // left
+			mid_arc = {x: anchorX - loop_r * 0.75, y: (y1 + y2) / 2};
+			cp1x = anchorX - loop_r; cp1y = y1 + loop_r * 0.4;
+			cp2x = anchorX - loop_r; cp2y = y2 - loop_r * 0.4;
+		}
+
+		// Shared path builder for all four sides
+		if (hasLabel) {
+			path = ["M", x1.toFixed(3), y1.toFixed(3),
+					"R", transition_obj.getX().toFixed(3), transition_obj.getY().toFixed(3),
+					x2.toFixed(3), y2.toFixed(3)].join(",");
+		} else if (hasBeg || hasEnd) {
+			path = ["M", x1.toFixed(3), y1.toFixed(3),
+					"R", mid_arc.x.toFixed(3), mid_arc.y.toFixed(3),
+					x2.toFixed(3), y2.toFixed(3)].join(",");
+		} else {
+			path = ["M", x1.toFixed(3), y1.toFixed(3),
+					"C", cp1x.toFixed(3), cp1y.toFixed(3),
+						 cp2x.toFixed(3), cp2y.toFixed(3),
+					x2.toFixed(3), y2.toFixed(3)].join(",");
+			self_label_center = mid_arc;
 		}
 	} else {
 		dx = Math.max(Math.abs(x1 - x2) / 2, 10);
