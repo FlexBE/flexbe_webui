@@ -82,6 +82,7 @@ UI.RuntimeControl = new (function() {
 		let next_state_drawings = [];
 		let next_states_list = Object.keys(next_states);
 		next_states_list.forEach(function(key) {
+			if (next_states[key].state.getStateName() === current_state.getStateName()) return;
 			next_state_drawings.push(that.createDrawing(next_states[key].state, Drawable.State.Mode.SIMPLE, false, false));
 		});
 
