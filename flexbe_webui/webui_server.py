@@ -261,7 +261,15 @@ class WebuiServer:
 
     @classmethod
     def _is_safe_file_target(cls, root: str, path: str, allow_existing_lexical: bool = False) -> bool:
-        """Return true when an existing file or missing file parent is safe under root."""
+        """
+        Return true when path is safe to access under root.
+
+        For existing files: requires the resolved path to stay inside the resolved root.
+        With ``allow_existing_lexical=True`` (used for ``--symlink-install`` layouts where
+        package files are symlinks into the source tree), a lexically-within-root path is
+        also accepted for files that already exist — but new-file creation still requires
+        the parent directory to resolve within root.
+        """
         try:
             if not cls._is_within_root(root, path):
                 return False
@@ -347,13 +355,19 @@ class WebuiServer:
 
         try:
             with open(file_path, 'r', encoding=self._settings['text_encoding']) as fin:
-                existing_code = fin.read()
+                existing_code = fin.read(16384)
         except OSError as exc:
             print(f"\x1b[93mCannot read existing behavior license from '{file_path}': {exc}\x1b[0m", flush=True)
             return configured_license_text
 
         existing_license_text = self._extract_generated_license_text(existing_code)
         if existing_license_text is None:
+            warning = (
+                f"Could not extract license from existing behavior '{file_path}'; "
+                'falling back to configured license on resave.'
+            )
+            result_dict.update({'license_warning': warning})
+            print(f'\x1b[93m{warning}\x1b[0m', flush=True)
             return configured_license_text
 
         if (
