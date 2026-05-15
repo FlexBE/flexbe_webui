@@ -98,6 +98,20 @@ UI.Panels.Terminal = new (function() {
 		keep_open = false;
 	}
 
+	this.handleClick = function() {
+		let selection = window.getSelection();
+		if (selection && selection.toString() !== "") {
+			let terminal = document.getElementById("terminal");
+			let anchorNode = selection.anchorNode;
+			let focusNode = selection.focusNode;
+			if ((anchorNode && terminal.contains(anchorNode))
+				|| (focusNode && terminal.contains(focusNode))) {
+				return;
+			}
+		}
+		that.hide();
+	}
+
 	this.toggle = function() {
 		if (is_active) that.hide();
 		else that.show();

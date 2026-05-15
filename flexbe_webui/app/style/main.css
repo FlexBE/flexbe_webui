@@ -225,6 +225,14 @@ body.dashboard-text-bold font {
 	overflow: auto;
 	line-height: 1.2em;
 	z-index: 52;
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
+}
+
+#terminal * {
+	user-select: text;
+	-webkit-user-select: text;
 }
 
 .emptypage {

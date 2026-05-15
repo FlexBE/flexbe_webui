@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	document.getElementById('button_to_rc').addEventListener('keydown', onEnterButton(UI.Menu.toControlClicked));
 	document.getElementById('button_to_se').addEventListener('keydown', onEnterButton(UI.Menu.toSettingsClicked));
 
-	document.getElementById('terminal').addEventListener('click', UI.Panels.Terminal.hide);
+	document.getElementById('terminal').addEventListener('click', UI.Panels.Terminal.handleClick);
 
 	document.getElementById('tool_overlay_undo').addEventListener('click', UI.Tools.undoClicked);
 	document.getElementById('tool_overlay_redo').addEventListener('click', UI.Tools.redoClicked);
