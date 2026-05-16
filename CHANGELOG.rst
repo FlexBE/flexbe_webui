@@ -2,6 +2,21 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.1.4 (2026-05-16)
+------------------
+* Hoist abspath calc out of search loop
+* Deduplicate self-transition path generation across the four loop sides
+* Warn and cap read when behavior license extraction falls back to configured
+* Suppress false-positive "Running behavior detected" and synthesis error on startup
+* Display self transition loops in runtime view
+* Use Apache-2 as the default license
+* Preserve behavior license on resave
+* Allow selection and copy from UI terminal
+* Normalize the config folder at startup so absolute UI paths pass validation
+  while preserving outside-path and symlink checks.
+* Add custom messages to flexbe_synthesis outcome
+* Improve drawing of self transitions
+
 4.1.3 (2026-05-11)
 ------------------
 * Fix to work with flexbe_behaviors packages defined using ament_python
