@@ -516,8 +516,8 @@ class WebuiServer:
             raise ValueError(f"Invalid package '{package_name}' for behavior code generation")
 
         if os.path.isabs(requested):
+            candidate = os.path.abspath(requested)
             for root in roots:
-                candidate = os.path.abspath(requested)
                 if self._is_safe_file_target(root, candidate, allow_existing_lexical=package.editable):
                     relative_name = os.path.relpath(candidate, root)
                     if relative_name.startswith(os.pardir + os.sep) or relative_name == os.pardir:
