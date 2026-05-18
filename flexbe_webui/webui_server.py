@@ -441,11 +441,11 @@ class WebuiServer:
         """Infer candidate Python roots from a behavior manifest install path."""
         if not manifest_path:
             return []
-        manifest_real = os.path.realpath(str(manifest_path))
+        manifest_abs = os.path.abspath(str(manifest_path))
         install_prefix = None
         for marker in (f'{os.sep}lib{os.sep}', f'{os.sep}share{os.sep}'):
-            if marker in manifest_real:
-                install_prefix = manifest_real.split(marker, 1)[0]
+            if marker in manifest_abs:
+                install_prefix = manifest_abs.split(marker, 1)[0]
                 break
         if install_prefix is None:
             return []

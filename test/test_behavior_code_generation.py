@@ -354,6 +354,67 @@ def test_behavior_code_generator_prefers_manifest_install_root_for_ament_python_
     assert not (build_python_root / 'symlink_demo_sm.py').exists()
 
 
+def test_behavior_code_generator_symlinked_manifest_file_resolves_to_install_root(
+    server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
+):
+    """
+    Manifest that is a symlink to source must still derive the install-side Python root.
+
+    This is the ament_python + --symlink-install scenario: the manifest file in the install
+    tree is a symlink pointing to the source tree (no /lib/ in realpath), which previously
+    caused _candidate_roots_from_manifest to return an empty list and fall through to the
+    build-dir importlib path, triggering a validate_path_consistency failure.
+    """
+    source_root = tmp_path / 'src' / 'my_pkg'
+    source_manifest_dir = source_root / 'manifest'
+    source_manifest_dir.mkdir(parents=True)
+    source_manifest_file = source_manifest_dir / 'symlink_behavior.xml'
+    source_manifest_file.write_text('<behavior/>')
+
+    build_python_root = tmp_path / 'build' / 'my_pkg' / 'my_pkg'
+    install_root = tmp_path / 'install' / 'my_pkg'
+    install_code_root = install_root / 'lib' / 'my_pkg'
+    install_manifest_root = install_code_root / 'manifest'
+    build_python_root.mkdir(parents=True)
+    install_manifest_root.mkdir(parents=True)
+
+    # Simulate --symlink-install: manifest file is a symlink pointing to source
+    install_manifest_symlink = install_manifest_root / 'symlink_behavior.xml'
+    install_manifest_symlink.symlink_to(source_manifest_file)
+
+    server_with_package.packages['my_pkg'] = PackageData(
+        name='my_pkg',
+        path=str(install_root),
+        python_path=str(build_python_root),
+        editable=True,
+    )
+    server_with_package._settings['save_in_source'] = False
+
+    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload.package_name = 'my_pkg'
+    request_payload.file_name = 'symlink_behavior_sm.py'
+    request_payload.save_as = False
+    request_payload.behavior.update({
+        'behavior_name': 'Symlink Behavior',
+        'behavior_package': 'my_pkg',
+        'manifest_path': str(install_manifest_symlink),
+    })
+
+    monkeypatch.setattr('flexbe_webui.webui_server.CodeGenerator', _DummyCodeGenerator)
+
+    result = _decode_response(asyncio.run(code_generator_endpoint(
+        request=_build_request('/api/v1/behavior/code_generator'),
+        json_dict=request_payload,
+    )))
+
+    assert result['success'] is True, result['data'].get('error_msg', '')
+    assert result['data']['install_success'] is True
+    assert result['data']['error_msg'] == ''
+    # Code must land in install, not in build
+    assert (install_code_root / 'symlink_behavior_sm.py').exists()
+    assert not (build_python_root / 'symlink_behavior_sm.py').exists()
+
+
 def test_behavior_code_generator_save_as_writes_new_file_in_target_package(
     server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch, tmp_path
 ):
