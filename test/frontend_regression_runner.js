@@ -305,6 +305,7 @@ function setupGlobals() {
       getSynthesisTopic() { return '/flexbe_synthesis'; },
       getSynthesisType() { return 'flexbe_synthesis_msgs/FlexBESynthesis'; },
       getSynthesisSystem() { return 'coffee_maker'; },
+      getSynthesisTimeout() { return 60; },
       setRosProperties() {},
       removeTabHandling() {},
       setupTabHandling() {},
@@ -2554,9 +2555,20 @@ async function runSynthesisPayloadCase() {
       initial_conditions: ['bd_a'],
       sm_outcomes: ['finished', 'failed'],
       specification_file_name: '',
+      synthesis_timeout_s: 60,
     },
     synthesis_options: '',
   });
+
+  RC.PubSub.requestSynthesisGoal(
+    { request: {} },
+    '/Container',
+    function() {},
+    function() {},
+    function() {},
+    45
+  );
+  assert.strictEqual(sentGoal.request.synthesis_timeout_s, 45);
 }
 
 async function runSynthesisFormCase() {
@@ -2588,6 +2600,7 @@ async function runSynthesisFormCase() {
         { name: 'initial_conditions', kind: 'sequence', type: 'sequence<string>', element_kind: 'string' },
         { name: 'sm_outcomes', kind: 'sequence', type: 'sequence<string>', element_kind: 'string' },
         { name: 'specification_file_name', kind: 'string', type: 'string' },
+        { name: 'synthesis_timeout_s', kind: 'number', type: 'float64' },
       ],
     },
     {
@@ -2621,6 +2634,10 @@ async function runSynthesisFormCase() {
   document.getElementById('input_prop_synthesis_request__initial_conditions').value = 'bd_a, bd_b';
   document.getElementById('input_prop_synthesis_request__specification_file_name').value = 'spec.yaml';
   document.getElementById('input_prop_synthesis_synthesis_options').value = 'fast';
+  assert.strictEqual(
+    document.getElementById('input_prop_synthesis_request__synthesis_timeout_s').value,
+    '60'
+  );
 
   const payload = UI.Panels.StateProperties.DEBUG_buildSynthesisPayload(schema, state);
   assert.deepStrictEqual(payload, {
@@ -2631,6 +2648,7 @@ async function runSynthesisFormCase() {
       initial_conditions: ['bd_a', 'bd_b'],
       sm_outcomes: ['finished', 'failed'],
       specification_file_name: 'spec.yaml',
+      synthesis_timeout_s: 60,
     },
     synthesis_options: 'fast',
   });

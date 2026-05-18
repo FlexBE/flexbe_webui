@@ -831,7 +831,11 @@
 				</tr>
 				<tr title="Optional system identification string passed to the synthesis node when sending requests.">
 					<td width="150">System: </td>
-					<td><input id="input_synthesis_system" type="text" class="input_field" /></td>
+					<td><input id="input_synthesis_system" type="text" class="input_field" onchange="UI.Settings.synthesisSystemChanged()" /></td>
+				</tr>
+				<tr title="Maximum seconds to wait for a synthesis result before cancelling (default: 300).">
+					<td width="150">Timeout (s): </td>
+					<td><input id="input_synthesis_timeout" type="number" min="1" class="input_field" onchange="UI.Settings.synthesisTimeoutChanged()" /></td>
 				</tr>
 			</table>
 		</div>
@@ -961,6 +965,10 @@
 				<br />
 				<input id="button_prop_synthesize" type="button" value="Synthesize" />
 				&nbsp;&nbsp;&nbsp;
+				<label title="Timeout for this synthesis request (seconds). Pre-filled from the configured default.">
+					Timeout (s): <input id="input_prop_synthesis_timeout" type="number" min="1" style="width:60px;" />
+				</label>
+				</td></tr><tr><td>
 				<div id="label_synthesis_feedback" style="display: inline;">This will delete the current content!</div>
 				</td></tr></table>
 			</div>
@@ -1118,6 +1126,15 @@
 		<div class="custom_modal_dialog_content">
 			<p><span id="custom_acknowledge_dialog_msg" class="custom_modal_dialog_text">Acknowledge</span></p>
 			<button id="custom_acknowledge_dialog_confirm_btn" class="custom_modal_dialog_button" tabindex="-1" >&#x2714; OK</button>
+		</div>
+	</div>
+
+	<div id="synthesis_progress_dialog" class="custom_modal_dialog" tabindex="-1">
+		<div class="custom_modal_dialog_content" style="width: 420px;">
+			<p><span class="custom_modal_dialog_text" style="color: #154f1a;">Synthesis in progress...</span></p>
+			<div id="synthesis_progress_status" style="margin: 8px 0; font-size: 12pt; color: #333; min-height: 1.4em;">Waiting for synthesis server...</div>
+			<div style="margin: 8px 0; font-size: 11pt; color: #555;">Timeout: <span id="synthesis_progress_timer" style="font-weight: bold;">—</span></div>
+			<button id="synthesis_progress_cancel_btn" class="custom_modal_dialog_button custom_modal_dialog_button_warning" tabindex="-1">&#x2716; Cancel</button>
 		</div>
 	</div>
 

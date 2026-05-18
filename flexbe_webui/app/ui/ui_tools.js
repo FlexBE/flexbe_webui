@@ -594,6 +594,48 @@ UI.Tools = new (function() {
 		});
 	}
 
+	var synthesis_progress_timer = undefined;
+	var synthesis_feedback_poller = undefined;
+
+	this.showSynthesisProgress = function(timeout_sec) {
+		const modal = document.getElementById('synthesis_progress_dialog');
+		document.getElementById('synthesis_progress_status').textContent = 'Waiting for synthesis server...';
+		document.getElementById('synthesis_progress_timer').textContent = timeout_sec + 's';
+		modal.style.display = 'block';
+		document.getElementById('synthesis_progress_cancel_btn').focus({preventScroll: true});
+		let remaining = timeout_sec;
+		if (synthesis_progress_timer) clearInterval(synthesis_progress_timer);
+		synthesis_progress_timer = setInterval(function() {
+			remaining -= 1;
+			document.getElementById('synthesis_progress_timer').textContent = remaining + 's';
+			if (remaining <= 0) { clearInterval(synthesis_progress_timer); synthesis_progress_timer = undefined; }
+		}, 1000);
+		document.getElementById('synthesis_progress_cancel_btn').onclick = function() {
+			RC.PubSub.cancelSynthesisGoal();
+		};
+		if (synthesis_feedback_poller) clearInterval(synthesis_feedback_poller);
+		let synthesis_topic = UI.Settings.getSynthesisTopic();
+		synthesis_feedback_poller = setInterval(function() {
+			API.getData('action_feedback?topic=' + encodeURIComponent(synthesis_topic), function(data) {
+				if (data && data.feedback && data.feedback.status) {
+					that.updateSynthesisProgress(data.feedback.status);
+				}
+			});
+		}, 1000);
+	}
+
+	this.updateSynthesisProgress = function(status) {
+		const el = document.getElementById('synthesis_progress_status');
+		if (el) el.textContent = status || '';
+	}
+
+	this.closeSynthesisProgress = function() {
+		if (synthesis_progress_timer) { clearInterval(synthesis_progress_timer); synthesis_progress_timer = undefined; }
+		if (synthesis_feedback_poller) { clearInterval(synthesis_feedback_poller); synthesis_feedback_poller = undefined; }
+		const modal = document.getElementById('synthesis_progress_dialog');
+		if (modal) modal.style.display = 'none';
+	}
+
 	this.customSynthesisResult = async function(title, messages, isError) {
 		return new Promise((resolve) => {
 			const modal = document.getElementById('custom_synthesis_result_dialog');

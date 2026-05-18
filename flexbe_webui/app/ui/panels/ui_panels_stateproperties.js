@@ -138,6 +138,8 @@ UI.Panels.StateProperties = new (function() {
 			case 'request.specification_file_name':
 			case 'synthesis_options':
 				return '';
+			case 'request.synthesis_timeout_s':
+				return UI.Settings.getSynthesisTimeout();
 			default:
 				return undefined;
 		}
@@ -2125,6 +2127,7 @@ UI.Panels.StateProperties = new (function() {
 		that.removeHover();
 		if (evt.target.checked) {
 			document.getElementById('panel_prop_sm_synthesis').style.display = "block";
+			document.getElementById('input_prop_synthesis_timeout').value = UI.Settings.getSynthesisTimeout();
 			if (RC.ROS.isConnected()) {
 				document.getElementById("button_prop_synthesize").removeAttribute("disabled", "disabled");
 				document.getElementById("button_prop_synthesize").setAttribute("title", "Send a request to Behavior Synthesis");
@@ -2158,18 +2161,20 @@ UI.Panels.StateProperties = new (function() {
 
 		UI.Statemachine.abortTransition();
 
+		let local_timeout = parseInt(document.getElementById('input_prop_synthesis_timeout').value, 10);
 		RC.PubSub.requestSynthesisGoal(
 			goal_payload,
 			current_prop_state.getStatePath(),
 			function(result) {
-				document.getElementById('label_synthesis_feedback').textContent = "This will delete the current content!";
-				document.getElementById('panel_prop_sm_synthesis').style.display = "none";
 				clearSynthesisFields();
 			},
 			function(feedback) {
-				document.getElementById('label_synthesis_feedback').textContent = feedback.status;
-			}
+				UI.Tools.updateSynthesisProgress(feedback.status);
+			},
+			undefined,
+			local_timeout
 		);
+		UI.Tools.showSynthesisProgress(local_timeout);
 	}
 
 	this.DEBUG_renderSynthesisSchema = function(schema_fields, state) {

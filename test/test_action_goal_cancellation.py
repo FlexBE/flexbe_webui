@@ -199,7 +199,15 @@ class _ModernRequest:
 class _ModernRequestWithSpec:
     """Updated synthesis-like request message with specification file support."""
 
-    __slots__ = ['spec_name', 'system_name', 'goals', 'initial_conditions', 'sm_outcomes', 'specification_file_name']
+    __slots__ = [
+        'spec_name',
+        'system_name',
+        'goals',
+        'initial_conditions',
+        'sm_outcomes',
+        'specification_file_name',
+        'synthesis_timeout_s',
+    ]
 
     def __init__(self):
         self.spec_name = ''
@@ -208,6 +216,7 @@ class _ModernRequestWithSpec:
         self.initial_conditions = []
         self.sm_outcomes = []
         self.specification_file_name = ''
+        self.synthesis_timeout_s = 0.0
 
     @staticmethod
     def get_fields_and_field_types():
@@ -219,6 +228,7 @@ class _ModernRequestWithSpec:
             'initial_conditions': 'sequence<string>',
             'sm_outcomes': 'sequence<string>',
             'specification_file_name': 'string',
+            'synthesis_timeout_s': 'float64',
         }
 
 
@@ -1085,6 +1095,7 @@ def test_build_message_schema_recurses_nested_goal_fields():
                     'element_type': 'string',
                 },
                 {'name': 'specification_file_name', 'type': 'string', 'kind': 'string'},
+                {'name': 'synthesis_timeout_s', 'type': 'float64', 'kind': 'number'},
             ],
         },
         {

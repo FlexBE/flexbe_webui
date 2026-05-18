@@ -629,6 +629,7 @@ RC.PubSub = new (function() {
 	}
 
 	var synthesis_action_timeout_callback = function(timeout_cb) {
+		UI.Tools.closeSynthesisProgress();
 		T.logError('Synthesis timed out! Check if the synthesis server is listening on topic: ' +  UI.Settings.getSynthesisTopic());
 
 		if(timeout_cb != undefined) timeout_cb();
@@ -636,12 +637,14 @@ RC.PubSub = new (function() {
 
 	var synthesis_action_feedback_callback = function(feedback, root, feedback_cb) {
 		console.log('Synthesis status: ' + feedback.status + ' (' + (feedback.progress * 100) + '%)');
+		UI.Tools.updateSynthesisProgress(feedback.status);
 
 		if(feedback_cb != undefined) feedback_cb(feedback);
 	}
 
 	var synthesis_action_result_callback = function(result, root, result_cb) {
 		console.log(`\x1b[92mRC.PubSub: synthesis_action_result_callback ...\x1b[0m`);
+		UI.Tools.closeSynthesisProgress();
 		if (result == undefined) {
 			T.logError("Synthesis cancelled.");
 			return;
@@ -1166,16 +1169,35 @@ RC.PubSub = new (function() {
 		});
 	}
 
-	this.requestSynthesisGoal = function(goal_msg, root, result_cb, feedback_cb, timeout_cb) {
+	this.requestSynthesisGoal = function(goal_msg, root, result_cb, feedback_cb, timeout_cb, timeout_sec) {
 		if (synthesis_action_client == undefined) { T.logWarn("ROS not initialized!"); return; }
+		let effective_timeout = (Number.isFinite(timeout_sec) && timeout_sec > 0)
+			? timeout_sec : UI.Settings.getSynthesisTimeout();
+		if (goal_msg != undefined && goal_msg.request != undefined) {
+			goal_msg.request.synthesis_timeout_s = effective_timeout;
+		}
 		console.log("RC.PubSub - requestBehaviorSynthesis ...");
 		console.log(JSON.stringify(goal_msg));
 		synthesis_action_client.send_goal(goal_msg,
 			function(result) { synthesis_action_result_callback(result, root, result_cb); },
 			function(feedback) { synthesis_action_feedback_callback(feedback, root, feedback_cb); },
-			RC.Controller.onboardTimeout * 1000,
+			effective_timeout * 1000,
 			function() { synthesis_action_timeout_callback(timeout_cb); }
 		);
+	}
+
+	this.cancelSynthesisGoal = function() {
+		if (synthesis_action_client == undefined) { T.logWarn("ROS not initialized!"); return; }
+		let topic = UI.Settings.getSynthesisTopic();
+		API.postData('cancel_action_goal', {topic: topic}, function(result_data) {
+			if (result_data.canceled) {
+				console.log("RC.PubSub: synthesis goal canceled.");
+			} else {
+				T.logWarn("RC.PubSub: synthesis cancel - " + (result_data.reason || "no active goal"));
+			}
+		}, function(error) {
+			T.logError("RC.PubSub: failed to cancel synthesis goal - " + error);
+		});
 	}
 
 	this.requestBehaviorSynthesis = function(root, system, goal, initial_condition, outcomes, result_cb, feedback_cb, timeout_cb) {
@@ -1192,7 +1214,8 @@ RC.PubSub = new (function() {
 				initial_condition: initial_condition,
 				initial_conditions: initial_conditions,
 				sm_outcomes: outcomes,
-				specification_file_name: ""
+				specification_file_name: "",
+				synthesis_timeout_s: UI.Settings.getSynthesisTimeout()
 			},
 			synthesis_options: ""
 		};

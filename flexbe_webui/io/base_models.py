@@ -339,6 +339,17 @@ class SendActionGoalRequest(BaseModel):
         return v
 
 
+class CancelActionGoalRequest(BaseModel):
+    """Request model for action goal cancellation."""
+
+    topic: str
+
+    @validator('topic', pre=True)
+    def validate_topic(cls, v):
+        """Validate topic is a safe absolute ROS topic path."""
+        return validate_ros_topic(v)
+
+
 class LayoutNode(BaseModel):
     """A lightweight node description for statemachine auto-layout."""
 

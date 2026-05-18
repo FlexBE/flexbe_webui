@@ -44,6 +44,7 @@ UI.Settings = new (function() {
 	var synthesis_topic;
 	var synthesis_type;
 	var synthesis_system;
+	var synthesis_timeout;
 
 	var tab_targets = [];
 	var text_encoding;
@@ -91,6 +92,7 @@ UI.Settings = new (function() {
 			'synthesis_topic': synthesis_topic,
 			'synthesis_type': synthesis_type,
 			'synthesis_system': synthesis_system,
+			'synthesis_timeout': synthesis_timeout,
 			'text_encoding': text_encoding,
 			'transition_mode': transition_mode,
 		};
@@ -134,6 +136,7 @@ UI.Settings = new (function() {
 			'synthesis_topic': synthesis_topic,
 			'synthesis_type': synthesis_type,
 			'synthesis_system': synthesis_system,
+			'synthesis_timeout': synthesis_timeout,
 			'text_encoding': text_encoding,
 			'transition_mode': transition_mode,
 			// ------------------------------
@@ -255,6 +258,8 @@ UI.Settings = new (function() {
 			document.getElementById("input_synthesis_type").value = items.synthesis_type;
 			synthesis_system = items.synthesis_system;
 			document.getElementById("input_synthesis_system").value = items.synthesis_system;
+			synthesis_timeout = items.synthesis_timeout;
+			document.getElementById("input_synthesis_timeout").value = items.synthesis_timeout;
 			updateSynthesisInterface();
 
 			select_license = ((items.license !== undefined) ? items.license : 'Apache-2').toUpperCase();
@@ -1280,6 +1285,15 @@ UI.Settings = new (function() {
 		storeSettings();
 	}
 
+	this.synthesisTimeoutChanged = function() {
+		let el = document.getElementById('input_synthesis_timeout');
+		let val = parseInt(el.value, 10);
+		if (!Number.isFinite(val) || val <= 0) { el.value = synthesis_timeout; return; }
+		if (synthesis_timeout === val) return;
+		synthesis_timeout = val;
+		storeSettings();
+	}
+
 	this.isSynthesisEnabled = function() {
 		return synthesis_enabled;
 	}
@@ -1294,6 +1308,10 @@ UI.Settings = new (function() {
 
 	this.getSynthesisSystem = function() {
 		return synthesis_system;
+	}
+
+	this.getSynthesisTimeout = function() {
+		return synthesis_timeout;
 	}
 
 	var updateSynthesisInterface = function() {

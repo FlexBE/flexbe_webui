@@ -150,6 +150,7 @@ class WebuiSettings(BaseModel):
     synthesis_topic: str = '/behavior_synthesis'
     synthesis_type: str = 'synthesis_msgs/BehaviorSynthesisAction'
     synthesis_system: str = 'system_wide'
+    synthesis_timeout: int = 300
     target_line_length: int = 100
     text_encoding: str = 'UTF-8'
     transition_mode: int = 1

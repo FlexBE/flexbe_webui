@@ -40,7 +40,8 @@ import rosidl_runtime_py.set_message
 
 import yaml
 
-from .io.base_models import (ActionClientRequest, ActionSchemaRequest, ClosePublisherRequest,
+from .io.base_models import (ActionClientRequest, ActionSchemaRequest, CancelActionGoalRequest,
+                             ClosePublisherRequest,
                              CloseSubscriberRequest, CreatePublisherRequest, CreateSubscriberRequest,
                              PublishRequest, SendActionGoalRequest,
                              validate_ros_topic)
@@ -524,8 +525,15 @@ class WebuiNode(Node):
             await asyncio.sleep(0.01)
         return future.done()
 
-    async def _cancel_active_goal(self, topic: str) -> bool:
-        """Cancel any active goal for the given action topic."""
+    async def _cancel_active_goal(self, topic: str, clear_on_timeout: bool = True) -> bool:
+        """
+        Cancel any active goal for the given action topic.
+
+        clear_on_timeout=False preserves goal_handle/future when the cancel acknowledgment
+        times out, allowing the caller to retry without losing the handle.  Internal callers
+        (pre-dispatch cleanup, result timeout) should leave this True so stale state is
+        always removed.
+        """
         action_data = self._action_clients.get(topic)
         if action_data is None:
             return False
@@ -558,10 +566,13 @@ class WebuiNode(Node):
             action_data['result_future'] = None
             return False
 
+        cancel_timed_out = False
         try:
+            cancel_timeout = self._get_server_timeout() if clear_on_timeout else max(5.0, self._get_server_timeout())
             cancel_future = goal_handle.cancel_goal_async()
-            if not await self._wait_for_ros_future(cancel_future, self._get_server_timeout()):
+            if not await self._wait_for_ros_future(cancel_future, cancel_timeout):
                 print(f"Timed out while canceling active goal for '{topic}'.", flush=True)
+                cancel_timed_out = True
                 return False
             cancel_response = cancel_future.result()
             canceled = bool(cancel_response.goals_canceling)
@@ -574,9 +585,10 @@ class WebuiNode(Node):
             print(f"Failed to cancel active goal for '{topic}' - {exc}", flush=True)
             return False
         finally:
-            action_data['future'] = None
-            action_data['goal_handle'] = None
-            action_data['result_future'] = None
+            if not (cancel_timed_out and not clear_on_timeout):
+                action_data['future'] = None
+                action_data['goal_handle'] = None
+                action_data['result_future'] = None
 
     def _get_action_goal_lock(self, topic: str):
         """Return the per-topic action goal dispatch lock."""
@@ -628,11 +640,24 @@ class WebuiNode(Node):
 
         if self._action_clients[topic]['client'].wait_for_server(timeout_sec=self._get_server_timeout()):
             print(f" Send goal to '{topic}' ...", flush=True)
+            action_data = self._action_clients[topic]
             try:
-                self._action_clients[topic]['future'] = \
-                    self._action_clients[topic]['client'].send_goal_async(goal_msg)
-                self._action_clients[topic]['goal_handle'] = None
-                self._action_clients[topic]['result_future'] = None
+                action_data['last_feedback'] = None
+
+                def _store_feedback(feedback_msg):
+                    try:
+                        action_data['last_feedback'] = {
+                            'status': str(feedback_msg.feedback.status),
+                            'progress': float(feedback_msg.feedback.progress),
+                        }
+                    except (AttributeError, TypeError, ValueError):
+                        pass
+
+                action_data['future'] = \
+                    self._action_clients[topic]['client'].send_goal_async(goal_msg,
+                                                                          feedback_callback=_store_feedback)
+                action_data['goal_handle'] = None
+                action_data['result_future'] = None
             except (RuntimeError, TypeError, ValueError, AttributeError) as exc:
                 print(f'Error: {exc}', flush=True)
                 return self._server.api_success({'goal_succeeded': False, 'reason': str(exc)})
@@ -915,6 +940,24 @@ class WebuiNode(Node):
             goal_lock = self._get_action_goal_lock(topic)
             async with goal_lock:
                 return await self._send_action_goal_locked(goal, topic, timeout_sec)
+
+        @app.post('/api/v1/cancel_action_goal')
+        async def cancel_action_goal(request: Request, cancel_request: CancelActionGoalRequest = Body(...)):
+            self._server.authorize_request(request)
+            topic = cancel_request.topic
+            if topic not in self._action_clients:
+                return self._server.api_success({'canceled': False, 'reason': f"No action client for '{topic}'"})
+            canceled = await self._cancel_active_goal(topic, clear_on_timeout=False)
+            return self._server.api_success({'canceled': canceled})
+
+        @app.get('/api/v1/action_feedback')
+        async def action_feedback(request: Request, topic: str):
+            self._server.authorize_request(request)
+            validated_topic = validate_ros_topic(topic)
+            action_data = self._action_clients.get(validated_topic)
+            if action_data is None:
+                return self._server.api_success({'feedback': None})
+            return self._server.api_success({'feedback': action_data.get('last_feedback')})
 
         # This block just lists all routes between server and client
         print('\x1b[95mRegistered routes for the FASTApi app.\x1b[0m', flush=True)
