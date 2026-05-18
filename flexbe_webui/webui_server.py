@@ -876,8 +876,13 @@ class WebuiServer:
                 if package is None:
                     raise HTTPException(status_code=404, detail=f'Package {package_name} not found!')
 
-                # print(f'   ready to parse_behavior_folder({package.path}, '
-                #       f'{package.python_path}, {package.editable}) ...', flush=True)
+                async with self._behaviors_cache_lock:
+                    cached = self._behaviors_cache.get(package_name)
+                if cached is not None:
+                    elapsed = datetime.now().timestamp() - start_clock
+                    self._record_timing('parse_behaviors', endpoint, elapsed, True, package=package_name)
+                    return self.api_success({'items': cached, 'errors': []})
+
                 errors = []
                 result = await asyncio.to_thread(
                     parse_behavior_folder,
