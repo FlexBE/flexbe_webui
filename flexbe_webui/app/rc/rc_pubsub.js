@@ -719,7 +719,11 @@ RC.PubSub = new (function() {
 			root_container.addState(state_machine);
 		}
 
-		if(UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
+		let updated_transition_geometry = false;
+		if (UI.Statemachine.updateTransitionGeometry != undefined) {
+			updated_transition_geometry = UI.Statemachine.updateTransitionGeometry(state_machine);
+		}
+		if(!updated_transition_geometry && UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
 		UI.Panels.StateProperties.displayStateProperties(state_machine);
 
 		ActivityTracer.addActivity(ActivityTracer.ACT_STATE_ADD,
@@ -738,7 +742,10 @@ RC.PubSub = new (function() {
 					return;
 				}
 				container.addState(state_machine);
-				UI.Statemachine.refreshView();
+				if (UI.Statemachine.updateTransitionGeometry == undefined
+					|| !UI.Statemachine.updateTransitionGeometry(state_machine)) {
+					UI.Statemachine.refreshView();
+				}
 			}
 		);
 

@@ -48,7 +48,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
-from .base_models import AutoLayoutRequest, LayoutNode
+from .base_models import AutoLayoutRequest, LayoutNode, LayoutTransition
 
 
 INIT_NODE = '__flexbe_init__'
@@ -56,6 +56,7 @@ STATE_GAP_X = 130
 STATE_GAP_Y = 80
 MARGIN_X = 80
 MARGIN_Y = 60
+EDGE_OFFSET = 1
 
 
 def _node_size(node: LayoutNode) -> Tuple[int, int]:
@@ -254,14 +255,159 @@ def _average_predecessor_order(
     return sum(relevant) / len(relevant)
 
 
+def _transition_key(from_state_name: str, outcome: str) -> str:
+    """Return the client-side transition key used for geometry snapshots."""
+    return f'{from_state_name}::{outcome}'
+
+
+def _side_axis(side: str) -> str:
+    """Return the sorting axis for a side port group."""
+    return 'x' if side in {'top', 'bottom'} else 'y'
+
+
+def _side_coordinate(
+    box: Dict[str, float],
+    side: str,
+    index: int,
+    count: int,
+) -> Dict[str, float]:
+    """
+    Return a deterministic point on one side of a laid-out node.
+
+    Ports are evenly spread along the selected side.  High fan-in/fan-out nodes
+    therefore get separate attachment points instead of forcing all arrows
+    through the side midpoint.
+    """
+    count = max(count, 1)
+    fraction = (index + 1) / (count + 1)
+    if side == 'left':
+        return {
+            'x': box['x'] - EDGE_OFFSET,
+            'y': box['y'] + box['height'] * fraction,
+        }
+    if side == 'right':
+        return {
+            'x': box['x'] + box['width'] + EDGE_OFFSET,
+            'y': box['y'] + box['height'] * fraction,
+        }
+    if side == 'top':
+        return {
+            'x': box['x'] + box['width'] * fraction,
+            'y': box['y'] - EDGE_OFFSET,
+        }
+    return {
+        'x': box['x'] + box['width'] * fraction,
+        'y': box['y'] + box['height'] + EDGE_OFFSET,
+    }
+
+
+def _edge_sides(source: Dict[str, float], target: Dict[str, float]) -> Tuple[str, str]:
+    """
+    Pick source and target sides based on relative center positions.
+
+    Auto-layout is left-to-right, so edges between different columns should
+    prefer left/right ports even when the vertical separation is large.  Vertical
+    ports are reserved for nodes that are effectively stacked in the same
+    column.
+    """
+    dx = target['cx'] - source['cx']
+    dy = target['cy'] - source['cy']
+    same_column_threshold = (source['width'] + target['width']) / 4
+    if abs(dx) > same_column_threshold:
+        if dx > 0:
+            return 'right', 'left'
+        return 'left', 'right'
+    if dy >= 0:
+        return 'bottom', 'top'
+    return 'top', 'bottom'
+
+
+def _rounded_point(point: Dict[str, float]) -> Dict[str, float]:
+    """Round transition geometry for stable serialized results."""
+    return {
+        'x': round(point['x'], 3),
+        'y': round(point['y'], 3),
+    }
+
+
+def _compute_transition_geometry(
+    valid_transitions: List[LayoutTransition],
+    node_boxes: Dict[str, Dict[str, float]],
+) -> List[Dict[str, object]]:
+    """Compute side-port endpoint and waypoint geometry for valid transitions."""
+    edge_entries = []
+    outgoing_groups: Dict[Tuple[str, str], List[Dict[str, object]]] = defaultdict(list)
+    incoming_groups: Dict[Tuple[str, str], List[Dict[str, object]]] = defaultdict(list)
+
+    for order, transition in enumerate(valid_transitions):
+        source = node_boxes[transition.from_state_name]
+        target = node_boxes[transition.to_state_name]
+        source_side, target_side = _edge_sides(source, target)
+        entry = {
+            'transition': transition,
+            'order': order,
+            'source_side': source_side,
+            'target_side': target_side,
+        }
+        edge_entries.append(entry)
+        outgoing_groups[(transition.from_state_name, source_side)].append(entry)
+        incoming_groups[(transition.to_state_name, target_side)].append(entry)
+
+    for (node_name, side), entries in outgoing_groups.items():
+        axis = _side_axis(side)
+        entries.sort(key=lambda entry: (
+            node_boxes[entry['transition'].to_state_name][f'c{axis}'],
+            entry['transition'].to_state_name,
+            entry['transition'].outcome,
+            entry['order'],
+        ))
+        box = node_boxes[node_name]
+        for index, entry in enumerate(entries):
+            entry['beginning'] = _side_coordinate(box, side, index, len(entries))
+
+    for (node_name, side), entries in incoming_groups.items():
+        axis = _side_axis(side)
+        entries.sort(key=lambda entry: (
+            node_boxes[entry['transition'].from_state_name][f'c{axis}'],
+            entry['transition'].from_state_name,
+            entry['transition'].outcome,
+            entry['order'],
+        ))
+        box = node_boxes[node_name]
+        for index, entry in enumerate(entries):
+            entry['end'] = _side_coordinate(box, side, index, len(entries))
+
+    transition_geometry = []
+    for entry in sorted(edge_entries, key=lambda item: item['order']):
+        transition = entry['transition']
+        beginning = entry['beginning']
+        end = entry['end']
+        waypoint = {
+            'x': (beginning['x'] + end['x']) / 2,
+            'y': (beginning['y'] + end['y']) / 2,
+        }
+        transition_geometry.append({
+            'key': _transition_key(transition.from_state_name, transition.outcome),
+            'from_state_name': transition.from_state_name,
+            'to_state_name': transition.to_state_name,
+            'outcome': transition.outcome,
+            'x': round(waypoint['x'], 3),
+            'y': round(waypoint['y'], 3),
+            'beginning': _rounded_point(beginning),
+            'end': _rounded_point(end),
+        })
+
+    return transition_geometry
+
+
 def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
     """
     Compute a deterministic layered layout for one active container.
 
-    The returned structure contains only node positions for the active
-    container's normal states and outcome nodes.  Transition control points are
-    intentionally omitted because the client clears and redraws transition
-    geometry after applying the node layout.
+    The returned structure contains node positions plus transition endpoint and
+    waypoint geometry.  The transition hints distribute high fan-in/fan-out
+    edges across side ports so the client does not redraw every default curve
+    through the same midpoint.
 
     The layout strategy is:
 
@@ -284,6 +430,7 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
     adjacency: Dict[str, List[str]] = defaultdict(list)
     reverse_adjacency: Dict[str, List[str]] = defaultdict(list)
     valid_edges: List[Tuple[str, str]] = []
+    valid_transitions: List[LayoutTransition] = []
 
     if layout_request.initial_state_name and layout_request.initial_state_name in all_names:
         adjacency[INIT_NODE].append(layout_request.initial_state_name)
@@ -297,6 +444,7 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
         adjacency[transition.from_state_name].append(transition.to_state_name)
         reverse_adjacency[transition.to_state_name].append(transition.from_state_name)
         valid_edges.append((transition.from_state_name, transition.to_state_name))
+        valid_transitions.append(transition)
 
     for node in all_names:
         adjacency.setdefault(node, [])
@@ -437,14 +585,23 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
 
     state_positions = []
     outcome_positions = []
+    node_boxes: Dict[str, Dict[str, float]] = {}
     for rank in sorted_ranks:
         cursor_y = float(MARGIN_Y)
         for node in ranked_nodes[rank]:
-            _, height = _node_size(node)
+            width, height = _node_size(node)
             entry = {
                 'state_name': node.state_name,
                 'position_x': x_offsets[rank],
                 'position_y': cursor_y,
+            }
+            node_boxes[node.state_name] = {
+                'x': x_offsets[rank],
+                'y': cursor_y,
+                'width': width,
+                'height': height,
+                'cx': x_offsets[rank] + width / 2,
+                'cy': cursor_y + height / 2,
             }
             if node.state_class in {':OUTCOME', ':CONDITION'}:
                 outcome_positions.append(entry)
@@ -456,4 +613,5 @@ def compute_auto_layout(layout_request: AutoLayoutRequest) -> Dict[str, object]:
         'container_name': layout_request.container_name,
         'states': state_positions,
         'outcomes': outcome_positions,
+        'transitions': _compute_transition_geometry(valid_transitions, node_boxes),
     }

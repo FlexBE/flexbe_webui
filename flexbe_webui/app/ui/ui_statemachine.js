@@ -924,6 +924,181 @@ UI.Statemachine = new (function() {
 		return transition.getFrom().getStateName() + "::" + transition.getOutcome();
 	}
 
+	var getSnapshotTransitionKey = function(entry) {
+		if (entry.key != undefined) {
+			return entry.key;
+		}
+		if (entry.from_state_name != undefined && entry.outcome != undefined) {
+			return entry.from_state_name + "::" + entry.outcome;
+		}
+		return undefined;
+	}
+
+	var getLayoutBox = function(state) {
+		let drawing = state_drawings_map.get(state.getStateName());
+		if (drawing == undefined || drawing.getBBox == undefined) {
+			return undefined;
+		}
+		let bbox = drawing.getBBox();
+		let box_x = bbox.x - pan_shift.x;
+		let box_y = bbox.y - pan_shift.y;
+		return {
+			x: box_x,
+			y: box_y,
+			width: bbox.width,
+			height: bbox.height,
+			cx: box_x + bbox.width / 2,
+			cy: box_y + bbox.height / 2
+		};
+	}
+
+	var getPortSideAxis = function(side) {
+		return (side == "top" || side == "bottom") ? "x" : "y";
+	}
+
+	var getAutoLayoutPortSides = function(source_box, target_box) {
+		let dx = target_box.cx - source_box.cx;
+		let dy = target_box.cy - source_box.cy;
+		let same_column_threshold = (source_box.width + target_box.width) / 4;
+		if (Math.abs(dx) > same_column_threshold) {
+			return dx > 0 ? ["right", "left"] : ["left", "right"];
+		}
+		return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
+	}
+
+	var getPortPoint = function(box, side, index, count) {
+		let fraction = (index + 1) / (Math.max(count, 1) + 1);
+		if (side == "left") {
+			return {x: box.x, y: box.y + box.height * fraction};
+		}
+		if (side == "right") {
+			return {x: box.x + box.width, y: box.y + box.height * fraction};
+		}
+		if (side == "top") {
+			return {x: box.x + box.width * fraction, y: box.y};
+		}
+		return {x: box.x + box.width * fraction, y: box.y + box.height};
+	}
+
+	var getAutoLayoutWaypoint = function(beginning, end, source_side, target_side, index, count) {
+		let midpoint = {
+			x: (beginning.x + end.x) / 2,
+			y: (beginning.y + end.y) / 2
+		};
+		let lane_offset = (index - (count - 1) / 2) * 6;
+		let arc_offset = Math.max(60, Math.min(180, Math.abs(beginning.y - end.y) * 0.12 + 70));
+		if (target_side == "left") {
+			return {x: Math.min(midpoint.x - 40, end.x - arc_offset), y: midpoint.y + lane_offset};
+		}
+		if (target_side == "right") {
+			return {x: Math.max(midpoint.x + 40, end.x + arc_offset), y: midpoint.y + lane_offset};
+		}
+		arc_offset = Math.max(60, Math.min(180, Math.abs(beginning.x - end.x) * 0.12 + 70));
+		if (target_side == "top") {
+			return {x: midpoint.x + lane_offset, y: Math.min(midpoint.y - 40, end.y - arc_offset)};
+		}
+		return {x: midpoint.x + lane_offset, y: Math.max(midpoint.y + 40, end.y + arc_offset)};
+	}
+
+	var buildDrawnTransitionGeometry = function(container) {
+		let edge_entries = [];
+		let entries_by_pair = new Map();
+		let outgoing_groups = new Map();
+		let incoming_groups = new Map();
+
+		let addToGroup = function(groups, key, entry) {
+			if (!groups.has(key)) {
+				groups.set(key, []);
+			}
+			groups.get(key).push(entry);
+		}
+
+		container.getTransitions().forEach(function(transition, order) {
+			if (transition.getTo() == undefined || transition.getFrom().getStateName() == "INIT") {
+				return;
+			}
+			let pair_key = transition.getFrom().getStateName() + "\0" + transition.getTo().getStateName();
+			let existing_entry = entries_by_pair.get(pair_key);
+			if (existing_entry != undefined) {
+				existing_entry.transitions.push(transition);
+				return;
+			}
+			let source_box = getLayoutBox(transition.getFrom());
+			let target_box = getLayoutBox(transition.getTo());
+			if (source_box == undefined || target_box == undefined) {
+				return;
+			}
+			let sides = getAutoLayoutPortSides(source_box, target_box);
+			let entry = {
+				transition: transition,
+				transitions: [transition],
+				order: order,
+				source_box: source_box,
+				target_box: target_box,
+				source_side: sides[0],
+				target_side: sides[1]
+			};
+			entries_by_pair.set(pair_key, entry);
+			edge_entries.push(entry);
+			addToGroup(outgoing_groups, transition.getFrom().getStateName() + "\0" + entry.source_side, entry);
+			addToGroup(incoming_groups, transition.getTo().getStateName() + "\0" + entry.target_side, entry);
+		});
+
+		outgoing_groups.forEach(function(entries) {
+			let axis = getPortSideAxis(entries[0].source_side);
+			entries.sort(function(a, b) {
+				let delta = a.target_box["c" + axis] - b.target_box["c" + axis];
+				if (delta != 0) return delta;
+				return a.order - b.order;
+			});
+			entries.forEach(function(entry, index) {
+				entry.beginning = getPortPoint(entry.source_box, entry.source_side, index, entries.length);
+			});
+		});
+
+		incoming_groups.forEach(function(entries) {
+			let axis = getPortSideAxis(entries[0].target_side);
+			entries.sort(function(a, b) {
+				let delta = a.source_box["c" + axis] - b.source_box["c" + axis];
+				if (delta != 0) return delta;
+				return a.order - b.order;
+			});
+			entries.forEach(function(entry, index) {
+				entry.incoming_index = index;
+				entry.incoming_count = entries.length;
+				entry.end = getPortPoint(entry.target_box, entry.target_side, index, entries.length);
+			});
+		});
+
+		let geometry = [];
+		edge_entries.sort(function(a, b) { return a.order - b.order; }).forEach(function(entry) {
+			let waypoint = getAutoLayoutWaypoint(
+				entry.beginning,
+				entry.end,
+				entry.source_side,
+				entry.target_side,
+				entry.incoming_index || 0,
+				entry.incoming_count || 1
+			);
+			entry.transitions.forEach(function(transition) {
+				geometry.push({
+					key: getTransitionKey(transition),
+					x: Math.round(waypoint.x),
+					y: Math.round(waypoint.y),
+					beginning: {
+						x: Math.round(entry.beginning.x),
+						y: Math.round(entry.beginning.y)
+					},
+					end: {
+						x: Math.round(entry.end.x),
+						y: Math.round(entry.end.y)
+					}
+				});
+			});
+		});
+		return geometry;
+	}
+
 	var createLayoutNodePayload = function(state) {
 		return {
 			state_name: state.getStateName(),
@@ -1003,7 +1178,10 @@ UI.Statemachine = new (function() {
 
 		let transitions_by_key = new Map();
 		(snapshot.transitions || []).forEach(function(entry) {
-			transitions_by_key.set(entry.key, entry);
+			let key = getSnapshotTransitionKey(entry);
+			if (key != undefined) {
+				transitions_by_key.set(key, entry);
+			}
 		});
 		container.getTransitions().forEach(function(transition) {
 			let geometry = transitions_by_key.get(getTransitionKey(transition));
@@ -1113,6 +1291,48 @@ UI.Statemachine = new (function() {
 		T.logInfo(success_message);
 	}
 
+	this.updateTransitionGeometry = function(container) {
+		if (container == undefined) {
+			container = displayed_sm;
+		}
+		if (container == undefined) {
+			return false;
+		}
+
+		let previous_displayed = displayed_sm;
+		let previous_pan = {x: pan_shift.x, y: pan_shift.y};
+		let restoring_view = previous_displayed != container;
+
+		displayed_sm = container;
+		if (restoring_view) {
+			pan_shift = {x: 0, y: 0};
+		}
+		that.refreshView();
+
+		let drawn_transition_geometry = buildDrawnTransitionGeometry(container);
+		if (drawn_transition_geometry.length == 0) {
+			if (restoring_view) {
+				displayed_sm = previous_displayed;
+				pan_shift = previous_pan;
+				that.refreshView();
+			}
+			return false;
+		}
+
+		applyLayoutSnapshot(container, {
+			states: [],
+			outcomes: [],
+			transitions: drawn_transition_geometry
+		});
+
+		if (restoring_view) {
+			displayed_sm = previous_displayed;
+			pan_shift = previous_pan;
+		}
+		that.refreshView();
+		return true;
+	}
+
 	this.requestAutoLayout = async function() {
 		if (displayed_sm == undefined || that.isReadonly()) return;
 
@@ -1125,9 +1345,17 @@ UI.Statemachine = new (function() {
 				outcomes: data.outcomes || [],
 				transitions: []
 			});
-			clearTransitionGeometry(container);
+			if (!that.updateTransitionGeometry(container) && (data.transitions || []).length > 0) {
+				applyLayoutSnapshot(container, {
+					states: [],
+					outcomes: [],
+					transitions: data.transitions || []
+				});
+			}
 			finishAutoLayout(container, previous_snapshot, "Applied auto layout to '" + container.getStateName() + "'.");
-		} catch ({error, result}) {
+		} catch (exc) {
+			let error = exc && exc.error != undefined ? exc.error : (exc && exc.message != undefined ? exc.message : exc);
+			let result = exc && exc.result != undefined ? exc.result : undefined;
 			let endpoint_missing = result != undefined && result.status == 404;
 			endpoint_missing = endpoint_missing || (typeof error === 'string' && error.indexOf('Not Found') !== -1);
 			if (endpoint_missing) {

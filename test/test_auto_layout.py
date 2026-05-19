@@ -94,6 +94,43 @@ def test_compute_auto_layout_orders_outcomes_by_predecessor_flow():
     assert outcomes['finished']['position_y'] < outcomes['failed']['position_y']
 
 
+def test_compute_auto_layout_returns_distributed_transition_geometry_for_fan_in():
+    """High fan-in transitions should not all share the same target endpoint."""
+    states = [
+        LayoutNode(state_name=f'Source{i}', state_class='MoveState', position_x=0, position_y=i * 100)
+        for i in range(6)
+    ]
+    states.append(LayoutNode(state_name='Grab', state_class='PickState', position_x=400, position_y=200))
+    request = AutoLayoutRequest(
+        container_name='root',
+        initial_state_name='Source0',
+        states=states,
+        outcomes=[],
+        transitions=[
+            LayoutTransition(from_state_name=f'Source{i}', to_state_name='Grab', outcome='done')
+            for i in range(6)
+        ],
+    )
+
+    result = compute_auto_layout(request)
+    transitions = result['transitions']
+    target_endpoints = {
+        (entry['end']['x'], entry['end']['y'])
+        for entry in transitions
+    }
+    target = {
+        entry['state_name']: entry
+        for entry in result['states']
+    }['Grab']
+
+    assert len(transitions) == 6
+    assert len(target_endpoints) > 1
+    assert {entry['end']['x'] for entry in transitions} == {target['position_x'] - 1}
+    assert {entry['key'] for entry in transitions} == {
+        f'Source{i}::done' for i in range(6)
+    }
+
+
 def test_initial_state_placed_at_top_of_its_rank():
     """Initial state must be topmost within its rank regardless of prior y-position."""
     request = AutoLayoutRequest(

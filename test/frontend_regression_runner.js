@@ -2571,6 +2571,78 @@ async function runSynthesisPayloadCase() {
   assert.strictEqual(sentGoal.request.synthesis_timeout_s, 45);
 }
 
+async function runSynthesisResultUpdatesTransitionGeometryCase() {
+  setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  const rootContainer = {
+    addedStates: [],
+    getStateByName() { return undefined; },
+    addState(state) {
+      this.addedStates.push(state);
+      state.container = this;
+    },
+    getStateByPath() { return undefined; },
+  };
+  const childState = {
+    position: { x: 320, y: 480 },
+    getPosition() { return this.position; },
+  };
+  const synthesizedStateMachine = {
+    container: undefined,
+    getStateName() { return 'Synth'; },
+    setContainer(container) { this.container = container; },
+    getContainer() { return this.container; },
+    getOutcomes() { return ['finished']; },
+    getStates() { return [childState]; },
+  };
+
+  global.Behavior.getStatemachine = function() {
+    return rootContainer;
+  };
+  global.IO.ModelGenerator = {
+    parseInstantiationMsg(states) {
+      assert.deepStrictEqual(states, [{ state_path: '/Synth/Leaf' }]);
+      return { sm_defs: [], sm_states: [] };
+    },
+    buildStateMachine(name) {
+      assert.strictEqual(name, 'Synth');
+      return synthesizedStateMachine;
+    },
+  };
+
+  let transitionGeometryTarget;
+  let refreshCount = 0;
+  global.UI.Statemachine.updateTransitionGeometry = function(container) {
+    transitionGeometryTarget = container;
+    return true;
+  };
+  global.UI.Statemachine.refreshView = function() {
+    refreshCount += 1;
+  };
+  global.UI.Menu.isPageStatemachine = function() { return true; };
+  global.UI.Panels.StateProperties = {
+    displayStateProperties() {},
+    isCurrentState() { return false; },
+    hide() {},
+  };
+  global.UI.Tools.closeSynthesisProgress = function() {};
+  global.UI.Tools.customSynthesisResult = function() {};
+  global.ActivityTracer.ACT_STATE_ADD = 'state_add';
+  global.ActivityTracer.addActivity = function(_type, _label, _undo, _redo) {};
+
+  loadScript('flexbe_webui/app/rc/rc_pubsub.js');
+  RC.PubSub.DEBUG_synthesis_action_result_callback({
+    error_code: { value: 1 },
+    states: [{ state_path: '/Synth/Leaf' }],
+    messages: [],
+  }, '/Synth');
+
+  assert.strictEqual(transitionGeometryTarget, synthesizedStateMachine);
+  assert.deepStrictEqual(childState.getPosition(), { x: 320, y: 480 });
+  assert.strictEqual(refreshCount, 0);
+}
+
 async function runSynthesisFormCase() {
   setupGlobals();
   loadScript('flexbe_webui/app/prototype.js');
@@ -5265,6 +5337,235 @@ async function runCommandAutoLayoutCase() {
 
   assert.strictEqual(autoLayoutCount, 1);
   assert.strictEqual(notifyCount, 1);
+}
+
+async function runAutoLayoutAppliesTransitionGeometryCase() {
+  const { logs } = setupGlobals();
+  loadScript('flexbe_webui/app/prototype.js');
+
+  function makeShape(initialAttrs = {}) {
+    const attrs = Object.assign({}, initialAttrs);
+    const dataValues = new Map();
+    return {
+      attr(arg) {
+        if (typeof arg === 'string') {
+          return attrs[arg];
+        }
+        Object.assign(attrs, arg);
+        return this;
+      },
+      data(key, value) {
+        if (value === undefined) {
+          return dataValues.get(key);
+        }
+        dataValues.set(key, value);
+        return this;
+      },
+      getBBox() {
+        const x = attrs.x || attrs.cx || 0;
+        const y = attrs.y || attrs.cy || 0;
+        const width = attrs.width || 0;
+        const height = attrs.height || 0;
+        return {
+          x,
+          y,
+          x2: x + width,
+          y2: y + height,
+          width,
+          height,
+          cx: x + width / 2,
+          cy: y + height / 2,
+        };
+      },
+      drag() { return this; },
+      mousemove() { return this; },
+      click() { return this; },
+      toBack() { return this; },
+      toFront() { return this; },
+      translate() { return this; },
+      remove() {},
+    };
+  }
+
+  global.Raphael = function() {
+    return {
+      width: 400,
+      height: 300,
+      canvas: { addEventListener() {} },
+      rect() {
+        return makeShape({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+      },
+      circle() {
+        return makeShape({ cx: 0, cy: 0, opacity: 0 });
+      },
+      remove() {},
+    };
+  };
+
+  global.State = function(name) {
+    this.getStateName = function() { return name; };
+    this.getStateClass = function() { return ':INIT'; };
+  };
+
+  function makeState(name, x, y) {
+    let position = { x, y };
+    return {
+      getStateName() { return name; },
+      getStateClass() { return 'SimpleState'; },
+      getPosition() { return position; },
+      setPosition(next) { position = next; },
+    };
+  }
+
+  const source = makeState('Source', 0, 0);
+  const target = makeState('Target', 250, 0);
+  function makeTransition(outcome) {
+    return {
+    x: undefined,
+    y: undefined,
+    beginning: undefined,
+    end: undefined,
+    getFrom() { return source; },
+    getTo() { return target; },
+    getOutcome() { return outcome; },
+    getX() { return this.x; },
+    getY() { return this.y; },
+    getBeginning() { return this.beginning; },
+    getEnd() { return this.end; },
+    setX(value) { this.x = value; },
+    setY(value) { this.y = value; },
+    setBeginning(value) { this.beginning = value; },
+    setEnd(value) { this.end = value; },
+    };
+  }
+  const transition = makeTransition('done');
+  const retryTransition = makeTransition('retry');
+  const container = {
+    getStateName() { return 'Container'; },
+    getStates() { return [source, target]; },
+    getStateByName(name) {
+      return [source, target].find(state => state.getStateName() === name);
+    },
+    getSMOutcomes() { return []; },
+    getSMOutcomeByName() { return undefined; },
+    getTransitions() { return [transition, retryTransition]; },
+    getDataflow() { return []; },
+    getCommentNotes() { return []; },
+    getStatePath() { return ''; },
+    updateDataflow() {},
+    getInitialState() { return source; },
+    isConcurrent() { return false; },
+    isPriority() { return false; },
+    isInsideDifferentBehavior() { return false; },
+  };
+
+  global.Behavior.getStatemachine = function() { return container; };
+  global.Behavior.getCommentNotes = function() { return []; };
+  global.Behavior.isReadonly = function() { return false; };
+  global.UI.Menu.isPageStatemachine = function() { return false; };
+  global.RC.Controller.isReadonly = function() { return false; };
+  global.RC.Controller.isRunning = function() { return false; };
+  global.RC.Controller.isCurrentState = function() { return false; };
+  global.RC.Controller.isLocked = function() { return false; };
+  global.RC.Controller.isOnLockedPath = function() { return false; };
+  global.ActivityTracer.ACT_COMPLEX_OPERATION = 'complex';
+  global.ActivityTracer.addActivity = function(_type, _label, _undo, redo) {
+    if (redo) redo();
+  };
+  global.Drawable = {
+    State: function(state) {
+      this.obj = state;
+      this.drawing = makeShape({
+        x: state.getPosition().x,
+        y: state.getPosition().y,
+        width: 100,
+        height: 50,
+      });
+    },
+    BehaviorState: function() {},
+    Statemachine: function() {},
+    Outcome: function() {},
+    ContainerPath: function() {
+      this.obj = {};
+      this.drawing = makeShape({ x: 0, y: 0, width: 0, height: 0 });
+    },
+    Note: function() {},
+    Transition: function(transitionObject) {
+      const beginning = transitionObject.getBeginning() || { x: 0, y: 0 };
+      const end = transitionObject.getEnd() || { x: 0, y: 0 };
+      const beginPoint = makeShape({ cx: beginning.x, cy: beginning.y });
+      const endPoint = makeShape({ cx: end.x, cy: end.y });
+      beginPoint.data('corners', []);
+      endPoint.data('corners', []);
+      this.obj = transitionObject;
+      this.drawing = [
+        makeShape(),
+        [makeShape(), makeShape()],
+        [beginPoint, endPoint],
+      ];
+      this.drawing.remove = function() {};
+      this.drawing.translate = function() { return this; };
+      this.drawing.mousemove = function() { return this; };
+      this.merge = function() {};
+    },
+    Helper: {
+      endPointClick() {},
+    },
+  };
+  global.Drawable.State.Mode = { OUTCOME: 'outcome' };
+  global.Drawable.Transition.PATH_CURVE = 'curve';
+  global.Drawable.Transition.PATH_STRAIGHT = 'straight';
+  let autoLayoutPayload;
+  global.API.postDataAsync = async function(action, payload) {
+    assert.strictEqual(action, 'statemachine/auto_layout');
+    autoLayoutPayload = payload;
+    return {
+      data: {
+        states: [
+          { state_name: 'Source', position_x: 80, position_y: 60 },
+          { state_name: 'Target', position_x: 380, position_y: 260 },
+        ],
+        outcomes: [],
+        transitions: [{
+          from_state_name: 'Source',
+          outcome: 'done',
+          x: 250,
+          y: 108,
+          beginning: { x: 251, y: 108 },
+          end: { x: 379, y: 108 },
+        }],
+      },
+    };
+  };
+
+  loadScript('flexbe_webui/app/ui/ui_statemachine.js');
+  UI.Statemachine.initialize();
+
+  await UI.Statemachine.requestAutoLayout();
+
+  assert(
+    !logs.some(entry => entry.level === 'error'),
+    `Unexpected auto-layout error: ${JSON.stringify(logs)}`
+  );
+  assert.deepStrictEqual(autoLayoutPayload.transitions, [{
+    from_state_name: 'Source',
+    to_state_name: 'Target',
+    outcome: 'done',
+  }, {
+    from_state_name: 'Source',
+    to_state_name: 'Target',
+    outcome: 'retry',
+  }]);
+  assert.deepStrictEqual(source.getPosition(), { x: 80, y: 60 });
+  assert.deepStrictEqual(target.getPosition(), { x: 380, y: 260 });
+  assert.deepStrictEqual(transition.getBeginning(), { x: 180, y: 85 });
+  assert.deepStrictEqual(transition.getEnd(), { x: 380, y: 285 });
+  assert.deepStrictEqual(retryTransition.getBeginning(), transition.getBeginning());
+  assert.deepStrictEqual(retryTransition.getEnd(), transition.getEnd());
+  assert.strictEqual(retryTransition.getX(), transition.getX());
+  assert.strictEqual(retryTransition.getY(), transition.getY());
+  assert(transition.getX() < (transition.getBeginning().x + transition.getEnd().x) / 2);
+  assert.strictEqual(transition.getY(), 185);
 }
 
 async function runBehaviorCollisionResolutionCase() {
@@ -8001,6 +8302,10 @@ async function main() {
     await runSynthesisPayloadCase();
     return;
   }
+  if (caseName === 'synthesis_result_transition_geometry') {
+    await runSynthesisResultUpdatesTransitionGeometryCase();
+    return;
+  }
   if (caseName === 'synthesis_form') {
     await runSynthesisFormCase();
     return;
@@ -8103,6 +8408,10 @@ async function main() {
   }
   if (caseName === 'command_qualified_behavior') {
     await runCommandQualifiedBehaviorCase();
+    return;
+  }
+  if (caseName === 'auto_layout_transition_geometry') {
+    await runAutoLayoutAppliesTransitionGeometryCase();
     return;
   }
   if (caseName === 'command_auto_layout') {
