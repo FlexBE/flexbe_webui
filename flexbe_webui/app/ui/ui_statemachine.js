@@ -1302,35 +1302,45 @@ UI.Statemachine = new (function() {
 		let previous_displayed = displayed_sm;
 		let previous_pan = {x: pan_shift.x, y: pan_shift.y};
 		let restoring_view = previous_displayed != container;
+		let restored_view = false;
+		let restoreView = function() {
+			if (restoring_view && !restored_view) {
+				displayed_sm = previous_displayed;
+				pan_shift = previous_pan;
+				restored_view = true;
+			}
+		}
 
 		displayed_sm = container;
 		if (restoring_view) {
 			pan_shift = {x: 0, y: 0};
 		}
-		that.refreshView();
+		try {
+			that.refreshView();
 
-		let drawn_transition_geometry = buildDrawnTransitionGeometry(container);
-		if (drawn_transition_geometry.length == 0) {
-			if (restoring_view) {
-				displayed_sm = previous_displayed;
-				pan_shift = previous_pan;
-				that.refreshView();
+			let drawn_transition_geometry = buildDrawnTransitionGeometry(container);
+			if (drawn_transition_geometry.length == 0) {
+				restoreView();
+				if (restoring_view) {
+					that.refreshView();
+				}
+				return false;
 			}
-			return false;
-		}
 
-		applyLayoutSnapshot(container, {
-			states: [],
-			outcomes: [],
-			transitions: drawn_transition_geometry
-		});
+			applyLayoutSnapshot(container, {
+				states: [],
+				outcomes: [],
+				transitions: drawn_transition_geometry
+			});
 
-		if (restoring_view) {
-			displayed_sm = previous_displayed;
-			pan_shift = previous_pan;
+			restoreView();
+			that.refreshView();
+			return true;
+		} finally {
+			if (restoring_view) {
+				restoreView();
+			}
 		}
-		that.refreshView();
-		return true;
 	}
 
 	this.requestAutoLayout = async function() {

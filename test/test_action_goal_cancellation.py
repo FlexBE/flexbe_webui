@@ -232,6 +232,22 @@ class _ModernRequestWithSpec:
         }
 
 
+class _FloatSequenceRequest:
+    """Message with a floating-point sequence field."""
+
+    __slots__ = ['weights']
+
+    def __init__(self):
+        self.weights = []
+
+    @staticmethod
+    def get_fields_and_field_types():
+        """Return message field metadata."""
+        return {
+            'weights': 'sequence<double>',
+        }
+
+
 class _GoalMessage:
     """Top-level goal wrapper used by the population helper tests."""
 
@@ -972,6 +988,24 @@ def test_coerce_value_for_message_field_converts_float_fields():
 
     assert timeout == 300.0
     assert isinstance(timeout, float)
+
+
+def test_coerce_value_for_message_field_rejects_bool_float_fields():
+    """Booleans should not be accepted for ROS float/double fields."""
+    modern_request = _ModernRequestWithSpec()
+
+    with pytest.raises(ValueError, match='expects a floating-point value, got boolean'):
+        WebuiNode._coerce_value_for_message_field(
+            modern_request, 'synthesis_timeout_s', True
+        )
+
+
+def test_coerce_value_for_message_field_rejects_bool_float_sequences():
+    """Boolean sequence elements should not be accepted for ROS float/double sequences."""
+    request = _FloatSequenceRequest()
+
+    with pytest.raises(ValueError, match='expects a floating-point value, got boolean'):
+        WebuiNode._coerce_value_for_message_field(request, 'weights', [1.0, True])
 
 
 def test_dynamic_goal_population_matches_legacy_request_shape(node_stub):

@@ -125,7 +125,7 @@ def test_compute_auto_layout_returns_distributed_transition_geometry_for_fan_in(
 
     assert len(transitions) == 6
     assert len(target_endpoints) > 1
-    assert {entry['end']['x'] for entry in transitions} == {target['position_x'] - 1}
+    assert {entry['end']['x'] for entry in transitions} == {target['position_x']}
     assert {entry['key'] for entry in transitions} == {
         f'Source{i}::done' for i in range(6)
     }

@@ -56,7 +56,7 @@ STATE_GAP_X = 130
 STATE_GAP_Y = 80
 MARGIN_X = 80
 MARGIN_Y = 60
-EDGE_OFFSET = 1
+EDGE_OFFSET = 0
 
 
 def _node_size(node: LayoutNode) -> Tuple[int, int]:

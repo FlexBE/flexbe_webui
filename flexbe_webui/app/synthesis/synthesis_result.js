@@ -85,7 +85,9 @@ Synthesis.Result = new (function() {
 			state_machine.setInputMapping(i_maps);
 			state_machine.setOutputMapping(o_maps);
 
-			transitions.forEach(root_container.addTransition);
+			transitions.forEach(function(t) {
+				root_container.addTransition(t);
+			});
 			console.log(`\x1b[92mSynthesis.Result: finished updating container with synthesized state machine!\x1b[0m`);
 		} else {
 			console.log(`\x1b[92mSynthesis.Result: adding synthesized SM directly to root container ...\x1b[0m`);

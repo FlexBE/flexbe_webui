@@ -5562,6 +5562,10 @@ async function runAutoLayoutAppliesTransitionGeometryCase() {
   }]);
   assert.deepStrictEqual(source.getPosition(), { x: 80, y: 60 });
   assert.deepStrictEqual(target.getPosition(), { x: 380, y: 260 });
+  assert(transition.getBeginning() !== undefined);
+  assert(transition.getEnd() !== undefined);
+  assert(retryTransition.getBeginning() !== undefined);
+  assert(retryTransition.getEnd() !== undefined);
   assert.deepStrictEqual(transition.getBeginning(), { x: 180, y: 85 });
   assert.deepStrictEqual(transition.getEnd(), { x: 380, y: 285 });
   assert.deepStrictEqual(retryTransition.getBeginning(), transition.getBeginning());
