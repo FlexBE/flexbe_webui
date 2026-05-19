@@ -2528,6 +2528,8 @@ async function runSynthesisPayloadCase() {
     },
   };
   let sentGoal = undefined;
+  loadScript('flexbe_webui/app/synthesis/synthesis_result.js');
+  loadScript('flexbe_webui/app/synthesis/synthesis_client.js');
   loadScript('flexbe_webui/app/rc/rc_pubsub.js');
 
   RC.PubSub.initializeSynthesisAction();
@@ -2631,6 +2633,8 @@ async function runSynthesisResultUpdatesTransitionGeometryCase() {
   global.ActivityTracer.ACT_STATE_ADD = 'state_add';
   global.ActivityTracer.addActivity = function(_type, _label, _undo, _redo) {};
 
+  loadScript('flexbe_webui/app/synthesis/synthesis_result.js');
+  loadScript('flexbe_webui/app/synthesis/synthesis_client.js');
   loadScript('flexbe_webui/app/rc/rc_pubsub.js');
   RC.PubSub.DEBUG_synthesis_action_result_callback({
     error_code: { value: 1 },

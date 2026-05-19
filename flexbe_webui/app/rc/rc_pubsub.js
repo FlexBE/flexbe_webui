@@ -27,8 +27,6 @@ RC.PubSub = new (function() {
 	var version_publisher;
 	var ros_notification_publisher;
 
-	var synthesis_action_client;
-
 	var last_onboard_heartbeat_time = undefined;
 	var last_mirror_heartbeat_time = undefined;
 	var last_launcher_heartbeat_time = undefined;
@@ -40,6 +38,14 @@ RC.PubSub = new (function() {
 
 	var session_restore_attempted = false;
 	var pending_outcome_messages = new Map();
+
+	var getSynthesisClient = function(silent) {
+		if (typeof Synthesis == 'undefined' || Synthesis.Client == undefined) {
+			if (!silent) T.logWarn("Synthesis module not loaded!");
+			return undefined;
+		}
+		return Synthesis.Client;
+	}
 
 	// BEStatus codes from BEStatus.msg
 	const STARTED = 0;
@@ -628,136 +634,6 @@ RC.PubSub = new (function() {
 		UI.Tools.notifyRosCommand(msg.command);
 	}
 
-	var synthesis_action_timeout_callback = function(timeout_cb) {
-		UI.Tools.closeSynthesisProgress();
-		T.logError('Synthesis timed out! Check if the synthesis server is listening on topic: ' +  UI.Settings.getSynthesisTopic());
-
-		if(timeout_cb != undefined) timeout_cb();
-	}
-
-	var synthesis_action_feedback_callback = function(feedback, root, feedback_cb) {
-		console.log('Synthesis status: ' + feedback.status + ' (' + (feedback.progress * 100) + '%)');
-		UI.Tools.updateSynthesisProgress(feedback.status);
-
-		if(feedback_cb != undefined) feedback_cb(feedback);
-	}
-
-	var synthesis_action_result_callback = function(result, root, result_cb) {
-		console.log(`\x1b[92mRC.PubSub: synthesis_action_result_callback ...\x1b[0m`);
-		UI.Tools.closeSynthesisProgress();
-		if (result == undefined) {
-			T.logError("Synthesis cancelled.");
-			return;
-		}
-		if (result.error_code == undefined) {
-			T.logError("Synthesis result missing error_code field.");
-			return;
-		}
-		if (result.error_code.value != 1) {
-			var err_msgs = (result.messages && result.messages.length > 0) ? result.messages : [];
-			T.logError("Synthesis failed: " + result.error_code.value);
-			UI.Tools.customSynthesisResult("Synthesis Failed (code " + result.error_code.value + ")", err_msgs, true);
-			return;
-		}
-		if (root == undefined || root == null) {
-			T.logError("Synthesis result missing root path.");
-			return;
-		}
-		var root_split = root.split("/");
-		var root_name = root_split[root_split.length - 1];
-		var root_container_path = root.replace("/" + root_name, "");
-		var root_container = (root_container_path == "")? Behavior.getStatemachine() :
-								Behavior.getStatemachine().getStateByPath(root_container_path);
-		if (root_container == undefined) {
-			T.logError(`Synthesis result has unknown root container path '${root_container_path}'`);
-			return;
-		}
-		var root_varname = "";
-		var defs = IO.ModelGenerator.parseInstantiationMsg(result.states);
-		if (defs == undefined) {
-			T.logError('Aborted synthesis because of previous errors.');
-			return;
-		}
-
-		var state_machine = IO.ModelGenerator.buildStateMachine(root_name, root_varname, defs.sm_defs, defs.sm_states, true);
-		console.log(`        built state machine name = '${state_machine.getStateName()}' ...`);
-
-		var sm_instance = root_container.getStateByName(state_machine.getStateName());
-		state_machine.setContainer(root_container);
-		if (sm_instance != undefined) {
-			console.log(`        add state machine instance inside existing container ...`);
-
-			var transitions = root_container.getTransitions().filter(function(t) {
-				return t.getFrom().getStateName() == sm_instance.getStateName() && state_machine.getOutcomes().contains(t.getOutcome())
-					|| t.getTo() != undefined && t.getTo().getStateName() == sm_instance.getStateName();
-			});
-
-			// Retrieve input/output data from container definition
-			var o_keys = sm_instance.getOutputKeys();
-			var i_keys = sm_instance.getInputKeys();
-			var o_maps = sm_instance.getOutputMapping();
-			var i_maps = sm_instance.getInputMapping();
-			var is_initial = root_container.getInitialState() != undefined && sm_instance.getStateName() == root_container.getInitialState().getStateName();
-
-			root_container.removeState(sm_instance);
-			root_container.addState(state_machine);
-			if (is_initial) root_container.setInitialState(state_machine);
-			transitions.forEach(function (t) {
-				if (t.getTo() != undefined && t.getTo().getStateName() == state_machine.getStateName()) t.setTo(state_machine);
-				if (t.getFrom().getStateName() == state_machine.getStateName()) t.setFrom(state_machine);
-			});
-
-			state_machine.setInputKeys(i_keys);
-			state_machine.setOutputKeys(o_keys);
-			state_machine.setInputMapping(i_maps);
-			state_machine.setOutputMapping(o_maps);
-
-			transitions.forEach(root_container.addTransition);
-			console.log(`\x1b[92mRC.PubSub: finished updating container with synthesized state machine!\x1b[0m`);
-		} else {
-			console.log(`\x1b[92mRC.PubSub: adding synthesized SM directly to root container ...\x1b[0m`);
-			root_container.addState(state_machine);
-		}
-
-		let updated_transition_geometry = false;
-		if (UI.Statemachine.updateTransitionGeometry != undefined) {
-			updated_transition_geometry = UI.Statemachine.updateTransitionGeometry(state_machine);
-		}
-		if(!updated_transition_geometry && UI.Menu.isPageStatemachine()) UI.Statemachine.refreshView();
-		UI.Panels.StateProperties.displayStateProperties(state_machine);
-
-		ActivityTracer.addActivity(ActivityTracer.ACT_STATE_ADD,
-			"Added synthesized statemachine " + root_name,
-			function() {
-				state_machine.getContainer().removeState(state_machine);
-				if (UI.Panels.StateProperties.isCurrentState(state_machine)) {
-					UI.Panels.StateProperties.hide();
-				}
-				UI.Statemachine.refreshView();
-			},
-			function() {
-				var container = (root_container_path == "")? Behavior.getStatemachine() : Behavior.getStatemachine().getStateByPath(root_container_path);
-				if (container == undefined) {
-					T.logError(`Redo: unknown container path '${root_container_path}'`);
-					return;
-				}
-				container.addState(state_machine);
-				if (UI.Statemachine.updateTransitionGeometry == undefined
-					|| !UI.Statemachine.updateTransitionGeometry(state_machine)) {
-					UI.Statemachine.refreshView();
-				}
-			}
-		);
-
-		var warn_msgs = (result.messages && result.messages.length > 0) ? result.messages : [];
-		var state_count = state_machine.getStates().length;
-		var title = "Synthesis succeeded with " + state_count + " state" + (state_count != 1 ? "s" : "");
-		UI.Tools.customSynthesisResult(title, warn_msgs, false);
-
-		if(result_cb != undefined) result_cb(result);
-	}
-
-
 	this.initialize = function(ns) {
 		if (!ns.startsWith('/')) ns = '/' + ns;
 		if (!ns.endsWith('/')) ns += '/';
@@ -883,14 +759,9 @@ RC.PubSub = new (function() {
 	}
 
 	this.initializeSynthesisAction = function(ns) {
-		console.log("RC.PubSub - initializeSynthesisAction");
-		var topic = UI.Settings.getSynthesisTopic();
-		var action_type = UI.Settings.getSynthesisType();
-		if (action_type.endsWith('Action')) action_type = action_type.replace(/Action$/, "");
-		if (synthesis_action_client != undefined) {
-			synthesis_action_client.close();
-		}
-		synthesis_action_client = new ROS.ActionClient(topic, action_type);
+		var synthesis_client = getSynthesisClient();
+		if (synthesis_client == undefined) return;
+		synthesis_client.initializeAction(ns);
 	}
 
 	this.shutdown = function() {
@@ -934,7 +805,8 @@ RC.PubSub = new (function() {
 		if (ros_notification_publisher) ros_notification_publisher.close();
 		if (version_publisher) version_publisher.close();
 
-		if (synthesis_action_client) synthesis_action_client.close();
+		var synthesis_client = getSynthesisClient(true);
+		if (synthesis_client != undefined) synthesis_client.shutdown();
 
 		// make sure timer didn't restart based on new message received
 		if (onboard_heartbeat_timer != undefined) {
@@ -977,8 +849,6 @@ RC.PubSub = new (function() {
 		pause_behavior_publisher = undefined;
 		ros_notification_publisher = undefined;
 		version_publisher = undefined;
-
-		synthesis_action_client = undefined;
 
 		last_onboard_heartbeat_time = undefined;
 		last_mirror_heartbeat_time = undefined;
@@ -1177,60 +1047,27 @@ RC.PubSub = new (function() {
 	}
 
 	this.requestSynthesisGoal = function(goal_msg, root, result_cb, feedback_cb, timeout_cb, timeout_sec) {
-		if (synthesis_action_client == undefined) { T.logWarn("ROS not initialized!"); return; }
-		let effective_timeout = (Number.isFinite(timeout_sec) && timeout_sec > 0)
-			? timeout_sec : UI.Settings.getSynthesisTimeout();
-		if (goal_msg != undefined && goal_msg.request != undefined) {
-			goal_msg.request.synthesis_timeout_s = effective_timeout;
-		}
-		console.log("RC.PubSub - requestBehaviorSynthesis ...");
-		console.log(JSON.stringify(goal_msg));
-		synthesis_action_client.send_goal(goal_msg,
-			function(result) { synthesis_action_result_callback(result, root, result_cb); },
-			function(feedback) { synthesis_action_feedback_callback(feedback, root, feedback_cb); },
-			effective_timeout * 1000,
-			function() { synthesis_action_timeout_callback(timeout_cb); }
-		);
+		var synthesis_client = getSynthesisClient();
+		if (synthesis_client == undefined) return;
+		synthesis_client.requestGoal(goal_msg, root, result_cb, feedback_cb, timeout_cb, timeout_sec);
 	}
 
 	this.cancelSynthesisGoal = function() {
-		if (synthesis_action_client == undefined) { T.logWarn("ROS not initialized!"); return; }
-		let topic = UI.Settings.getSynthesisTopic();
-		API.postData('cancel_action_goal', {topic: topic}, function(result_data) {
-			if (result_data.canceled) {
-				console.log("RC.PubSub: synthesis goal canceled.");
-			} else {
-				T.logWarn("RC.PubSub: synthesis cancel - " + (result_data.reason || "no active goal"));
-			}
-		}, function(error) {
-			T.logError("RC.PubSub: failed to cancel synthesis goal - " + error);
-		});
+		var synthesis_client = getSynthesisClient();
+		if (synthesis_client == undefined) return;
+		synthesis_client.cancelGoal();
 	}
 
 	this.requestBehaviorSynthesis = function(root, system, goal, initial_condition, outcomes, result_cb, feedback_cb, timeout_cb) {
-		let goals = Array.isArray(goal) ? goal : [goal];
-		let initial_conditions = Array.isArray(initial_condition) ? initial_condition : [initial_condition];
-		var goal_msg = {
-			request: {
-				name: root,
-				spec_name: root,
-				system: system,
-				system_name: system,
-				goal: goal,
-				goals: goals,
-				initial_condition: initial_condition,
-				initial_conditions: initial_conditions,
-				sm_outcomes: outcomes,
-				specification_file_name: "",
-				synthesis_timeout_s: UI.Settings.getSynthesisTimeout()
-			},
-			synthesis_options: ""
-		};
-		that.requestSynthesisGoal(goal_msg, root, result_cb, feedback_cb, timeout_cb);
+		var synthesis_client = getSynthesisClient();
+		if (synthesis_client == undefined) return;
+		synthesis_client.requestBehavior(root, system, goal, initial_condition, outcomes, result_cb, feedback_cb, timeout_cb);
 	}
 
 	this.DEBUG_synthesis_action_result_callback = function(result, root) {
-		synthesis_action_result_callback(result, root);
+		var synthesis_client = getSynthesisClient();
+		if (synthesis_client == undefined) return;
+		synthesis_client.DEBUG_handleResult(result, root);
 	}
 
 }) ();
