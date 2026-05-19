@@ -495,12 +495,30 @@ class WebuiNode(Node):
         except (RuntimeError, TypeError, ValueError, AttributeError):
             field_type = ''
 
+        def coerce_float(field_value):
+            if isinstance(field_value, bool):
+                raise ValueError(f"Field '{field_name}' expects a floating-point value, got boolean")
+            try:
+                return float(field_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Field '{field_name}' expects a floating-point value, got {field_value!r}"
+                ) from exc
+
         if field_type.startswith('sequence<') or field_type.startswith('bounded_sequence<'):
             if isinstance(value, list):
-                return value
-            if isinstance(value, tuple):
-                return list(value)
-            return [value]
+                sequence_value = value
+            elif isinstance(value, tuple):
+                sequence_value = list(value)
+            else:
+                sequence_value = [value]
+
+            element_type = WebuiNode._extract_sequence_element_type(field_type)
+            if element_type.startswith(('float', 'double')):
+                return [coerce_float(sequence_item) for sequence_item in sequence_value]
+            return sequence_value
+        if field_type.startswith(('float', 'double')):
+            return coerce_float(value)
         return value
 
     def _get_server_timeout(self) -> float:

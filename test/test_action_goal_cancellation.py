@@ -962,6 +962,18 @@ def test_coerce_value_for_message_field_wraps_sequence_scalars():
     ) == ['ready']
 
 
+def test_coerce_value_for_message_field_converts_float_fields():
+    """Integer JSON values should be converted for ROS float/double fields."""
+    modern_request = _ModernRequestWithSpec()
+
+    timeout = WebuiNode._coerce_value_for_message_field(
+        modern_request, 'synthesis_timeout_s', 300
+    )
+
+    assert timeout == 300.0
+    assert isinstance(timeout, float)
+
+
 def test_dynamic_goal_population_matches_legacy_request_shape(node_stub):
     """Canonical synthesis payload should populate legacy request fields directly."""
     goal_msg = _GoalMessage(_LegacyRequest())
