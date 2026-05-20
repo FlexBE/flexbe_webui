@@ -602,7 +602,7 @@ UI.Settings = new (function() {
 
 	this.getVersion = function() {
 		// FlexBE Behavior Engine API version
-		return "4.1.4";
+		return "4.1.5";
 	}
 
 

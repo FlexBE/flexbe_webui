@@ -22,7 +22,7 @@ def app_data_files(app_root):
 
 setup(
     name=PACKAGE_NAME,
-    version='4.1.4',
+    version='4.1.5',
     packages=[
         PACKAGE_NAME,
         PACKAGE_NAME + '.io',

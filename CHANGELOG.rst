@@ -2,6 +2,20 @@
 Changelog for package flexbe_webui
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+4.1.5 (2026-05-19)
+------------------
+* Remove autonomy setting when removing outcome
+* Force flake8 to use single process in xdist setup
+* Serve behavior definitions from cache
+* Route auto-layout transition geometry
+* Coerce action goal float fields
+* Fix symlink-install behavior save paths
+* The following adds optional support for new flexbe_synthesis setup
+  * Currently under development at https://github.com/CNURobotics/flexbe_synthesis
+  * Harden synthesis layout followups
+  * Extract synthesis frontend modules
+  * Add synthesis timeout, progress, and cancel support
+
 4.1.4 (2026-05-16)
 ------------------
 * Hoist abspath calc out of search loop
