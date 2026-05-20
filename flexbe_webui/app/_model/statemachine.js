@@ -706,6 +706,7 @@ const Statemachine = function(sm_name, sm_definition) {
 
 		// remove outcome
 		that.getOutcomes().remove(outcome);
+		that.getAutonomy().splice(outcome_index, 1);
 		if (that.getOutcomesUnconnected().contains(outcome))
 			that.getOutcomesUnconnected().remove(outcome);
 		else
