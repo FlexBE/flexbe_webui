@@ -17,7 +17,7 @@
 import re
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, root_validator, validator
+from pydantic import BaseModel, field_validator, model_validator
 
 _ROS_ACTION_TYPE_RE = re.compile(r'^[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*$')
 _ROS_TOPIC_RE = re.compile(r'^/(?:[A-Za-z0-9_]+/)*[A-Za-z0-9_]+$')
@@ -73,10 +73,9 @@ class State(BaseModel):
     behavior_state: bool
     state_machine: bool
 
-    @root_validator(skip_on_failure=True)
-    def _validate_parallel_list_lengths(cls, values):
+    @model_validator(mode='after')
+    def _validate_parallel_list_lengths(self):
         """Ensure parallel lists have matching lengths to prevent IndexError in code generation."""
-        state_name = values.get('state_name', 'unknown')
         pairs = [
             ('parameter_values', 'parameters'),
             ('autonomy', 'outcomes'),
@@ -84,14 +83,14 @@ class State(BaseModel):
             ('output_mapping', 'output_keys'),
         ]
         for name_a, name_b in pairs:
-            list_a = values.get(name_a, [])
-            list_b = values.get(name_b, [])
+            list_a = getattr(self, name_a, [])
+            list_b = getattr(self, name_b, [])
             if len(list_a) != len(list_b):
                 raise ValueError(
-                    f"State '{state_name}': '{name_a}' length {len(list_a)}"
+                    f"State '{self.state_name}': '{name_a}' length {len(list_a)}"
                     f" does not match '{name_b}' length {len(list_b)}"
                 )
-        return values
+        return self
 
 
 class Transition(BaseModel):
@@ -189,7 +188,8 @@ class ManifestGeneratorRequest(BaseModel):
     behavior_names: List[ContainsEntry]
     behavior: Dict[str, Any]
 
-    @validator('ws')
+    @field_validator('ws')
+    @classmethod
     def validate_ws(cls, v):
         """Validate generated-source indentation."""
         return validate_indentation(v)
@@ -206,7 +206,8 @@ class BehaviorCodeGeneratorRequest(BaseModel):
     behavior_names: List[ContainsEntry]
     behavior: Dict[str, Any]
 
-    @validator('ws')
+    @field_validator('ws')
+    @classmethod
     def validate_ws(cls, v):
         """Validate generated-source indentation."""
         return validate_indentation(v)
@@ -218,12 +219,14 @@ class ActionClientRequest(BaseModel):
     topic: str
     action_type: str
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)
 
-    @validator('action_type')
+    @field_validator('action_type')
+    @classmethod
     def validate_action_type(cls, v):
         """Validate action_type is a safe 'package/ActionName' string."""
         if not _ROS_ACTION_TYPE_RE.match(v):
@@ -236,7 +239,8 @@ class ActionSchemaRequest(BaseModel):
 
     action_type: str
 
-    @validator('action_type')
+    @field_validator('action_type')
+    @classmethod
     def validate_action_type(cls, v):
         """Validate action_type is a safe 'package/ActionName' string."""
         if not _ROS_ACTION_TYPE_RE.match(v):
@@ -251,12 +255,14 @@ class CreatePublisherRequest(BaseModel):
     msg_type: str
     latched: bool
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)
 
-    @validator('msg_type')
+    @field_validator('msg_type')
+    @classmethod
     def validate_msg_type(cls, v):
         """Validate msg_type is a safe 'package/MessageName' string."""
         if not _ROS_ACTION_TYPE_RE.match(v):
@@ -270,7 +276,8 @@ class PublishRequest(BaseModel):
     topic: str
     req: Dict[str, Any]
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)
@@ -281,7 +288,8 @@ class ClosePublisherRequest(BaseModel):
 
     topic: str
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)
@@ -294,12 +302,14 @@ class CreateSubscriberRequest(BaseModel):
     msg_type: str
     client_id: Optional[str] = None
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)
 
-    @validator('msg_type')
+    @field_validator('msg_type')
+    @classmethod
     def validate_msg_type(cls, v):
         """Validate msg_type is a safe 'package/MessageName' string."""
         if not _ROS_ACTION_TYPE_RE.match(v):
@@ -313,7 +323,8 @@ class CloseSubscriberRequest(BaseModel):
     topic: str
     client_id: Optional[str] = None
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)
@@ -326,12 +337,14 @@ class SendActionGoalRequest(BaseModel):
     topic: str
     timeout_sec: Optional[float] = None
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)
 
-    @validator('timeout_sec')
+    @field_validator('timeout_sec')
+    @classmethod
     def validate_timeout_sec(cls, v):
         """Validate optional action result timeout."""
         if v is not None and v <= 0:
@@ -344,7 +357,8 @@ class CancelActionGoalRequest(BaseModel):
 
     topic: str
 
-    @validator('topic', pre=True)
+    @field_validator('topic', mode='before')
+    @classmethod
     def validate_topic(cls, v):
         """Validate topic is a safe absolute ROS topic path."""
         return validate_ros_topic(v)

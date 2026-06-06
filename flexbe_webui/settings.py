@@ -21,7 +21,7 @@ from typing import Any, Dict, List
 
 from ament_index_python import get_package_share_directory
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DEFAULT_ALLOWED_EDITORS = [
     'gnome-text-editor',
@@ -107,10 +107,7 @@ def get_default_license_text(default_license):
 class WebuiSettings(BaseModel):
     """Typed, validated settings model for flexbe_webui."""
 
-    class Config:
-        """Ignore unknown fields from legacy/external config files."""
-
-        extra = 'ignore'
+    model_config = ConfigDict(extra='ignore')
 
     code_indentation: int = 2
     collapse_info: bool = True
@@ -157,7 +154,8 @@ class WebuiSettings(BaseModel):
     visualize_whitespace: bool = True
     license_text: str = ''
 
-    @validator('allow_editors', pre=True)
+    @field_validator('allow_editors', mode='before')
+    @classmethod
     def _normalize_allow_editors(cls, value: Any) -> List[str]:
         """Normalize editor allowlist input and enforce defaults."""
         if not isinstance(value, list):
@@ -174,7 +172,8 @@ class WebuiSettings(BaseModel):
             return DEFAULT_ALLOWED_EDITORS.copy()
         return normalized
 
-    @validator('dashboard_text_size', 'statemachine_text_size', pre=True)
+    @field_validator('dashboard_text_size', 'statemachine_text_size', mode='before')
+    @classmethod
     def _normalize_text_size(cls, value: Any) -> float:
         """Ensure UI text size settings stay in a reasonable range."""
         try:
@@ -187,7 +186,8 @@ class WebuiSettings(BaseModel):
             return 150.0
         return size
 
-    @validator('sidepanel_width', pre=True)
+    @field_validator('sidepanel_width', mode='before')
+    @classmethod
     def _normalize_sidepanel_width(cls, value: Any) -> int:
         """Keep properties panel width in a reasonable range."""
         try:
@@ -196,7 +196,8 @@ class WebuiSettings(BaseModel):
             width = 350
         return max(200, min(700, width))
 
-    @validator('feed_panel_width', pre=True)
+    @field_validator('feed_panel_width', mode='before')
+    @classmethod
     def _normalize_feed_panel_width(cls, value: Any) -> int:
         """Keep notification feed width in a reasonable range."""
         try:
@@ -205,7 +206,8 @@ class WebuiSettings(BaseModel):
             width = 270
         return max(150, min(500, width))
 
-    @validator('terminal_height', pre=True)
+    @field_validator('terminal_height', mode='before')
+    @classmethod
     def _normalize_terminal_height(cls, value: Any) -> int:
         """Keep terminal panel height percentage in a reasonable range."""
         try:
@@ -214,7 +216,8 @@ class WebuiSettings(BaseModel):
             height = 30
         return max(15, min(70, height))
 
-    @validator('rc_right_panel_width', pre=True)
+    @field_validator('rc_right_panel_width', mode='before')
+    @classmethod
     def _normalize_rc_right_panel_width(cls, value: Any) -> int:
         """Keep runtime control right panel percentage in a reasonable range."""
         try:
@@ -223,7 +226,8 @@ class WebuiSettings(BaseModel):
             width = 34
         return max(20, min(60, width))
 
-    @validator('server_timeout', pre=True)
+    @field_validator('server_timeout', mode='before')
+    @classmethod
     def _normalize_server_timeout(cls, value: Any) -> float:
         """Keep short server wait timeouts in a sensible range."""
         try:
@@ -239,8 +243,9 @@ class WebuiSettings(BaseModel):
             return 10.0
         return round(timeout, 2)
 
-    @validator('transition_line_width_normal', 'transition_line_width_bold',
-               'transition_line_width_extra_bold', pre=True)
+    @field_validator('transition_line_width_normal', 'transition_line_width_bold',
+                     'transition_line_width_extra_bold', mode='before')
+    @classmethod
     def _normalize_transition_line_width(cls, value: Any) -> float:
         """Ensure transition line widths remain in a usable range."""
         try:
@@ -253,13 +258,13 @@ class WebuiSettings(BaseModel):
             return 20.0
         return width
 
-    @root_validator(skip_on_failure=True)
-    def _normalize_transition_line_width_order(cls, values: Dict[str, Any]):
+    @model_validator(mode='after')
+    def _normalize_transition_line_width_order(self):
         """Keep transition widths ordered: normal < bold < extra bold."""
         epsilon = 0.1
-        normal = float(values.get('transition_line_width_normal', 2.0))
-        bold = float(values.get('transition_line_width_bold', 3.0))
-        extra = float(values.get('transition_line_width_extra_bold', 4.0))
+        normal = float(self.transition_line_width_normal)
+        bold = float(self.transition_line_width_bold)
+        extra = float(self.transition_line_width_extra_bold)
 
         normal = min(max(normal, 1.0), 19.8)
         bold = min(max(bold, 1.1), 19.9)
@@ -276,23 +281,24 @@ class WebuiSettings(BaseModel):
             if bold <= normal:
                 normal = max(1.0, bold - epsilon)
 
-        values['transition_line_width_normal'] = round(normal, 1)
-        values['transition_line_width_bold'] = round(bold, 1)
-        values['transition_line_width_extra_bold'] = round(extra, 1)
-        return values
+        self.transition_line_width_normal = round(normal, 1)
+        self.transition_line_width_bold = round(bold, 1)
+        self.transition_line_width_extra_bold = round(extra, 1)
+        return self
 
-    @validator('license_file', 'source_code_root', pre=True)
+    @field_validator('license_file', 'source_code_root', mode='before')
+    @classmethod
     def _normalize_string_fields(cls, value: Any) -> str:
         """Ensure path-like settings are always normalized strings."""
         if value is None:
             return ''
         return str(value)
 
-    @root_validator(skip_on_failure=True)
-    def _resolve_paths_and_license(cls, values: Dict[str, Any]):
+    @model_validator(mode='after')
+    def _resolve_paths_and_license(self):
         """Apply source path and license-file dependent settings."""
-        save_in_source = bool(values.get('save_in_source', False))
-        source_code_root = values.get('source_code_root', '')
+        save_in_source = bool(self.save_in_source)
+        source_code_root = self.source_code_root
 
         if save_in_source and '${' in source_code_root:
             matches = ENV_VAR_PATTERN.findall(source_code_root)
@@ -301,39 +307,39 @@ class WebuiSettings(BaseModel):
                 if workspace_root is not None and workspace_root.strip() != '':
                     print(f"The '{matches[0]}' environment variable is set, update the source code root.", flush=True)
                     source_code_root = source_code_root.replace(f'${{{matches[0]}}}', workspace_root)
-                    values['source_code_root'] = source_code_root
+                    self.source_code_root = source_code_root
                     print(source_code_root, flush=True)
                 else:
                     print(f"The '{matches[0]}' environment variable is NOT set!  Cannot update the source code root.",
                           flush=True)
-                    values['save_in_source'] = False
+                    self.save_in_source = False
                     save_in_source = False
 
         if save_in_source and not os.path.exists(source_code_root):
             print(f"The '{source_code_root}' directory does not exist!"
                   f'  Cannot save behaviors in the source code root.', flush=True)
-            values['save_in_source'] = False
+            self.save_in_source = False
 
-        license_name = str(values.get('license', 'bsd-3'))
-        values['license_text'] = get_default_license_text(license_name)
-        license_file = str(values.get('license_file', ''))
+        license_name = str(self.license)
+        self.license_text = get_default_license_text(license_name)
+        license_file = str(self.license_file)
         if license_file != '':
             if os.path.exists(license_file):
                 with open(license_file) as fin:
                     lines = [f'{line.strip()}' if line.strip().startswith('#')
                              else f'# {line.strip()}' for line in fin.readlines()]
-                    values['license_text'] = '\n'.join(lines) + '\n'
-                    print(f"Using custom license text:\n{values['license_text']}\n", flush=True)
+                    self.license_text = '\n'.join(lines) + '\n'
+                    print(f'Using custom license text:\n{self.license_text}\n', flush=True)
             else:
                 print(f"Cannot load custom license text from '{license_file}'"
                       f'  use default license:\n{license_name}\n', flush=True)
-        return values
+        return self
 
 
 def update_settings(settings: Dict[str, Any]):
     """Validate and normalize settings via typed model."""
-    validated = WebuiSettings.parse_obj(settings)
-    return validated.dict()
+    validated = WebuiSettings.model_validate(settings)
+    return validated.model_dump()
 
 
 def load_settings(json_dict=None):

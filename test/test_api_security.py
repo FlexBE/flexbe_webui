@@ -277,7 +277,7 @@ def test_open_file_editor_enforces_editor_allowlist(server_with_package):
 def test_view_file_source_handles_malformed_payload(server_with_package):
     """Malformed payloads are rejected by request-model validation."""
     with pytest.raises(ValidationError):
-        FileRequest.parse_obj([])
+        FileRequest.model_validate([])
 
 
 def test_view_file_source_requires_token_when_auth_enabled(token_protected_server):
@@ -297,7 +297,7 @@ def test_view_file_source_requires_token_when_auth_enabled(token_protected_serve
 def test_open_file_editor_handles_malformed_payload(server_with_package):
     """Malformed payloads are rejected by request-model validation."""
     with pytest.raises(ValidationError):
-        OpenFileEditorRequest.parse_obj([])
+        OpenFileEditorRequest.model_validate([])
 
 
 def test_get_config_settings_reload_requires_token(token_protected_server, tmp_path):

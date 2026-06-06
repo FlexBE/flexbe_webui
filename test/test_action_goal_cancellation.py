@@ -695,7 +695,7 @@ def test_close_subscriber_migration_does_not_create_phantom_ref(node_stub):
 def test_close_subscriber_request_rejects_raw_string_body():
     """Close subscriber should require the structured request shape."""
     with pytest.raises(ValidationError):
-        CloseSubscriberRequest.parse_obj('/demo')
+        CloseSubscriberRequest.model_validate('/demo')
 
 
 def test_close_subscriber_request_rejects_invalid_topic():

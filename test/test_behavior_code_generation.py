@@ -290,7 +290,7 @@ def test_behavior_code_generator_preserves_existing_license_on_resave(
     server_with_package._settings['save_in_source'] = False
     server_with_package._settings['license_text'] = '# Configured License\n'
 
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.save_as = False
     request_payload.behavior.update({
         'file_name': 'demo_behavior.py',
@@ -329,7 +329,7 @@ def test_behavior_code_generator_prefers_manifest_install_root_for_ament_python_
     )
     server_with_package._settings['save_in_source'] = False
 
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.package_name = 'symlink_pkg'
     request_payload.file_name = 'symlink_demo_sm.py'
     request_payload.save_as = True
@@ -390,7 +390,7 @@ def test_behavior_code_generator_symlinked_manifest_file_resolves_to_install_roo
     )
     server_with_package._settings['save_in_source'] = False
 
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.package_name = 'my_pkg'
     request_payload.file_name = 'symlink_behavior_sm.py'
     request_payload.save_as = False
@@ -432,7 +432,7 @@ def test_behavior_code_generator_save_as_writes_new_file_in_target_package(
         editable=True,
     )
 
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.package_name = 'target_pkg'
     request_payload.file_name = 'stale_source_behavior.py'
     request_payload.save_as = True
@@ -530,7 +530,7 @@ def test_behavior_code_generator_rejects_package_name_mismatch(
     server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch
 ):
     """Request package and behavior package mismatch should fail before writing files."""
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.behavior['behavior_package'] = 'other_pkg'
 
     def fail_code_generator(*_args, **_kwargs):
@@ -555,7 +555,7 @@ def test_behavior_code_generator_rejects_code_file_outside_python_root(
 ):
     """Existing behavior saves must not write Python files outside the package root."""
     outside_file = tmp_path / 'outside.py'
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.save_as = False
     request_payload.file_name = '../outside'
     request_payload.behavior['file_name'] = '../outside'
@@ -581,7 +581,7 @@ def test_behavior_code_generator_rejects_manifest_file_outside_manifest_root(
 ):
     """Existing behavior saves must not write manifest files outside accepted manifest roots."""
     outside_manifest = tmp_path / 'outside.xml'
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.save_as = False
     request_payload.file_name = 'demo_behavior'
     request_payload.behavior['file_name'] = 'demo_behavior'
@@ -608,7 +608,7 @@ def test_behavior_code_generator_preserves_nested_relative_file_paths(
     nested_dir.mkdir()
     manifest_path = Path(server_with_package.packages['test_pkg'].path) / 'lib' / 'test_pkg' / 'manifest' / 'demo_behavior.xml'
 
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.save_as = False
     request_payload.file_name = 'nested/demo_behavior'
     request_payload.behavior['file_name'] = 'nested/demo_behavior'
@@ -635,7 +635,7 @@ def test_behavior_code_generator_escapes_manifest_xml(
     server_with_package, valid_behavior_request, code_generator_endpoint, monkeypatch
 ):
     """Generated manifests should remain valid XML when metadata contains XML syntax characters."""
-    request_payload = valid_behavior_request.copy(deep=True)
+    request_payload = valid_behavior_request.model_copy(deep=True)
     request_payload.behavior_names = [ContainsEntry(name='Child & "Behavior"', package='child_pkg')]
     request_payload.behavior.update({
         'behavior_name': 'Demo & "Behavior"',
