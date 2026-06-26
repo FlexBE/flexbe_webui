@@ -180,7 +180,7 @@ def format_state_code_string(code_string, target_line_length, ws=' '):
         current = ''
         inside_brackets = 0
         for char in line:
-            if char in ('[', '(', '}'):
+            if char in ('[', '(', '{'):
                 inside_brackets += 1
             elif char in (']', ')', '}'):
                 inside_brackets -= 1
