@@ -186,7 +186,8 @@ const Checking = new (function() {
 		} catch (error) {
 			console.log(`\x1b[91m Failed behavior check for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
 			console.log(error.stack);
-			report.fatal_errors.push(error.error);
+			// error may be a custom {path, error} object or a real JS exception; always record a non-empty message
+			report.fatal_errors.push(error.error != undefined ? error.error : (error.message != undefined ? error.message : `${error}`));
 			return report;
 		}
 
@@ -196,16 +197,21 @@ const Checking = new (function() {
 		} catch (error) {
 			console.log(`\x1b[91m Failed behavior createStructureInfo for '${Behavior.getBehaviorName()}\x1b[0m'\n    ${error}`);
 			console.log(error.stack);
-			let container_path = error.path.replace("/"+error.path.split("/").pop(), "");
-			let container = Behavior.getStatemachine().getStateByPath(container_path);
-			if (container instanceof BehaviorState) {
-				error.error += "<br />Note: Since this error is inside a contained behavior, please open this behavior directly and fix it there.";
-				error.error += "<br />Affected behavior: " + container.getBehaviorName();
-				container = container.getBehaviorStatemachine();
+			// error may be a custom {path, error} object or a real JS exception; resolve a non-empty message and only
+			// navigate to the offending container when a path is actually present (a real exception has none).
+			let error_message = error.error != undefined ? error.error : (error.message != undefined ? error.message : `${error}`);
+			if (error.path != undefined) {
+				let container_path = error.path.replace("/"+error.path.split("/").pop(), "");
+				let container = Behavior.getStatemachine().getStateByPath(container_path);
+				if (container instanceof BehaviorState) {
+					error_message += "<br />Note: Since this error is inside a contained behavior, please open this behavior directly and fix it there.";
+					error_message += "<br />Affected behavior: " + container.getBehaviorName();
+					container = container.getBehaviorStatemachine();
+				}
+				UI.Statemachine.setDisplayedSM(container);
 			}
-			UI.Statemachine.setDisplayedSM(container);
 			UI.Menu.toStatemachineClicked();
-			report.fatal_errors.push(error.error);
+			report.fatal_errors.push(error_message);
 			return report;
 		}
 
